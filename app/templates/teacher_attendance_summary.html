@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Teacher analysis</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-chalkboard-teacher text-primary me-2"></i>Teacher Attendance Matrix Summary</h1>
+        <p class="text-muted small mb-0">Review teacher attendance across the selected date range.</p>
+    </div>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{{ url_for('main.teacher_attendance') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left me-1"></i> Back to Daily Teacher Attendance
+        </a>
+    </div>
+</div>
+
+<!-- Date Range Filter Card -->
+<div class="card shadow-sm mb-4 border-0 analytics-panel">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('main.teacher_attendance_summary') }}" class="row g-3 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label fw-bold">Start Date:</label>
+                <input type="date" class="form-control" name="start_date" value="{{ start_date }}" onchange="this.form.submit()">
+            </div>
+            <div class="col-md-5">
+                <label class="form-label fw-bold">End Date:</label>
+                <input type="date" class="form-control" name="end_date" value="{{ end_date }}" onchange="this.form.submit()">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn dark w-100 btn-dark"><i class="fas fa-sync-alt me-1"></i> Refresh</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Matrix Table -->
+<div class="card shadow-sm border-0 table-panel">
+    <div class="card-body table-responsive p-0">
+        {% if matrix_data and dates_list %}
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light text-nowrap text-center">
+                <tr>
+                    <th class="py-3" style="width: 50px;">Sr</th>
+                    <th class="py-3 text-start">Teacher ID</th>
+                    <th class="py-3 text-start">Teacher Name</th>
+                    <th class="py-3 text-start">Qualification</th>
+                    {% for d in dates_list %}
+                    <th class="py-3 px-3">{{ d.strftime('%d/%m/%Y') }}</th>
+                    {% endfor %}
+                    <th class="py-3 bg-success text-white">Present</th>
+                    <th class="py-3 bg-danger text-white">Absent</th>
+                    <th class="py-3 bg-warning text-dark">Late</th>
+                    <th class="py-3 bg-secondary text-white">%</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in matrix_data %}
+                <tr>
+                    <td class="text-center text-muted fw-bold">{{ row.sr }}</td>
+                    <td class="font-monospace fw-bold text-primary">{{ row.teacher.teacher_id_str }}</td>
+                    <td class="fw-bold text-dark">{{ row.teacher.teacher_name }}</td>
+                    <td class="text-muted">{{ row.teacher.qualification }}</td>
+                    
+                    {% for d in dates_list %}
+                    {% set status = row.daily_status.get(d, '—') %}
+                    <td class="text-center text-nowrap">
+                        <span class="badge 
+                            {% if status == '—' %}bg-light text-muted
+                            {% elif 'Present' in status %}bg-success
+                            {% elif status == 'Absent' %}bg-danger
+                            {% elif status == 'Late' %}bg-warning text-dark
+                            {% elif status == 'Leave' %}bg-secondary
+                            {% else %}bg-light text-dark{% endif %} 
+                            px-2 py-1">
+                            {{ status.lower() }}
+                        </span>
+                    </td>
+                    {% endfor %}
+                    <td class="text-center fw-bold text-success bg-light">{{ row.p_count }}</td>
+                    <td class="text-center fw-bold text-danger bg-light">{{ row.a_count }}</td>
+                    <td class="text-center fw-bold text-warning bg-light">{{ row.l_count }}</td>
+                    <td class="text-center fw-bold text-primary bg-light">{{ row.percentage }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">No attendance logs found for teachers in this date range.</h5>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

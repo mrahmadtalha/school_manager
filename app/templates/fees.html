@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Finance overview</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-wallet text-primary me-2"></i>Fee Management Ledger</h1>
+        <p class="text-muted small mb-0">Track monthly dues, collections, and outstanding balances.</p>
+    </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<!-- Filter Card -->
+<div class="card shadow-sm mb-4 border-0 analytics-panel">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('main.fees_list') }}" class="row g-3 align-items-end">
+
+            <!-- View toggle -->
+            <div class="col-12 mb-1">
+                <div class="btn-group" role="group">
+                    <a href="{{ url_for('main.fees_list', class_id=selected_class_id or '', month_year=month_year, show_unpaid=0) }}"
+                       class="btn btn-sm {% if not show_unpaid %}btn-dark{% else %}btn-outline-dark{% endif %}">
+                        <i class="fas fa-list me-1"></i> By Class
+                    </a>
+                    <a href="{{ url_for('main.fees_list', month_year=month_year, show_unpaid=1) }}"
+                       class="btn btn-sm {% if show_unpaid %}btn-danger{% else %}btn-outline-danger{% endif %}">
+                        <i class="fas fa-exclamation-circle me-1"></i> All Unpaid / Partial
+                    </a>
+                </div>
+            </div>
+
+            {% if not show_unpaid %}
+            <div class="col-md-5">
+                <label class="form-label fw-bold text-muted small">Select Class:</label>
+                <select class="form-select border-primary" name="class_id" onchange="this.form.submit()">
+                    {% for c in classes %}
+                    <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% else %}
+            <input type="hidden" name="show_unpaid" value="1">
+            {% endif %}
+
+            <div class="col-md-5">
+                <label class="form-label fw-bold small text-muted">Billing Month &amp; Year:</label>
+                <input type="text" class="form-control" name="month_year" value="{{ month_year }}" placeholder="e.g. September 2026">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-dark w-100"><i class="fas fa-filter me-1"></i> Filter</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Bulk class fee update -->
+<div class="card shadow-sm mb-4 border-0">
+    <div class="card-body">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+            <div>
+                <h5 class="mb-1 text-dark"><i class="fas fa-layer-group me-2 text-primary"></i>Set Monthly Fee for Entire Class</h5>
+                <p class="text-muted mb-0 small">Apply one fee to every active student in the selected class, then override individual students as needed.</p>
+            </div>
+            <form method="POST" action="{{ url_for('main.bulk_update_class_fees') }}" class="row g-2 align-items-end">
+                <div class="col-auto">
+                    <label class="form-label fw-bold small text-muted mb-1">Class</label>
+                    <select class="form-select" name="class_id" required>
+                        {% for c in classes %}
+                        <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label fw-bold small text-muted mb-1">Monthly Fee (PKR)</label>
+                    <input type="number" step="0.01" min="0" class="form-control" name="monthly_fee" placeholder="e.g. 3500" required>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i> Apply to Class</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+{% if fee_data %}
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="metric-card card border-0 shadow-sm text-center py-3 h-100">
+            <div class="metric-value text-dark">{{ fee_data | length }}</div>
+            <div class="text-muted small">Total Students</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card card border-0 shadow-sm text-center py-3 h-100">
+            <div class="metric-value text-danger">{{ summary.count_pending }}</div>
+            <div class="text-muted small">Unpaid</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card card border-0 shadow-sm text-center py-3 h-100">
+            <div class="metric-value text-warning">{{ summary.count_partial }}</div>
+            <div class="text-muted small">Partial</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="metric-card card border-0 shadow-sm text-center py-3 h-100">
+            <div class="metric-value text-success">{{ summary.count_paid }}</div>
+            <div class="text-muted small">Fully Paid</div>
+        </div>
+    </div>
+</div>
+
+<!-- Total row -->
+<div class="alert alert-secondary py-2 mb-3 d-flex justify-content-between align-items-center">
+    <span><i class="fas fa-info-circle me-1"></i>
+        <strong>Total Due:</strong> {{ "%.0f"|format(summary.total_due) }} PKR &nbsp;|&nbsp;
+        <strong>Total Collected:</strong> {{ "%.0f"|format(summary.total_paid) }} PKR
+    </span>
+    <span class="fw-bold {% if summary.total_due - summary.total_paid > 0 %}text-danger{% else %}text-success{% endif %}">
+        Outstanding: {{ "%.0f"|format(summary.total_due - summary.total_paid) }} PKR
+    </span>
+</div>
+{% endif %}
+
+<!-- Fee Ledger Table -->
+<div class="card shadow-sm border-0 table-panel">
+    <div class="card-body table-responsive p-0">
+        <div class="p-3 bg-white border-bottom d-flex justify-content-between align-items-center">
+            <h5 class="card-title text-secondary mb-0">
+                {% if show_unpaid %}
+                    <span class="text-danger"><i class="fas fa-exclamation-circle me-1"></i>Unpaid &amp; Partial — All Classes</span>
+                    <span class="text-dark fw-bold ms-1">{{ month_year }}</span>
+                {% else %}
+                    Fee Ledger for <span class="text-dark fw-bold">{{ month_year }}</span>
+                {% endif %}
+            </h5>
+        </div>
+
+        {% if fee_data %}
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th class="py-3 ps-3">Roll No</th>
+                    <th class="py-3">Student Name</th>
+                    <th class="py-3">Father Name</th>
+                    {% if show_unpaid %}<th class="py-3">Class</th>{% endif %}
+                    <th class="py-3">Monthly Due</th>
+                    <th class="py-3">Amount Paid</th>
+                    <th class="py-3">Payment Date</th>
+                    <th class="py-3">Status</th>
+                    <th class="text-end py-3 pe-3">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in fee_data %}
+                {% set status = row.record.status if row.record else 'Pending' %}
+                {% set due = row.due %}
+                {% set paid = row.record.amount_paid if row.record else 0.0 %}
+                <tr class="{% if status == 'Pending' %}table-danger-subtle{% elif status == 'Partial' %}table-warning-subtle{% elif status == 'Paid' %}table-success-subtle{% endif %}">
+                    <td class="ps-3 font-monospace fw-bold text-primary">{{ row.student.roll_number }}</td>
+                    <td class="fw-bold text-dark">{{ row.student.student_name }}</td>
+                    <td class="text-muted">{{ row.student.father_name }}</td>
+                    {% if show_unpaid %}
+                    <td><span class="badge bg-secondary">{{ row.class_name }}</span></td>
+                    {% endif %}
+                    <td class="fw-bold">
+                        {% if due > 0 %}{{ due }} PKR
+                        {% else %}<span class="text-danger small">Not set</span>{% endif %}
+                    </td>
+                    <td class="fw-bold text-success">{{ paid }} PKR</td>
+                    <td class="text-muted small">
+                        {{ row.record.payment_date.strftime('%Y-%m-%d') if row.record and row.record.payment_date else 'Not Paid' }}
+                    </td>
+                    <td>
+                        <span class="badge {% if status == 'Paid' %}bg-success{% elif status == 'Partial' %}bg-warning text-dark{% else %}bg-danger{% endif %} px-2 py-1">
+                            {{ status }}
+                        </span>
+                    </td>
+                    <td class="text-end pe-3">
+                        <button class="btn btn-sm btn-outline-primary px-3"
+                                data-bs-toggle="modal"
+                                data-bs-target="#payModal{{ row.student.id }}"
+                                title="Record Payment">
+                            <i class="fas fa-cash-register me-1"></i> Collect Fee
+                        </button>
+                    </td>
+                </tr>
+
+                <!-- Payment Modal -->
+                <div class="modal fade" id="payModal{{ row.student.id }}" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <form action="{{ url_for('main.pay_fee', student_id=row.student.id) }}" method="POST">
+                                <input type="hidden" name="month_year" value="{{ month_year }}">
+                                <div class="modal-header bg-dark text-white">
+                                    <h5 class="modal-title">
+                                        <i class="fas fa-cash-register me-2"></i>Collect Fee: {{ row.student.student_name }}
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body text-start">
+                                    <div class="alert alert-info py-2 small mb-3">
+                                        <strong>Billing Period:</strong> {{ month_year }}<br>
+                                        <strong>Father Name:</strong> {{ row.student.father_name }}<br>
+                                        <strong>Roll No:</strong> {{ row.student.roll_number }}
+                                        {% if show_unpaid %}<br><strong>Class:</strong> {{ row.class_name }}{% endif %}
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">
+                                            Monthly Due (PKR)
+                                            {% if due == 0 %}<span class="text-danger small"> — not set, enter below</span>{% endif %}
+                                        </label>
+                                        <input type="number" step="0.01" min="0"
+                                               class="form-control {% if due == 0 %}border-danger{% endif %}"
+                                               name="amount_due_override"
+                                               id="due_{{ row.student.id }}"
+                                               value="{{ due if due > 0 else '' }}"
+                                               placeholder="Enter monthly fee amount"
+                                               {% if due > 0 %}readonly{% endif %}>
+                                        {% if due > 0 %}
+                                        <div class="form-text text-muted">
+                                            Set on student record.
+                                            <a href="#" onclick="document.getElementById('due_{{ row.student.id }}').removeAttribute('readonly'); return false;">Edit</a>
+                                        </div>
+                                        {% else %}
+                                        <div class="form-text text-danger">No monthly fee set. Enter it here — it will be saved to the student record.</div>
+                                        {% endif %}
+                                    </div>
+
+                                    <div class="mb-2">
+                                        <label class="form-label fw-bold">Payment Type</label>
+                                        <div class="d-flex gap-2">
+                                            <button type="button" class="btn btn-success btn-sm px-3" onclick="setFull({{ row.student.id }})">
+                                                <i class="fas fa-check-circle me-1"></i> Full
+                                            </button>
+                                            <button type="button" class="btn btn-warning btn-sm px-3" onclick="setHalf({{ row.student.id }})">
+                                                <i class="fas fa-adjust me-1"></i> Half
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm px-3" onclick="setCustom({{ row.student.id }})">
+                                                <i class="fas fa-edit me-1"></i> Custom
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Amount Paid (PKR)</label>
+                                        <input type="number" step="0.01" min="0"
+                                               class="form-control form-control-lg border-success"
+                                               name="amount_paid"
+                                               id="paid_{{ row.student.id }}"
+                                               value="{{ paid if paid > 0 else '' }}"
+                                               placeholder="0.00" required>
+                                        <div class="form-text" id="balance_{{ row.student.id }}">
+                                            {% if due > 0 and paid > 0 %}
+                                                {% set bal = due - paid %}
+                                                {% if bal > 0 %}<span class="text-warning">Balance remaining: {{ bal }} PKR</span>
+                                                {% else %}<span class="text-success">Fully paid ✓</span>{% endif %}
+                                            {% endif %}
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-2">
+                                        <label class="form-label fw-bold">Remarks / Payment Note</label>
+                                        <input type="text" class="form-control" name="remarks"
+                                               value="{{ row.record.remarks if row.record else '' }}"
+                                               placeholder="e.g. Cash / Bank Transfer / Cheque">
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="submit" class="btn btn-success px-4">
+                                        <i class="fas fa-save me-1"></i> Save Payment
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-center py-5">
+            {% if show_unpaid %}
+            <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+            <p class="text-success fw-bold">All students have paid for {{ month_year }}!</p>
+            {% else %}
+            <p class="text-muted py-4">No student fee data available for this class.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function getDue(id) {
+    var v = parseFloat(document.getElementById('due_' + id).value);
+    return isNaN(v) ? 0 : v;
+}
+function setFull(id) {
+    var due = getDue(id);
+    if (due <= 0) { alert('Please enter the Monthly Due amount first.'); return; }
+    document.getElementById('paid_' + id).value = due.toFixed(2);
+    updateBalance(id);
+}
+function setHalf(id) {
+    var due = getDue(id);
+    if (due <= 0) { alert('Please enter the Monthly Due amount first.'); return; }
+    document.getElementById('paid_' + id).value = (due / 2).toFixed(2);
+    updateBalance(id);
+}
+function setCustom(id) {
+    var el = document.getElementById('paid_' + id);
+    el.value = '';
+    el.focus();
+}
+function updateBalance(id) {
+    var due = getDue(id);
+    var paid = parseFloat(document.getElementById('paid_' + id).value) || 0;
+    var el = document.getElementById('balance_' + id);
+    if (!el) return;
+    if (due > 0 && paid > 0) {
+        var bal = due - paid;
+        el.innerHTML = bal > 0
+            ? '<span class="text-warning">Balance remaining: ' + bal.toFixed(2) + ' PKR</span>'
+            : '<span class="text-success">Fully paid ✓</span>';
+    } else {
+        el.innerHTML = '';
+    }
+}
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[id^="paid_"]').forEach(function(el) {
+        var id = el.id.replace('paid_', '');
+        el.addEventListener('input', function() { updateBalance(id); });
+    });
+    document.querySelectorAll('[id^="due_"]').forEach(function(el) {
+        var id = el.id.replace('due_', '');
+        el.addEventListener('input', function() { updateBalance(id); });
+    });
+});
+</script>
+{% endblock %}

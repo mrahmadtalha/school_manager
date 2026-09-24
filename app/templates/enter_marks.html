@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Assessment entry</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-edit text-primary me-2"></i>Enter Marks: {{ test.test_title }}</h1>
+        <p class="text-muted small mb-0">Submit and verify marks for the selected assessment.</p>
+    </div>
+    <a href="{{ url_for('main.tests_list') }}" class="btn btn-secondary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i> Back to Tests
+    </a>
+</div>
+
+<!-- Flash Messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<!-- Test Info Card -->
+<div class="card shadow-sm mb-4 bg-light">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3"><strong>Type:</strong> {{ test.test_type }}</div>
+            <div class="col-md-3"><strong>Class:</strong> {{ test.class_info.name if test.class_info else 'N/A' }}</div>
+            <div class="col-md-3"><strong>Subject:</strong> {{ test.subject_info.name if test.subject_info else 'N/A' }}</div>
+            <div class="col-md-3 text-primary fw-bold">Total Marks: {{ test.total_marks }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Marks Input Form -->
+<form method="POST">
+    <div class="card shadow-sm">
+        <div class="card-body table-responsive">
+            {% if students %}
+            <table class="table table-striped table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Roll No</th>
+                        <th>Student Name</th>
+                        <th>Father Name</th>
+                        <th style="width: 280px;">Marks Obtained (Max: {{ test.total_marks }})</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in students %}
+                    <tr>
+                        <td><strong>{{ student.roll_number }}</strong></td>
+                        <td>{{ student.student_name }}</td>
+                        <td>{{ student.father_name }}</td>
+                        <td>
+                            <div class="input-group">
+                                <input type="number" step="0.5" min="0" max="{{ test.total_marks }}" class="form-control" name="marks_{{ student.id }}" id="marks_{{ student.id }}" value="{{ existing_marks.get(student.id, '') }}" placeholder="0 – {{ test.total_marks }}" oninput="validateMark(this, {{ test.total_marks }})"><div class="invalid-feedback" id="err_{{ student.id }}"></div>
+                                {% set mark_record = student_marks_map.get(student.id) if student_marks_map is defined else None %}
+                                {% if student.guardian_phone %}
+                                    <!-- WhatsApp Result Share Button -->
+                                    <a href="https://wa.me/{{ student.guardian_phone }}?text=Exam%20Result%20Update:%20{{ student.student_name }}%20secured%20{{ existing_marks.get(student.id, 'N/A') }}/{{ test.total_marks }}%20in%20{{ test.test_title }}." 
+                                       target="_blank" class="btn btn-outline-success" title="Send Result via WhatsApp">
+                                        <i class="fab fa-whatsapp"></i>
+                                    </a>
+                                {% else %}
+                                    <button type="button" class="btn btn-outline-secondary" disabled title="No Guardian Phone Provided">
+                                        <i class="fab fa-whatsapp"></i>
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div class="text-end mt-4">
+                <button type="submit" class="btn btn-success btn-lg px-5">
+                    <i class="fas fa-save me-2"></i> Save Marks &amp; Compute Grades
+                </button>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <p class="text-muted fs-5"><i class="fas fa-info-circle me-2"></i>No active students found in this class.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</form>
+
+<script>
+function validateMark(input, max) {
+    var val = parseFloat(input.value);
+    var errEl = document.getElementById('err_' + input.id.replace('marks_', ''));
+    if (input.value === '') {
+        input.classList.remove('is-invalid', 'is-valid');
+        if (errEl) errEl.textContent = '';
+        return true;
+    }
+    if (isNaN(val) || val < 0) {
+        input.classList.add('is-invalid'); input.classList.remove('is-valid');
+        if (errEl) errEl.textContent = 'Enter a number between 0 and ' + max + '.';
+        return false;
+    }
+    if (val > max) {
+        input.classList.add('is-invalid'); input.classList.remove('is-valid');
+        if (errEl) errEl.textContent = 'Exceeds total marks (' + max + '). Max allowed: ' + max + '.';
+        return false;
+    }
+    input.classList.remove('is-invalid'); input.classList.add('is-valid');
+    if (errEl) errEl.textContent = '';
+    return true;
+}
+
+// Block form submit if ANY input is invalid
+document.querySelector('form').addEventListener('submit', function (e) {
+    var max = {{ test.total_marks }};
+    var inputs = document.querySelectorAll('input[name^="marks_"]');
+    var hasError = false;
+    inputs.forEach(function (inp) {
+        if (!validateMark(inp, max)) hasError = true;
+    });
+    if (hasError) {
+        e.preventDefault();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // show a summary alert if not already there
+        var existing = document.getElementById('validationAlert');
+        if (!existing) {
+            var alert = document.createElement('div');
+            alert.id = 'validationAlert';
+            alert.className = 'alert alert-danger alert-dismissible fade show';
+            alert.innerHTML = '<strong>Fix the errors below</strong> — one or more marks exceed the total (' + max + ').' +
+                '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+            document.querySelector('form').prepend(alert);
+        }
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- Action buttons — hidden when printing -->
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom no-print">
+    <h1 class="h2"><i class="fas fa-receipt me-2"></i>Fee Receipt</h1>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('main.fees_list') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left me-1"></i> Back to Fees
+        </a>
+        <button onclick="window.print()" class="btn btn-dark btn-sm px-4">
+            <i class="fas fa-print me-1"></i> Print Receipt
+        </button>
+    </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show no-print">
+      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endfor %}{% endif %}
+{% endwith %}
+
+<!-- Receipt Card -->
+<div class="row justify-content-center">
+<div class="col-md-7">
+<div class="card border shadow" id="receiptCard">
+
+    <!-- School Header -->
+    <div class="card-header bg-dark text-white text-center py-4">
+        {% if school and school.logo_filename %}
+        <img src="{{ url_for('static', filename=school.logo_filename) }}"
+             alt="Logo" style="max-height:55px;" class="mb-2 d-block mx-auto">
+        {% else %}
+        <i class="fas fa-school fa-2x text-warning mb-2 d-block"></i>
+        {% endif %}
+        <h4 class="fw-bold mb-0">{{ school.school_name if school else 'School Manager' }}</h4>
+        {% if school and school.tagline %}
+        <small class="text-secondary">{{ school.tagline }}</small>
+        {% endif %}
+        {% if school and school.address %}
+        <div class="small text-secondary mt-1"><i class="fas fa-map-marker-alt me-1"></i>{{ school.address }}</div>
+        {% endif %}
+        {% if school and school.phone %}
+        <div class="small text-secondary"><i class="fas fa-phone me-1"></i>{{ school.phone }}</div>
+        {% endif %}
+    </div>
+
+    <div class="card-body px-4 py-4">
+
+        <!-- Receipt title + status -->
+        <div class="text-center mb-4">
+            <h5 class="fw-bold text-uppercase text-dark">Fee Payment Receipt</h5>
+            <span class="badge bg-{% if record.status == 'Paid' %}success{% elif record.status == 'Partial' %}warning text-dark{% else %}danger{% endif %} px-3 py-2 fs-6">
+                {{ record.status }}
+            </span>
+        </div>
+
+        <!-- Two columns: student info + payment info -->
+        <div class="row g-0 mb-4">
+            <div class="col-6 border-end pe-3">
+                <div class="small text-muted fw-bold mb-2 text-uppercase">Student Details</div>
+                <table class="table table-sm table-borderless mb-0 small">
+                    <tr><td class="text-muted ps-0">Name</td><td class="fw-bold">{{ student.student_name }}</td></tr>
+                    <tr><td class="text-muted ps-0">Father</td><td class="fw-bold">{{ student.father_name }}</td></tr>
+                    <tr><td class="text-muted ps-0">Roll No</td><td class="fw-bold font-monospace">{{ student.roll_number }}</td></tr>
+                    <tr><td class="text-muted ps-0">Class</td><td class="fw-bold">{{ student.class_info.name if student.class_info else 'N/A' }}</td></tr>
+                    <tr><td class="text-muted ps-0">Phone</td><td class="fw-bold">{{ student.guardian_phone }}</td></tr>
+                </table>
+            </div>
+            <div class="col-6 ps-3">
+                <div class="small text-muted fw-bold mb-2 text-uppercase">Payment Details</div>
+                <table class="table table-sm table-borderless mb-0 small">
+                    <tr><td class="text-muted ps-0">Month</td><td class="fw-bold">{{ month_year }}</td></tr>
+                    <tr><td class="text-muted ps-0">Date</td><td class="fw-bold">{{ record.payment_date.strftime('%d %b %Y') if record.payment_date else '—' }}</td></tr>
+                    <tr><td class="text-muted ps-0">Monthly Due</td><td class="fw-bold">Rs. {{ "%.0f"|format(record.amount_due) }}</td></tr>
+                    <tr><td class="text-muted ps-0">Amount Paid</td><td class="fw-bold text-success fs-6">Rs. {{ "%.0f"|format(record.amount_paid) }}</td></tr>
+                    {% set balance = record.amount_due - record.amount_paid %}
+                    {% if balance > 0 %}
+                    <tr><td class="text-muted ps-0">Balance</td><td class="fw-bold text-danger">Rs. {{ "%.0f"|format(balance) }}</td></tr>
+                    {% endif %}
+                    {% if record.remarks %}
+                    <tr><td class="text-muted ps-0">Remarks</td><td class="fw-bold">{{ record.remarks }}</td></tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+
+        <!-- Amount highlight box -->
+        <div class="bg-dark text-white rounded p-3 text-center mb-4">
+            <div class="small text-secondary mb-1">Amount Paid</div>
+            <div class="display-6 fw-bold">Rs. {{ "%.0f"|format(record.amount_paid) }}</div>
+            <div class="small text-secondary mt-1">{{ month_year }}</div>
+        </div>
+
+        <!-- Signature footer -->
+        <div class="row text-center mt-4 pt-3 border-top">
+            <div class="col-6">
+                <div class="border-top border-dark mt-5 pt-1 mx-4 small text-muted">Received By</div>
+            </div>
+            <div class="col-6">
+                <div class="border-top border-dark mt-5 pt-1 mx-4 small text-muted">Parent / Guardian</div>
+            </div>
+        </div>
+
+        <div class="text-center mt-3">
+            <small class="text-muted">
+                Generated on {{ record.payment_date.strftime('%d %b %Y') if record.payment_date else '' }}
+                &nbsp;|&nbsp; {{ school.school_name if school else 'School Manager' }}
+            </small>
+        </div>
+
+    </div>
+</div>
+</div>
+</div>
+
+<!-- Print styles -->
+<style>
+@media print {
+    .no-print { display: none !important; }
+    #sidebar, nav { display: none !important; }
+    main { margin: 0 !important; padding: 0 !important; }
+    .col-md-9, .col-lg-10 { width: 100% !important; max-width: 100% !important; margin: 0 !important; }
+    #receiptCard { border: 1px solid #000 !important; box-shadow: none !important; }
+    body { background: white !important; }
+}
+</style>
+{% endblock %}

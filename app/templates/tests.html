@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Assessment center</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-file-alt text-primary me-2"></i>Tests &amp; Exams</h1>
+        <p class="text-muted small mb-0">Create, review, and manage all school test records and categories.</p>
+    </div>
+    <div class="btn-toolbar gap-2">
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTestModal">
+            <i class="fas fa-plus me-1"></i> New Test
+        </button>
+        <button class="btn btn-outline-dark btn-sm" data-bs-toggle="modal" data-bs-target="#addTestTypeModal">
+            <i class="fas fa-tags me-1"></i> Test Categories
+        </button>
+    </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show">
+      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endfor %}{% endif %}
+{% endwith %}
+
+<!-- Filter bar -->
+<div class="card border-0 bg-light shadow-sm mb-4">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-center">
+            <div class="col-auto">
+                <label class="col-form-label small fw-bold text-muted">Filter by Class:</label>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" id="classFilter" onchange="filterTests()">
+                    <option value="">— All Classes —</option>
+                    {% for c in classes %}
+                    <option value="{{ c.id }}">{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" id="typeFilter" onchange="filterTests()">
+                    <option value="">— All Types —</option>
+                    {% for tt in test_types %}
+                    <option value="{{ tt.name }}">{{ tt.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto ms-auto text-muted small">
+                <span id="testCount">{{ tests|length }}</span> test(s)
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tests Grid -->
+{% if tests %}
+<div class="row g-3" id="testsGrid">
+    {% for test in tests %}
+    {% set type_colors = {
+        'Weekly':    'primary',
+        'Monthly':   'success',
+        '15 Days':   'info',
+        'Mid Term':  'warning',
+        'Final':     'danger',
+        'Annual':    'danger'
+    } %}
+    {% set color = type_colors.get(test.test_type, 'secondary') %}
+
+    <div class="col-md-6 col-lg-4 test-card"
+         data-class="{{ test.class_id }}"
+         data-type="{{ test.test_type }}">
+        <div class="card h-100 border-0 shadow-sm">
+            <!-- Card top colour strip -->
+            <div class="card-header bg-{{ color }} bg-opacity-10 border-0 pb-0 pt-3 px-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <span class="badge bg-{{ color }} mb-2">{{ test.test_type }}</span>
+                    <small class="text-muted">
+                        <i class="fas fa-calendar-alt me-1"></i>
+                        {{ test.test_date.strftime('%d %b %Y') if test.test_date else 'No date' }}
+                    </small>
+                </div>
+                <h6 class="fw-bold text-dark mb-2">{{ test.test_title }}</h6>
+            </div>
+
+            <div class="card-body pt-2 pb-3">
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <div class="small text-muted">Class</div>
+                        <div class="fw-bold text-dark">
+                            <i class="fas fa-chalkboard text-secondary me-1"></i>
+                            {{ test.class_info.name if test.class_info else 'N/A' }}
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="small text-muted">Subject</div>
+                        <div class="fw-bold text-dark">
+                            <i class="fas fa-book text-secondary me-1"></i>
+                            {{ test.subject_info.name if test.subject_info else 'N/A' }}
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="small text-muted">Total Marks</div>
+                        <div class="fw-bold text-{{ color }}">
+                            <i class="fas fa-star me-1"></i>{{ test.total_marks }}
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="small text-muted">Students</div>
+                        <div class="fw-bold text-dark">
+                            <i class="fas fa-users text-secondary me-1"></i>
+                            {{ test.class_info.students | selectattr('is_active') | list | length if test.class_info else '—' }}
+                        </div>
+                    </div>
+                </div>
+
+                <a href="{{ url_for('main.enter_marks', test_id=test.id) }}"
+                   class="btn btn-{{ color }} btn-sm w-100">
+                    <i class="fas fa-edit me-1"></i> Enter / Edit Marks
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div id="noResults" class="text-center py-5 d-none">
+    <i class="fas fa-search fa-3x text-muted mb-3"></i>
+    <p class="text-muted">No tests found for the selected filters.</p>
+</div>
+
+{% else %}
+<div class="text-center py-5">
+    <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+    <p class="text-muted fs-5">No tests yet. Click <strong>New Test</strong> to create one.</p>
+</div>
+{% endif %}
+
+<!-- ===== MODALS ===== -->
+
+<!-- Create New Test -->
+<div class="modal fade" id="addTestModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg overflow-hidden">
+            <form action="{{ url_for('main.add_test') }}" method="POST">
+                <div class="modal-header px-4 py-3 text-white" style="background: linear-gradient(135deg, #0f172a 0%, #4338ca 100%); border: none;">
+                    <div>
+                        <p class="mb-1 small text-uppercase text-white-50 fw-bold" style="letter-spacing: 0.08em;">Assessment</p>
+                        <h5 class="modal-title mb-0"><i class="fas fa-clipboard-list me-2"></i>Create New Test</h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4 bg-light">
+                    <div class="row g-3">
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold small text-muted">Test Title</label>
+                            <input type="text" class="form-control" name="test_title" placeholder="e.g. Chapter 3 Math Quiz" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small text-muted">Type</label>
+                            <select class="form-select" name="test_type" required>
+                                {% for tt in test_types %}
+                                <option value="{{ tt.name }}">{{ tt.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small text-muted">Total Marks</label>
+                            <input type="number" step="0.5" class="form-control" name="total_marks" placeholder="e.g. 50" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small text-muted">Class</label>
+                            <select class="form-select" id="testClassSelect" name="class_id" required>
+                                {% for c in classes %}
+                                <option value="{{ c.id }}">{{ c.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small text-muted">Subject</label>
+                            <select class="form-select" id="testSubjectSelect" name="subject_id" required>
+                                {% for s in subjects %}
+                                <option value="{{ s.id }}" data-class-id="{{ s.class_id }}">{{ s.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small text-muted">Test Date</label>
+                            <input type="date" class="form-control" name="test_date" required>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer px-4 py-3 border-0 bg-white">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary px-4">
+                        <i class="fas fa-save me-1"></i> Create Test
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Test Categories Modal -->
+<div class="modal fade" id="addTestTypeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title"><i class="fas fa-tags me-2"></i>Test Categories</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Add new -->
+                <form action="{{ url_for('main.add_test_type') }}" method="POST" class="d-flex gap-2 mb-4">
+                    <input type="text" class="form-control" name="name" placeholder="New category name e.g. Fortnightly" required>
+                    <button type="submit" class="btn btn-dark px-3">Add</button>
+                </form>
+                <!-- Existing list -->
+                {% if test_types %}
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light"><tr><th>#</th><th>Category</th><th class="text-end">Actions</th></tr></thead>
+                    <tbody>
+                        {% for t in test_types %}
+                        <tr>
+                            <td class="text-muted">{{ loop.index }}</td>
+                            <td><strong>{{ t.name }}</strong></td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#editTT{{ t.id }}">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteTT{{ t.id }}">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted text-center">No categories yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit / Delete Test Type Modals -->
+{% for t in test_types %}
+<div class="modal fade" id="editTT{{ t.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form action="{{ url_for('main.edit_test_type', id=t.id) }}" method="POST">
+                <div class="modal-header bg-primary text-white py-2">
+                    <h6 class="modal-title">Edit Category</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body"><input type="text" class="form-control" name="name" value="{{ t.name }}" required></div>
+                <div class="modal-footer py-2">
+                    <button type="submit" class="btn btn-primary btn-sm">Update</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="deleteTT{{ t.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form action="{{ url_for('main.delete_test_type', id=t.id) }}" method="POST">
+                <div class="modal-header bg-danger text-white py-2">
+                    <h6 class="modal-title">Delete?</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body small">Delete <strong>{{ t.name }}</strong>?</div>
+                <div class="modal-footer py-2">
+                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<script>
+// Dynamic subject filtering by class
+document.addEventListener('DOMContentLoaded', function () {
+    var classSelect   = document.getElementById('testClassSelect');
+    var subjectSelect = document.getElementById('testSubjectSelect');
+    function filterSubjects() {
+        if (!classSelect || !subjectSelect) return;
+        var cid = classSelect.value;
+        var first = null;
+        subjectSelect.querySelectorAll('option').forEach(function (o) {
+            var show = o.getAttribute('data-class-id') === cid;
+            o.style.display = show ? '' : 'none';
+            if (show && !first) first = o;
+        });
+        if (first) subjectSelect.value = first.value;
+    }
+    if (classSelect) { classSelect.addEventListener('change', filterSubjects); filterSubjects(); }
+});
+
+// Filter cards by class / type
+function filterTests() {
+    var cid  = document.getElementById('classFilter').value;
+    var type = document.getElementById('typeFilter').value;
+    var cards = document.querySelectorAll('.test-card');
+    var visible = 0;
+    cards.forEach(function (card) {
+        var classMatch = !cid  || card.dataset.class === cid;
+        var typeMatch  = !type || card.dataset.type  === type;
+        var show = classMatch && typeMatch;
+        card.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+    document.getElementById('testCount').textContent = visible;
+    var noResults = document.getElementById('noResults');
+    if (noResults) noResults.classList.toggle('d-none', visible > 0);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Assessment setup</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-tags text-primary me-2"></i>Test Types Management</h1>
+        <p class="text-muted small mb-0">Manage the exam categories and classifications used across the school.</p>
+    </div>
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTestTypeModal">
+        <i class="fas fa-plus me-1"></i> Add New Test Type
+    </button>
+</div>
+
+<!-- Flash Messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<div class="card shadow-sm">
+    <div class="card-body table-responsive">
+        {% if test_types %}
+        <table class="table table-striped table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Test Category Name</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in test_types %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td><strong>{{ t.name }}</strong></td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editTestTypeModal{{ t.id }}" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteTestTypeModal{{ t.id }}" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+
+                <!-- Edit Modal -->
+                <div class="modal fade" id="editTestTypeModal{{ t.id }}" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-sm">
+                        <div class="modal-content">
+                            <form action="{{ url_for('main.edit_test_type', id=t.id) }}" method="POST">
+                                <div class="modal-header bg-primary text-white py-2">
+                                    <h6 class="modal-title">Edit Test Type</h6>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body text-start">
+                                    <input type="text" class="form-control" name="name" value="{{ t.name }}" required>
+                                </div>
+                                <div class="modal-footer py-1">
+                                    <button type="submit" class="btn btn-primary btn-sm">Update</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Delete Modal -->
+                <div class="modal fade" id="deleteTestTypeModal{{ t.id }}" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-sm">
+                        <div class="modal-content">
+                            <form action="{{ url_for('main.delete_test_type', id=t.id) }}" method="POST">
+                                <div class="modal-header bg-danger text-white py-2">
+                                    <h6 class="modal-title">Delete Test Type?</h6>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body text-start small">
+                                    Are you sure you want to delete <strong>{{ t.name }}</strong>?
+                                </div>
+                                <div class="modal-footer py-1">
+                                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted text-center py-4">No test types configured yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add Modal -->
+<div class="modal fade" id="addTestTypeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form action="{{ url_for('main.add_test_type') }}" method="POST">
+                <div class="modal-header bg-dark text-white py-2">
+                    <h6 class="modal-title">Add Test Type</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-start">
+                    <div class="mb-3">
+                        <label class="form-label small">Category Name</label>
+                        <input type="text" class="form-control" name="name" placeholder="e.g. Fortnightly" required>
+                    </div>
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

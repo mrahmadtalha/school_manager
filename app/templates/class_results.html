@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Results matrix</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-chart-line text-primary me-2"></i>Class Result Matrix</h1>
+        <p class="text-muted small mb-0">Compare performance across students and subjects for the selected class.</p>
+    </div>
+    {% if selected_class_id and matrix_data %}
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('main.export_class_results_excel', class_id=selected_class_id) }}"
+           class="btn btn-sm btn-outline-success">
+            <i class="fas fa-file-excel me-1"></i> Excel
+        </a>
+        <a href="{{ url_for('main.export_class_results_csv', class_id=selected_class_id) }}"
+           class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-file-csv me-1"></i> CSV
+        </a>
+        <a href="{{ url_for('main.export_all_report_cards_pdf', class_id=selected_class_id) }}"
+           class="btn btn-sm btn-danger">
+            <i class="fas fa-file-pdf me-1"></i> All Report Cards PDF
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show">
+      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endfor %}{% endif %}
+{% endwith %}
+
+<!-- Filter Bar -->
+<div class="card shadow-sm mb-4 bg-light border-0">
+    <div class="card-body py-2">
+        <form method="GET" action="{{ url_for('main.class_results_matrix') }}" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label fw-bold small text-muted mb-1">Class</label>
+                <select class="form-select" name="class_id" onchange="this.form.submit()">
+                    {% for c in classes %}
+                    <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label fw-bold small text-muted mb-1">Test Type</label>
+                <select class="form-select" name="test_type" onchange="this.form.submit()">
+                    <option value="">— All Types —</option>
+                    {% for tt in test_types %}
+                    <option value="{{ tt }}" {% if selected_type == tt %}selected{% endif %}>{{ tt }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-dark w-100">
+                    <i class="fas fa-filter me-1"></i> Filter
+                </button>
+            </div>
+            {% if selected_type %}
+            <div class="col-auto">
+                <a href="{{ url_for('main.class_results_matrix', class_id=selected_class_id) }}"
+                   class="btn btn-outline-secondary">
+                    <i class="fas fa-times"></i> Clear
+                </a>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+{% if summary %}
+<!-- Summary Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-2">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="fs-4 fw-bold text-primary">{{ summary.total_students }}</div>
+            <div class="small text-muted">Students</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="fs-4 fw-bold text-secondary">{{ summary.total_tests }}</div>
+            <div class="small text-muted">Tests</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="fs-4 fw-bold text-info">{{ summary.class_avg }}%</div>
+            <div class="small text-muted">Class Avg</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="fs-4 fw-bold {% if summary.pass_rate >= 80 %}text-success{% elif summary.pass_rate >= 50 %}text-warning{% else %}text-danger{% endif %}">
+                {{ summary.pass_rate }}%
+            </div>
+            <div class="small text-muted">Pass Rate</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm py-3 px-3 bg-success bg-opacity-10">
+            <div class="small text-muted fw-bold"><i class="fas fa-trophy text-warning me-1"></i> Top Scorer</div>
+            <div class="fw-bold text-dark">{{ summary.top_scorer }}</div>
+            <div class="small text-success fw-bold">{{ summary.top_pct }}%</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if matrix_data %}
+<!-- Grade legend -->
+<div class="d-flex gap-3 mb-2 flex-wrap small">
+    <span><span class="badge bg-success px-2">A+</span> ≥85%</span>
+    <span><span class="badge bg-primary px-2">A</span> ≥70%</span>
+    <span><span class="badge bg-info text-dark px-2">B</span> ≥60%</span>
+    <span><span class="badge bg-warning text-dark px-2">C</span> ≥50%</span>
+    <span><span class="badge bg-secondary px-2">D</span> ≥40%</span>
+    <span><span class="badge bg-danger px-2">F</span> &lt;40%</span>
+    <span class="text-muted ms-2"><i class="fas fa-info-circle me-1"></i>Hover over marks to see grade</span>
+    <span class="text-muted ms-auto"><i class="fas fa-sort me-1"></i>Click column headers to sort</span>
+</div>
+
+<!-- Matrix Table -->
+<div class="card shadow-sm border-0">
+    <div class="card-body table-responsive p-0">
+        <table class="table table-striped table-hover align-middle mb-0" id="resultsTable">
+            <thead class="table-dark text-nowrap">
+                <tr>
+                    <th class="py-3 ps-3 sortable" data-col="0" style="cursor:pointer">
+                        Rank <i class="fas fa-sort ms-1 text-secondary"></i>
+                    </th>
+                    <th class="py-3 sortable" data-col="1" style="cursor:pointer">
+                        Roll No <i class="fas fa-sort ms-1 text-secondary"></i>
+                    </th>
+                    <th class="py-3 sortable" data-col="2" style="cursor:pointer">
+                        Student Name <i class="fas fa-sort ms-1 text-secondary"></i>
+                    </th>
+                    <th class="py-3">Father Name</th>
+                    {% for test in class_tests %}
+                    <th class="text-center py-3" title="{{ test.test_title }} — {{ test.test_type }} (Max: {{ test.total_marks }})">
+                        <div class="small fw-bold" style="max-width:80px; white-space:normal; line-height:1.2;">
+                            {{ test.test_title | truncate(20, true, '…') }}
+                        </div>
+                        <span class="badge bg-secondary" style="font-size:0.65rem;">{{ test.test_type }} / {{ test.total_marks }}</span>
+                    </th>
+                    {% endfor %}
+                    <th class="text-center py-3 sortable" data-col="{{ class_tests|length + 4 }}" style="cursor:pointer">
+                        Total <i class="fas fa-sort ms-1 text-secondary"></i>
+                    </th>
+                    <th class="text-center py-3 sortable" data-col="{{ class_tests|length + 5 }}" style="cursor:pointer">
+                        % <i class="fas fa-sort ms-1 text-secondary"></i>
+                    </th>
+                    <th class="text-center py-3">Grade</th>
+                    <th class="text-center py-3 pe-3">Report</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in matrix_data %}
+                {% set pct = row.percentage %}
+                <tr class="{% if pct >= 85 %}table-success{% elif pct < 40 and row.total_max > 0 %}table-danger{% endif %}">
+                    <td class="ps-3 text-center fw-bold">
+                        {% if row.rank == 1 %}<span class="text-warning">🥇</span>
+                        {% elif row.rank == 2 %}<span class="text-secondary">🥈</span>
+                        {% elif row.rank == 3 %}<span style="color:#cd7f32">🥉</span>
+                        {% else %}<span class="text-muted">{{ row.rank }}</span>{% endif %}
+                    </td>
+                    <td class="font-monospace fw-bold text-primary">{{ row.student.roll_number }}</td>
+                    <td class="fw-bold text-dark">{{ row.student.student_name }}</td>
+                    <td class="text-muted small">{{ row.student.father_name }}</td>
+
+                    {% for test in class_tests %}
+                    {% set score = row.scores.get(test.id) %}
+                    {% set grade = row.grades.get(test.id) %}
+                    <td class="text-center">
+                        {% if score is not none %}
+                        <span class="badge
+                            {% if grade == 'A+' %}bg-success
+                            {% elif grade == 'A' %}bg-primary
+                            {% elif grade == 'B' %}bg-info text-dark
+                            {% elif grade == 'C' %}bg-warning text-dark
+                            {% elif grade == 'D' %}bg-secondary
+                            {% else %}bg-danger{% endif %}
+                            px-2 py-1"
+                            title="{{ grade }} — {{ score }}/{{ test.total_marks }}"
+                            data-bs-toggle="tooltip">
+                            {{ score }}
+                        </span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+
+                    <td class="text-center fw-bold">
+                        {{ row.total_obtained | int }} / {{ row.total_max | int }}
+                    </td>
+                    <td class="text-center fw-bold
+                        {% if pct >= 70 %}text-success
+                        {% elif pct >= 40 %}text-warning
+                        {% else %}text-danger{% endif %}">
+                        {{ pct }}%
+                    </td>
+                    <td class="text-center">
+                        <span class="badge
+                            {% if row.overall_grade == 'A+' %}bg-success
+                            {% elif row.overall_grade == 'A' %}bg-primary
+                            {% elif row.overall_grade == 'B' %}bg-info text-dark
+                            {% elif row.overall_grade == 'C' %}bg-warning text-dark
+                            {% elif row.overall_grade == 'D' %}bg-secondary
+                            {% elif row.overall_grade == 'F' %}bg-danger
+                            {% else %}bg-light text-muted{% endif %}
+                            px-2 py-1 fs-6">
+                            {{ row.overall_grade }}
+                        </span>
+                    </td>
+                    <td class="text-center pe-3">
+                        <a href="{{ url_for('main.student_report_card_pdf', student_id=row.student.id) }}"
+                           class="btn btn-sm btn-outline-danger" title="Individual Report Card PDF">
+                            <i class="fas fa-file-pdf"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% else %}
+<div class="card shadow-sm border-0 text-center py-5">
+    <div class="card-body">
+        <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+        <h5 class="text-muted">No results found.</h5>
+        <p class="text-muted small">
+            {% if selected_type %}No tests of type "{{ selected_type }}" found. <a href="{{ url_for('main.class_results_matrix', class_id=selected_class_id) }}">Clear filter</a>.
+            {% else %}Create tests and enter student marks to see results here.{% endif %}
+        </p>
+    </div>
+</div>
+{% endif %}
+
+<script>
+// Enable Bootstrap tooltips
+document.addEventListener('DOMContentLoaded', function () {
+    var tooltips = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltips.forEach(function (el) { new bootstrap.Tooltip(el); });
+});
+
+// Sortable table
+document.querySelectorAll('.sortable').forEach(function(th) {
+    th.addEventListener('click', function() {
+        var table = document.getElementById('resultsTable');
+        var tbody = table.querySelector('tbody');
+        var col   = parseInt(this.dataset.col);
+        var rows  = Array.from(tbody.querySelectorAll('tr'));
+        var asc   = this.dataset.order !== 'asc';
+        this.dataset.order = asc ? 'asc' : 'desc';
+
+        // Reset all sort icons
+        document.querySelectorAll('.sortable i').forEach(function(i) {
+            i.className = 'fas fa-sort ms-1 text-secondary';
+        });
+        this.querySelector('i').className = 'fas fa-sort-' + (asc ? 'up' : 'down') + ' ms-1 text-warning';
+
+        rows.sort(function(a, b) {
+            var aVal = a.cells[col] ? a.cells[col].innerText.trim() : '';
+            var bVal = b.cells[col] ? b.cells[col].innerText.trim() : '';
+            var aNum = parseFloat(aVal.replace('%','').replace('/',''));
+            var bNum = parseFloat(bVal.replace('%','').replace('/',''));
+            if (!isNaN(aNum) && !isNaN(bNum)) {
+                return asc ? aNum - bNum : bNum - aNum;
+            }
+            return asc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        });
+        rows.forEach(function(r) { tbody.appendChild(r); });
+    });
+});
+</script>
+{% endblock %}

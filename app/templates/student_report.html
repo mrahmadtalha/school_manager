@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .student-report-shell {
+        background: linear-gradient(135deg, #f8fafc 0%, #eef6ff 100%);
+        border-radius: 22px;
+        padding: 24px;
+        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+    }
+    .report-hero {
+        background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%);
+        border-radius: 20px;
+        padding: 24px 26px;
+        color: white;
+        margin-bottom: 24px;
+    }
+    .report-stat {
+        border-radius: 18px;
+        padding: 18px 14px;
+        min-height: 110px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    .report-stat .value {
+        font-size: 2rem;
+        font-weight: 800;
+        line-height: 1;
+    }
+    .report-stat .label {
+        font-size: 0.76rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.8;
+    }
+    .report-table {
+        border-radius: 18px;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+    }
+    .report-table thead th {
+        background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+        color: white;
+        border: none;
+        font-size: 0.78rem;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+    .report-table tbody tr:nth-child(even) { background: #f8fafc; }
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.4rem 0.7rem;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+    }
+    .grade-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 52px;
+        padding: 0.5rem 0.7rem;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+        color: #1d4ed8;
+        font-weight: 800;
+    }
+</style>
+
+<div class="student-report-shell">
+    <div class="report-hero d-flex justify-content-between flex-wrap align-items-center gap-3">
+        <div>
+            <p class="mb-2 text-white-50 text-uppercase small fw-semibold">Student report</p>
+            <h1 class="h2 fw-bold text-white mb-1"><i class="fas fa-user-check me-2"></i>{{ student.student_name }}</h1>
+            <div class="small text-white-50 mt-2">Roll No: {{ student.roll_number }} | Class: {{ student.class_info.name if student.class_info else 'N/A' }}</div>
+        </div>
+        <div class="btn-group">
+            <a class="btn btn-light btn-sm" href="{{ url_for('main.student_report_pdf', id=student.id) }}" target="_blank">
+                <i class="fas fa-file-pdf me-1"></i> Download Result Card
+            </a>
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.students_list') }}">
+                <i class="fas fa-arrow-left me-1"></i> Back
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="report-stat bg-white">
+                <div>
+                    <div class="value text-primary">{{ summary.overall_percentage }}%</div>
+                    <div class="label text-muted">Overall</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="report-stat bg-white">
+                <div>
+                    <div class="value text-success">{{ summary.overall_grade }}</div>
+                    <div class="label text-muted">Grade</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="report-stat bg-white">
+                <div>
+                    <div class="value text-warning">{{ summary.present_count }}</div>
+                    <div class="label text-muted">Present</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="report-stat bg-white">
+                <div>
+                    <div class="value text-danger">{{ summary.absent_count }}</div>
+                    <div class="label text-muted">Absent</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-primary text-white">
+                    <h6 class="mb-0">Student Profile</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3"><strong>Father Name:</strong><br>{{ student.father_name }}</div>
+                    <div class="mb-3"><strong>Guardian Phone:</strong><br>{{ student.guardian_phone }}</div>
+                    <div class="mb-3"><strong>Address:</strong><br>{{ student.address }}</div>
+                    <div class="mb-3"><strong>Monthly Fee:</strong><br>PKR {{ student.monthly_fee or 0 }}</div>
+                    <div class="mb-3"><strong>Best Test:</strong><br>{{ summary.best_test }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-success text-white">
+                    <h6 class="mb-0">Attendance History</h6>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-striped mb-0 align-middle">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Late Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in attendance_records %}
+                            <tr>
+                                <td>{{ item.date }}</td>
+                                <td>
+                                    <span class="status-pill {% if item.status == 'Present' %}bg-success text-white{% elif item.status == 'Absent' %}bg-danger text-white{% elif item.status == 'Late' %}bg-warning text-dark{% else %}bg-secondary text-white{% endif %}">
+                                        {{ item.status }}
+                                    </span>
+                                </td>
+                                <td>{{ item.late_time or '—' }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center text-muted py-4">No attendance records available.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mt-4">
+        <div class="card-header bg-dark text-white">
+            <h6 class="mb-0">Result Card</h6>
+        </div>
+        <div class="card-body p-0 report-table">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Test</th>
+                        <th>Type</th>
+                        <th>Subject</th>
+                        <th>Date</th>
+                        <th>Obtained</th>
+                        <th>Percentage</th>
+                        <th>Grade</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mark in marks %}
+                    <tr>
+                        <td>{{ mark.test_info.test_title if mark.test_info else 'N/A' }}</td>
+                        <td>{{ mark.test_info.test_type if mark.test_info else 'N/A' }}</td>
+                        <td>{{ mark.test_info.subject_info.name if mark.test_info and mark.test_info.subject_info else 'N/A' }}</td>
+                        <td>{{ mark.test_info.test_date if mark.test_info else 'N/A' }}</td>
+                        <td>{{ mark.marks_obtained }}</td>
+                        <td>{{ mark.percentage if mark.percentage is not none else '—' }}%</td>
+                        <td><span class="grade-badge">{{ mark.grade or '—' }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">No test results yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

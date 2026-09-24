@@ -1,0 +1,98 @@
+School Manager Setup Guide
+=========================
+
+1. Install Python
+   - Download and install Python 3.11 or newer.
+   - Make sure Python is added to PATH.
+
+2. Open a terminal in the project folder
+   - Command Prompt example:
+     cd /d "C:\Users\ahmad talha\Desktop\projects\project2 - Copy"
+
+   - PowerShell example:
+     cd "C:\Users\ahmad talha\Desktop\projects\project2 - Copy"
+
+3. Create/activate virtual environment (recommended)
+   - PowerShell:
+     python -m venv venv
+     .\venv\Scripts\Activate.ps1
+
+   - Command Prompt:
+     python -m venv venv
+     venv\Scripts\activate.bat
+
+4. Install Python dependencies
+   - In the project folder:
+     pip install -r requirements.txt
+
+5. Install WhatsApp service dependencies
+   - In the whatsapp-service folder:
+     cd whatsapp-service
+     npm install
+
+6. Set the required SECRET_KEY for first-time setup
+   - In PowerShell:
+     $env:SECRET_KEY="school-manager-local-secret-2026"
+
+   - In Command Prompt:
+     set SECRET_KEY=school-manager-local-secret-2026
+
+   - Or set it permanently for your user:
+     [Environment]::SetEnvironmentVariable("SECRET_KEY", "school-manager-local-secret-2026", "User")
+
+   - Example default value for local testing:
+     school-manager-local-secret-2026
+
+7. First-time setup / clean reset
+   - If you want a completely fresh start, delete the old SQLite file before starting:
+     del school.db
+     del instance\school.db
+
+   - Then start the app:
+     python start_all.py
+
+   - Open the first-run setup page in the browser:
+     http://127.0.0.1:5000/setup-admin
+
+   - On the first run, enter:
+     - admin username
+     - admin password
+     - school name
+     - tagline
+     - address
+     - phone
+     - email
+     - optional checkbox to load dummy data
+
+8. Start the app normally
+   - From the project root:
+     python start_all.py
+
+   - Or just Flask if needed:
+     python run.py
+
+9. Open the app in the browser
+   - http://127.0.0.1:5000/login
+
+10. WhatsApp setup
+   - The app will try to start the WhatsApp bridge on port 3001.
+   - If session data is stale, restart with:
+     python start_all.py --reset-whatsapp-session
+
+11. If login says "Incorrect username or password"
+   - Stop the app
+   - Delete school.db and instance\school.db
+   - Remove old environment admin variables if any exist
+   - Start again and create the admin from /setup-admin
+
+12. If the app refuses to start
+   - Make sure SECRET_KEY is set.
+   - Make sure no stale port 3001 process is still running.
+   - Check that the Node service folder has its dependencies installed.
+
+Notes
+-----
+- For local development, the example SECRET_KEY is fine.
+- For production, use a long random secret key and never commit it to source control.
+- Do not share your app secret key publicly.
+- The first-run setup page is the recommended way to create the initial admin account and school profile.

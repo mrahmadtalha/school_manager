@@ -1,0 +1,509 @@
+{% extends "base.html" %}
+{% block content %}
+<script>
+async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function refreshAttendanceWaStatus() {
+    const badge = document.getElementById('attendance-wa-status-badge');
+    const text = document.getElementById('attendance-wa-status-text');
+    const detail = document.getElementById('attendance-wa-status-detail');
+    const sendBtn = document.getElementById('send-absent-alerts-btn');
+    const testBtn = document.getElementById('test-whatsapp-btn');
+
+    try {
+        const res = await fetchWithTimeout('/api/whatsapp/status');
+        const data = await res.json();
+        if (data && data.connected) {
+            badge.className = 'badge bg-success px-3 py-2';
+            badge.textContent = 'Connected';
+            text.textContent = data.message || 'WhatsApp is ready.';
+            detail.textContent = 'Messages can be sent from this page.';
+            if (sendBtn) sendBtn.disabled = false;
+            if (testBtn) testBtn.disabled = false;
+        } else {
+            badge.className = 'badge bg-danger px-3 py-2';
+            badge.textContent = 'Offline';
+            text.textContent = data && data.message ? data.message : 'WhatsApp service unavailable.';
+            detail.textContent = 'Connect the WhatsApp service before sending alerts.';
+            if (sendBtn) sendBtn.disabled = true;
+            if (testBtn) testBtn.disabled = true;
+        }
+    } catch (err) {
+        badge.className = 'badge bg-danger px-3 py-2';
+        badge.textContent = 'Offline';
+        text.textContent = 'WhatsApp service unavailable.';
+        detail.textContent = 'Connect the WhatsApp service before sending alerts.';
+        if (sendBtn) sendBtn.disabled = true;
+        if (testBtn) testBtn.disabled = true;
+    }
+}
+
+async function testAttendanceWhatsApp() {
+    try {
+        const res = await fetchWithTimeout('/api/whatsapp/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({})
+        }, 6000);
+        const data = await res.json();
+        alert(data.ok ? 'Test message sent successfully.' : (data.message || 'Unable to send test message.'));
+        refreshAttendanceWaStatus();
+    } catch (err) {
+        alert('WhatsApp service is unavailable or timed out.');
+    }
+}
+
+function openNativeWhatsApp(phone, text) {
+    const cleanedPhone = String(phone).replace(/[^\d]/g, '');
+    if (!cleanedPhone) return false;
+
+    const url = 'whatsapp://send?phone=' + encodeURIComponent(cleanedPhone) + '&text=' + encodeURIComponent(text);
+    window.location.href = url;
+    return true;
+}
+
+function sendAbsentAlerts() {
+    const absentStudents = {{ absent_students|tojson }};
+    if (!absentStudents || absentStudents.length === 0) {
+        alert('No absent students to message today.');
+        return;
+    }
+
+    let sent = 0;
+    absentStudents.forEach((student) => {
+        if (!student.guardian_phone) return;
+        const phone = String(student.guardian_phone).replace(/[^\d]/g, '');
+        if (!phone) return;
+        let normalized = phone;
+        if (normalized.startsWith('0')) normalized = '92' + normalized.slice(1);
+        const message = 'Dear Parent, your child ' + student.student_name + ' was marked ABSENT today. Please contact the school if needed.';
+        openNativeWhatsApp(normalized, message);
+        sent += 1;
+    });
+
+    if (sent === 0) {
+        alert('No valid phone numbers found for absent students.');
+        return;
+    }
+
+    alert('Opened WhatsApp messages for ' + sent + ' absent student(s).');
+}
+
+window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
+</script>
+
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Attendance entry</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-user-check text-primary me-2"></i>Student Attendance</h1>
+        <p class="text-muted small mb-0">Track, verify, and export daily student attendance records.</p>
+    </div>
+    <a href="{{ url_for('main.teacher_attendance') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-chalkboard-teacher me-1"></i> Teacher Attendance
+    </a>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show">
+      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endfor %}{% endif %}
+{% endwith %}
+
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div>
+            <div class="text-muted small text-uppercase fw-bold mb-1">WhatsApp Service</div>
+            <div class="d-flex align-items-center gap-2">
+                <span id="attendance-wa-status-badge" class="badge bg-secondary px-3 py-2">Checking...</span>
+                <small id="attendance-wa-status-text" class="text-muted">Checking connection...</small>
+            </div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <button type="button" id="test-whatsapp-btn" class="btn btn-sm btn-primary" onclick="testAttendanceWhatsApp()">
+                <i class="fab fa-whatsapp me-1"></i> Test WhatsApp
+            </button>
+            <button type="button" id="send-absent-alerts-btn" class="btn btn-sm btn-success" onclick="sendAbsentAlerts()">
+                <i class="fab fa-whatsapp me-1"></i> Send Absent Alerts
+            </button>
+        </div>
+    </div>
+    <div class="card-footer bg-light border-0">
+        <div id="attendance-wa-status-detail" class="small text-muted">Checking service status...</div>
+    </div>
+</div>
+
+<!-- WhatsApp Absentee Alert -->
+{% if session.get('last_absentees') %}
+<div class="card border-danger shadow-sm mb-4">
+    <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fab fa-whatsapp me-2"></i>Absentee Alert Center</h5>
+        <span class="badge bg-light text-dark">{{ session.get('last_absentees')|length }} Absent</span>
+    </div>
+    <div class="card-body">
+        <div class="list-group">
+            {% for absentee in session.get('last_absentees') %}
+            <div class="list-group-item d-flex justify-content-between align-items-center py-2">
+                <div>
+                    <strong>{{ absentee.name }}</strong>
+                    <span class="text-muted font-monospace small ms-1">({{ absentee.roll }})</span>
+                    <br><small class="text-muted">{{ absentee.phone or 'No phone' }}</small>
+                </div>
+                {% if absentee.phone %}
+                
+                {% set phone_clean = absentee.phone | replace(' ','') | replace('-','') | replace('+','') %}
+                {% if phone_clean.startswith('0') %}
+                    {% set phone_intl = '92' + phone_clean[1:] %}
+                {% else %}
+                    {% set phone_intl = phone_clean %}
+                {% endif %}
+                {% set msg = 'Dear Parent, your child ' ~ absentee.name ~ ' (Roll No: ' ~ absentee.roll ~ ') was marked ABSENT today. Please contact the school if needed.' %}
+                <div class="d-flex gap-1">
+                    <a href="whatsapp://send?phone={{ phone_intl }}&text={{ msg | urlencode }}"
+                         class="btn btn-success btn-sm">
+                          <i class="fab fa-whatsapp me-1"></i> WhatsApp
+                    </a>
+                    <a href="tel:{{ absentee.phone }}" class="btn btn-outline-secondary btn-sm">
+                         <i class="fas fa-phone"></i>
+                    </a>
+                </div>
+                {% else %}
+                <span class="badge bg-secondary">No Phone</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Filter Bar -->
+<div class="card shadow-sm mb-3 border-0 bg-light">
+    <div class="card-body py-2">
+        <form method="GET" action="{{ url_for('main.student_attendance') }}" class="row g-2 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label fw-bold small text-muted mb-1">Class</label>
+                <select class="form-select" name="class_id" onchange="this.form.submit()">
+                    {% for c in classes %}
+                    <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label fw-bold small text-muted mb-1">Date</label>
+                <input type="date" class="form-control" name="date" value="{{ selected_date }}" onchange="this.form.submit()">
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-dark w-100">
+                    <i class="fas fa-sync-alt me-1"></i> Load
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if students %}
+
+<!-- Lock / Status Banner -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        {% if is_locked %}
+        <span class="badge bg-danger fs-6 px-3 py-2">
+            <i class="fas fa-lock me-1"></i> Attendance Locked
+        </span>
+        {% else %}
+        <span class="badge bg-success fs-6 px-3 py-2">
+            <i class="fas fa-lock-open me-1"></i> Open — Not Yet Saved
+        </span>
+        {% endif %}
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+        <!-- Export -->
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                <i class="fas fa-download me-1"></i> Export
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{{ url_for('main.export_class_attendance_pdf', class_id=selected_class_id, date=selected_date) }}"><i class="fas fa-file-pdf text-danger me-2"></i>PDF</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_class_attendance_excel', class_id=selected_class_id, date=selected_date) }}"><i class="fas fa-file-excel text-success me-2"></i>Excel</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_class_attendance_csv', class_id=selected_class_id, date=selected_date) }}"><i class="fas fa-file-csv text-primary me-2"></i>CSV</a></li>
+            </ul>
+        </div>
+        <!-- Lock / Unlock -->
+        {% if is_locked %}
+        <form action="{{ url_for('main.lock_attendance') }}" method="POST">
+            <input type="hidden" name="class_id" value="{{ selected_class_id }}">
+            <input type="hidden" name="date" value="{{ selected_date }}">
+            <input type="hidden" name="action" value="unlock">
+            <button type="submit" class="btn btn-warning btn-sm px-3"
+                    onclick="return confirm('Unlock attendance for editing?')">
+                <i class="fas fa-lock-open me-1"></i> Unlock
+            </button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Quick Actions & Live Attendance Counter -->
+{% if not is_locked %}
+<div class="card bg-light border-0 mb-3 shadow-sm">
+    <div class="card-body py-2 d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <span class="text-muted small fw-bold"><i class="fas fa-bolt text-warning me-1"></i>Quick Actions:</span>
+            <button type="button" class="btn btn-outline-success btn-sm px-3" onclick="markAll('Present')">
+                <i class="fas fa-check-double me-1"></i> All Present
+            </button>
+            <button type="button" class="btn btn-outline-danger btn-sm px-3" onclick="markAll('Absent')">
+                <i class="fas fa-times-circle me-1"></i> All Absent
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetToInitial()">
+                <i class="fas fa-undo me-1"></i> Reset
+            </button>
+        </div>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <span class="badge bg-dark px-2 py-2 fs-7">Total: {{ students|length }}</span>
+            <span class="badge bg-success px-2 py-2 fs-7"><i class="fas fa-user-check me-1"></i>Present: <span id="cntPresent">0</span></span>
+            <span class="badge bg-danger px-2 py-2 fs-7"><i class="fas fa-user-times me-1"></i>Absent: <span id="cntAbsent">0</span></span>
+            <span class="badge bg-warning text-dark px-2 py-2 fs-7"><i class="fas fa-clock me-1"></i>Late: <span id="cntLate">0</span></span>
+            <span class="badge bg-secondary px-2 py-2 fs-7"><i class="fas fa-envelope-open-text me-1"></i>Leave: <span id="cntLeave">0</span></span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Attendance Form -->
+<form method="POST" action="{{ url_for('main.student_attendance') }}">
+    <input type="hidden" name="date" value="{{ selected_date }}">
+    <input type="hidden" name="class_id" value="{{ selected_class_id }}">
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0 table-responsive">
+            <table class="table table-hover align-middle mb-0" id="attTable">
+                <thead class="table-dark">
+                    <tr>
+                        <th class="py-3 ps-3">#</th>
+                        <th class="py-3">Roll No</th>
+                        <th class="py-3">Student Name</th>
+                        <th class="py-3">Father Name</th>
+                        <th class="py-3 text-center">Status</th>
+                        <th class="py-3 text-center">Late Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in students %}
+                    {% set current_status = attendance_map.get(student.id, 'Present') %}
+                    {% set current_late = late_time_map.get(student.id, '') %}
+                    <tr id="row_{{ student.id }}"
+                        class="{% if current_status == 'Absent' %}table-danger{% elif current_status == 'Late' %}table-warning{% elif current_status == 'Leave' %}table-secondary{% endif %}">
+                        <td class="ps-3 text-muted small">{{ loop.index }}</td>
+                        <td class="font-monospace fw-bold text-primary">{{ student.roll_number }}</td>
+                        <td class="fw-bold">{{ student.student_name }}</td>
+                        <td class="text-muted small">{{ student.father_name }}</td>
+                        <td class="text-center">
+                            {% if is_locked %}
+                                <span class="badge px-3 py-2
+                                    {% if current_status == 'Present' %}bg-success
+                                    {% elif current_status == 'Absent' %}bg-danger
+                                    {% elif current_status == 'Late' %}bg-warning text-dark
+                                    {% else %}bg-secondary{% endif %}">
+                                    {{ current_status }}
+                                </span>
+                            {% else %}
+                            <div class="btn-group btn-group-sm" role="group">
+                                <input type="radio" class="btn-check" name="status_{{ student.id }}"
+                                       id="p_{{ student.id }}" value="Present"
+                                       {% if current_status == 'Present' %}checked{% endif %}
+                                       onchange="updateRow({{ student.id }}, 'Present')">
+                                <label class="btn btn-outline-success" for="p_{{ student.id }}">Present</label>
+
+                                <input type="radio" class="btn-check" name="status_{{ student.id }}"
+                                       id="a_{{ student.id }}" value="Absent"
+                                       {% if current_status == 'Absent' %}checked{% endif %}
+                                       onchange="updateRow({{ student.id }}, 'Absent')">
+                                <label class="btn btn-outline-danger" for="a_{{ student.id }}">Absent</label>
+
+                                <input type="radio" class="btn-check" name="status_{{ student.id }}"
+                                       id="l_{{ student.id }}" value="Late"
+                                       {% if current_status == 'Late' %}checked{% endif %}
+                                       onchange="updateRow({{ student.id }}, 'Late')">
+                                <label class="btn btn-outline-warning" for="l_{{ student.id }}">Late</label>
+
+                                <input type="radio" class="btn-check" name="status_{{ student.id }}"
+                                       id="lv_{{ student.id }}" value="Leave"
+                                       {% if current_status == 'Leave' %}checked{% endif %}
+                                       onchange="updateRow({{ student.id }}, 'Leave')">
+                                <label class="btn btn-outline-secondary" for="lv_{{ student.id }}">Leave</label>
+                            </div>
+                            {% endif %}
+                        </td>
+
+                        <!-- Late Time column -->
+                        <td class="text-center" id="latecell_{{ student.id }}">
+                            {% if current_status == 'Late' %}
+                                {% if is_locked %}
+                                    <span class="badge bg-warning text-dark">{{ current_late or 'No time' }}</span>
+                                {% else %}
+                                <div class="d-flex gap-1 justify-content-center align-items-center">
+                                    <input type="time" class="form-control form-control-sm"
+                                           name="late_time_{{ student.id }}"
+                                           id="latetime_{{ student.id }}"
+                                           value="{{ current_late }}"
+                                           style="width:110px;">
+                                    <button type="button" class="btn btn-warning btn-sm px-1"
+                                            onclick="setNow({{ student.id }})" title="Set current time">
+                                        <i class="fas fa-clock"></i>
+                                    </button>
+                                </div>
+                                {% endif %}
+                            {% else %}
+                            <span class="text-muted small" id="lateshow_{{ student.id }}">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if not is_locked %}
+        <div class="card-footer bg-white d-flex justify-content-between align-items-center py-3">
+            <span class="text-muted small">
+                <i class="fas fa-info-circle me-1"></i>
+                Saving will <strong>lock</strong> this attendance and move to the next class.
+            </span>
+            <button type="submit" class="btn btn-success btn-lg px-5">
+                <i class="fas fa-save me-2"></i> Save &amp; Next Class
+            </button>
+        </div>
+        {% else %}
+        <div class="card-footer bg-light d-flex justify-content-between align-items-center py-3">
+            <span class="text-muted small">
+                <i class="fas fa-lock me-1"></i> Attendance is locked. Click Unlock to make changes.
+            </span>
+        </div>
+        {% endif %}
+    </div>
+</form>
+
+{% else %}
+<div class="text-center py-5">
+    <i class="fas fa-users-slash fa-3x text-muted mb-3"></i>
+    <p class="text-muted">No students found in this class.</p>
+</div>
+{% endif %}
+
+<script>
+// Capture initial attendance states on page load for reset functionality
+var initialAttendanceState = {};
+
+document.addEventListener('DOMContentLoaded', function() {
+    var radios = document.querySelectorAll('#attTable input[type="radio"]:checked');
+    radios.forEach(function(r) {
+        initialAttendanceState[r.name] = r.value;
+    });
+    updateLiveCounters();
+});
+
+// Update dynamic attendance counters in toolbar
+function updateLiveCounters() {
+    var rows = document.querySelectorAll('#attTable tbody tr');
+    var p = 0, a = 0, l = 0, lv = 0;
+    rows.forEach(function(row) {
+        var id = row.id.replace('row_', '');
+        if (document.getElementById('p_' + id)?.checked) p++;
+        else if (document.getElementById('a_' + id)?.checked) a++;
+        else if (document.getElementById('l_' + id)?.checked) l++;
+        else if (document.getElementById('lv_' + id)?.checked) lv++;
+    });
+    var elP = document.getElementById('cntPresent');
+    var elA = document.getElementById('cntAbsent');
+    var elL = document.getElementById('cntLate');
+    var elLV = document.getElementById('cntLeave');
+    if (elP) elP.textContent = p;
+    if (elA) elA.textContent = a;
+    if (elL) elL.textContent = l;
+    if (elLV) elLV.textContent = lv;
+}
+
+// Update row colour when status changes
+function updateRow(id, status) {
+    var row = document.getElementById('row_' + id);
+    if (!row) return;
+    row.className = row.className.replace(/table-\w+/g, '').trim();
+    if (status === 'Absent') row.classList.add('table-danger');
+    else if (status === 'Late') row.classList.add('table-warning');
+    else if (status === 'Leave') row.classList.add('table-secondary');
+
+    // Show / hide late time input
+    var cell = document.getElementById('latecell_' + id);
+    if (cell) {
+        if (status === 'Late') {
+            cell.innerHTML = '<div class="d-flex gap-1 justify-content-center align-items-center">' +
+                '<input type="time" class="form-control form-control-sm" name="late_time_' + id + '" id="latetime_' + id + '" style="width:110px;">' +
+                '<button type="button" class="btn btn-warning btn-sm px-1" onclick="setNow(' + id + ')" title="Set current time"><i class="fas fa-clock"></i></button>' +
+                '</div>';
+            setNow(id); // auto-fill current time
+        } else {
+            cell.innerHTML = '<span class="text-muted small">—</span>';
+        }
+    }
+    updateLiveCounters();
+}
+
+// Set current time into the late_time field
+function setNow(id) {
+    var el = document.getElementById('latetime_' + id);
+    if (!el) return;
+    var now = new Date();
+    var hh = String(now.getHours()).padStart(2, '0');
+    var mm = String(now.getMinutes()).padStart(2, '0');
+    el.value = hh + ':' + mm;
+}
+
+// Mark all students with a single status
+function markAll(status) {
+    var rows = document.querySelectorAll('#attTable tbody tr');
+    rows.forEach(function(row) {
+        var id = row.id.replace('row_', '');
+        var radio = document.getElementById(
+            status === 'Present' ? 'p_' + id :
+            status === 'Absent'  ? 'a_' + id :
+            status === 'Late'    ? 'l_' + id : 'lv_' + id
+        );
+        if (radio) { 
+            radio.checked = true; 
+            updateRow(parseInt(id), status); 
+        }
+    });
+    updateLiveCounters();
+}
+
+// Reset selection back to initial state
+function resetToInitial() {
+    var rows = document.querySelectorAll('#attTable tbody tr');
+    rows.forEach(function(row) {
+        var id = row.id.replace('row_', '');
+        var origStatus = initialAttendanceState['status_' + id] || 'Present';
+        var radio = document.getElementById(
+            origStatus === 'Present' ? 'p_' + id :
+            origStatus === 'Absent'  ? 'a_' + id :
+            origStatus === 'Late'    ? 'l_' + id : 'lv_' + id
+        );
+        if (radio) {
+            radio.checked = true;
+            updateRow(parseInt(id), origStatus);
+        }
+    });
+    updateLiveCounters();
+}
+</script>
+{% endblock %}
