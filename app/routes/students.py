@@ -70,9 +70,16 @@ def students_list():
     students = query.order_by(StudentModel.student_name).all()
     classes = ClassModel.query.all()
     sections = SectionModel.query.filter_by(class_id=class_id).all() if class_id else []
+    sections_by_class = {
+        str(class_obj.id): [
+            {'id': section.id, 'name': section.name}
+            for section in sorted(class_obj.sections, key=lambda s: s.name)
+        ]
+        for class_obj in classes
+    }
     return render_template('students.html', students=students, classes=classes,
-                           sections=sections, selected_class=class_id,
-                           selected_section=section_id, search=search)
+                           sections=sections, sections_by_class=sections_by_class,
+                           selected_class=class_id, selected_section=section_id, search=search)
 
 @main.route('/students/add', methods=['POST'])
 def add_student():

@@ -270,7 +270,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-bold small text-muted">Class</label>
-                            <select class="form-select" name="class_id" required>
+                            <select class="form-select" name="class_id" id="add_student_class" required>
                                 {% for c in classes %}
                                 <option value="{{ c.id }}">{{ c.name }}</option>
                                 {% endfor %}
@@ -293,8 +293,10 @@
                             <input type="text" class="form-control" name="guardian_phone" placeholder="+923..." required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-bold small text-muted">Section ID (Optional)</label>
-                            <input type="number" class="form-control" name="section_id" placeholder="Optional">
+                            <label class="form-label fw-bold small text-muted">Section (Optional)</label>
+                            <select class="form-select" name="section_id" id="add_student_section">
+                                <option value="">No section selected (optional)</option>
+                            </select>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-bold small text-muted">Address</label>
@@ -358,8 +360,6 @@
 </div>
 
 <script>
-// Instant client-side search — filters visible rows without a page reload.
-// The server-side search (above) handles the initial load and bookmarkable URLs.
 var searchInput = document.getElementById('searchInput');
 if (searchInput) {
     searchInput.addEventListener('input', function () {
@@ -378,6 +378,38 @@ if (searchInput) {
         var counter = document.getElementById('visibleCount');
         if (counter) counter.textContent = visible;
     });
+}
+
+var addStudentClass = document.getElementById('add_student_class');
+var addStudentSection = document.getElementById('add_student_section');
+var sectionsByClass = {{ sections_by_class|tojson }};
+
+function populateSectionOptions() {
+    if (!addStudentClass || !addStudentSection) return;
+
+    var classId = addStudentClass.value;
+    var sections = sectionsByClass[classId] || [];
+    var selectedValue = addStudentSection.value;
+
+    addStudentSection.innerHTML = '<option value="">No section selected (optional)</option>';
+
+    sections.forEach(function (section) {
+        var option = document.createElement('option');
+        option.value = section.id;
+        option.textContent = section.name;
+        addStudentSection.appendChild(option);
+    });
+
+    if (selectedValue && Array.from(addStudentSection.options).some(function (option) {
+        return option.value === selectedValue;
+    })) {
+        addStudentSection.value = selectedValue;
+    }
+}
+
+if (addStudentClass && addStudentSection) {
+    addStudentClass.addEventListener('change', populateSectionOptions);
+    populateSectionOptions();
 }
 </script>
 {% endblock %}
