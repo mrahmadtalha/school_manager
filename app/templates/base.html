@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ school.school_name if school else 'School Manager' }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <style>
+        {% if school and school.primary_color %}
+        :root {
+            --bs-primary: {{ school.primary_color }};
+            --bs-primary-rgb: {{ school.primary_color|replace('#','')|map('int', 16)|join(',') if false else '13,110,253' }}; /* Simplification for hex to rgb if needed, usually Bootstrap just needs override */
+        }
+        .text-primary, .btn-outline-primary { color: {{ school.primary_color }} !important; }
+        .bg-primary, .btn-primary { background-color: {{ school.primary_color }} !important; border-color: {{ school.primary_color }} !important; }
+        {% endif %}
+        {% if school and school.secondary_color %}
+        :root {
+            --bs-secondary: {{ school.secondary_color }};
+        }
+        .text-secondary, .btn-outline-secondary { color: {{ school.secondary_color }} !important; }
+        .bg-secondary, .btn-secondary { background-color: {{ school.secondary_color }} !important; border-color: {{ school.secondary_color }} !important; }
+        {% endif %}
+    </style>
+    <script>
+        try {
+            if (localStorage.getItem('sm.sidebarCollapsed') === '1') {
+                document.documentElement.classList.add('sidebar-collapsed');
+            }
+        } catch (e) { /* storage unavailable */ }
+    </script>
+</head>
+<body>
+
+{% set role = current_user.role if current_user and current_user.is_authenticated else 'anonymous' %}
+
+<div class="mobile-topbar d-md-none">
+    <button class="mobile-menu-btn" type="button" data-bs-toggle="offcanvas"
+            data-bs-target="#sidebar" aria-controls="sidebar" aria-label="Open navigation">
+        <i class="fas fa-bars"></i>
+    </button>
+    <span class="mobile-topbar-title">{{ school.school_name if school else 'School Manager' }}</span>
+</div>
+
+<div class="container-fluid">
+    <div class="row">
+
+        <!-- Sidebar -->
+        <nav id="sidebar" tabindex="-1" aria-label="Main navigation"
+             class="col-md-3 col-lg-2 bg-dark sidebar offcanvas-md offcanvas-start text-white min-vh-100 p-3">
+
+            <!-- Sidebar toggle (desktop) -->
+            <div class="sidebar-toggle-row d-none d-md-flex justify-content-end mb-2">
+                <button type="button" id="sidebarToggle" class="sidebar-toggle" aria-expanded="true"
+                        title="Collapse sidebar" aria-label="Collapse sidebar">
+                    <i class="fas fa-angle-double-left"></i>
+                </button>
+            </div>
+
+            <!-- Drawer close (mobile) -->
+            <div class="d-flex d-md-none justify-content-end mb-2">
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"
+                        aria-label="Close navigation"></button>
+            </div>
+
+            <!-- School Identity -->
+            <div class="text-center py-3 border-bottom border-secondary">
+                {% if school and school.logo_filename %}
+                <img src="{{ url_for('static', filename=school.logo_filename) }}"
+                     alt="Logo" style="max-height:60px; max-width:100%; object-fit:contain;" class="mb-2 d-block mx-auto">
+                {% else %}
+                <i class="fas fa-school text-warning fa-2x mb-2 d-block"></i>
+                {% endif %}
+                <h5 class="mb-0 text-white fw-bold">{{ school.school_name if school else 'School Manager' }}</h5>
+                {% if school and school.tagline %}
+                <small class="text-secondary">{{ school.tagline }}</small>
+                {% endif %}
+                <div class="sidebar-identity-bar mx-auto mt-3"></div>
+            </div>
+
+            <!-- Navigation -->
+            <ul class="nav flex-column mt-3">
+                {% if role == 'parent' %}
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.portal') }}" class="nav-link text-white {% if request.endpoint == 'main.portal' %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-overview"><i class="fas fa-child"></i></span> <span class="nav-label">My Child</span>
+                    </a>
+                </li>
+                {% else %}
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.dashboard') }}" class="nav-link text-white {% if request.endpoint == 'main.dashboard' %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-overview"><i class="fas fa-tachometer-alt"></i></span> <span class="nav-label">Dashboard</span>
+                    </a>
+                </li>
+
+                <li class="nav-item"><div class="nav-divider"></div></li>
+
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.students_list') }}" class="nav-link text-white {% if 'student' in request.endpoint and 'attendance' not in request.endpoint %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-academics"><i class="fas fa-user-graduate"></i></span> <span class="nav-label">Students</span>
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.teachers_list') }}" class="nav-link text-white {% if 'teacher' in request.endpoint and 'attendance' not in request.endpoint %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-academics"><i class="fas fa-chalkboard-teacher"></i></span> <span class="nav-label">Teachers</span>
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.classes_list') }}" class="nav-link text-white {% if 'class' in request.endpoint or 'section' in request.endpoint or 'subject' in request.endpoint %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-academics"><i class="fas fa-book"></i></span> <span class="nav-label">Classes &amp; Subjects</span>
+                    </a>
+                </li>
+
+                <li class="nav-item"><div class="nav-divider"></div></li>
+
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.student_attendance') }}" class="nav-link text-white {% if 'attendance' in request.endpoint and 'summary' not in request.endpoint and 'report' not in request.endpoint %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-attendance"><i class="fas fa-clipboard-check"></i></span> <span class="nav-label">Daily Attendance</span>
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.attendance_summary') }}" class="nav-link text-white {% if 'summary' in request.endpoint %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-attendance"><i class="fas fa-calendar-alt"></i></span> <span class="nav-label">Attendance Summary</span>
+                    </a>
+                </li>
+
+                <li class="nav-item"><div class="nav-divider"></div></li>
+
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.tests_list') }}" class="nav-link text-white {% if 'test' in request.endpoint and 'report' not in request.endpoint %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-assess"><i class="fas fa-file-alt"></i></span> <span class="nav-label">Testing &amp; Marks Hub</span>
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.class_results_matrix') }}" class="nav-link text-white {% if 'results' in request.endpoint %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-assess"><i class="fas fa-chart-line"></i></span> <span class="nav-label">Class Results &amp; Reports</span>
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.reports_hub') }}" class="nav-link text-white {% if 'reports_hub' in request.endpoint %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-assess"><i class="fas fa-chart-bar"></i></span> <span class="nav-label">Reports &amp; Export</span>
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.documents_hub') }}" class="nav-link text-white {% if 'documents' in request.endpoint %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-docs"><i class="fas fa-id-card"></i></span> <span class="nav-label">ID Cards &amp; Certificates</span>
+                    </a>
+                </li>
+
+                {% if role == 'admin' %}
+                <li class="nav-item"><div class="nav-divider"></div></li>
+
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.fees_list') }}" class="nav-link text-white {% if 'fee' in request.endpoint %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-finance"><i class="fas fa-wallet"></i></span> <span class="nav-label">Fees Management</span>
+                    </a>
+                </li>
+                {% endif %}
+                {% endif %}
+
+                <!-- Bottom section -->
+                <li class="nav-item mt-4 pt-3 border-top border-secondary">
+                    <span class="nav-link text-white small opacity-75">
+                        <span class="nav-icon nav-icon-system"><i class="fas fa-user-shield"></i></span><span class="username-text">{{ current_user.username if current_user and current_user.is_authenticated else '' }}</span>
+                        {% if current_user and current_user.is_authenticated %}
+                        <span class="badge bg-secondary ms-1">{{ current_user.role_label }}</span>
+                        {% endif %}
+                    </span>
+                </li>
+                {% if role == 'admin' %}
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.audit_log') }}" class="nav-link text-white {% if 'audit' in request.endpoint %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-system"><i class="fas fa-clipboard-list"></i></span> <span class="nav-label">Audit Log</span>
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.users_list') }}" class="nav-link text-white {% if 'user' in request.endpoint %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-system"><i class="fas fa-users-cog"></i></span> <span class="nav-label">Users &amp; Roles</span>
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.automation_panel') }}" class="nav-link text-white {% if request.endpoint == 'main.automation_panel' %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-system"><i class="fab fa-whatsapp"></i></span> <span class="nav-label">WhatsApp Automation</span>
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a href="{{ url_for('main.school_settings') }}" class="nav-link text-white {% if 'settings' in request.endpoint %}active bg-secondary{% endif %}">
+                        <span class="nav-icon nav-icon-system"><i class="fas fa-cog"></i></span> <span class="nav-label">School Settings</span>
+                    </a>
+                </li>
+                {% endif %}
+
+                <li class="nav-item mb-1">
+                    <a href="#" class="nav-link text-white" data-bs-toggle="modal" data-bs-target="#changePwModal">
+                        <span class="nav-icon nav-icon-system"><i class="fas fa-key"></i></span> <span class="nav-label">Change Password</span>
+                    </a>
+                </li>
+                <li class="nav-item mb-2 mt-2">
+                    <a href="{{ url_for('auth.logout') }}" class="nav-link text-danger">
+                        <span class="nav-icon nav-icon-logout"><i class="fas fa-sign-out-alt"></i></span> <span class="nav-label">Logout</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 py-4">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</div>
+
+<!-- Change Password Modal -->
+<div class="modal fade" id="changePwModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('auth.change_password') }}" method="POST">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title"><i class="fas fa-key me-2"></i>Change Password</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-start">
+                    <div class="mb-3">
+                        <label class="form-label">Current Password</label>
+                        <input type="password" class="form-control" name="current_password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">New Password</label>
+                        <input type="password" class="form-control" name="new_password" minlength="8" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Confirm New Password</label>
+                        <input type="password" class="form-control" name="confirm_password" minlength="8" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-dark">Update Password</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Scripts -->
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<script>
+    $(document).ready(function() {
+        if ($('#studentTable').length > 0) {
+            $('#studentTable').DataTable({
+                "paging": true,
+                "searching": true,
+                "ordering": true,
+                "info": true,
+                "lengthMenu": [10, 25, 50, 100],
+                "language": { "search": "Quick Search:" }
+            });
+        }
+        if ($('#teacherTable').length > 0) {
+            $('#teacherTable').DataTable({
+                "paging": true,
+                "searching": true,
+                "ordering": true,
+                "info": true,
+                "lengthMenu": [10, 25, 50, 100],
+                "language": { "search": "Quick Search:" }
+            });
+        }
+    });
+</script>
+
+<script>
+    (function () {
+        var root = document.documentElement;
+        var btn = document.getElementById('sidebarToggle');
+        if (!btn) return;
+        var icon = btn.querySelector('i');
+
+        function initTooltips() {
+            if (!window.bootstrap || !bootstrap.Tooltip) return;
+            document.querySelectorAll('#sidebar a.nav-link').forEach(function (el) {
+                var label = el.querySelector('.nav-label');
+                if (!label || el._tip) return;
+                el._tip = new bootstrap.Tooltip(el, {
+                    title: label.textContent.trim(),
+                    placement: 'right',
+                    trigger: 'hover',
+                    container: 'body',
+                    boundary: document.body
+                });
+            });
+        }
+
+        function disposeTooltips() {
+            document.querySelectorAll('#sidebar a.nav-link').forEach(function (el) {
+                if (el._tip) { el._tip.dispose(); el._tip = null; }
+            });
+        }
+
+        function syncButton(collapsed) {
+            btn.setAttribute('aria-expanded', String(!collapsed));
+            btn.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+            btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+            if (icon) {
+                icon.classList.toggle('fa-angle-double-left', !collapsed);
+                icon.classList.toggle('fa-angle-double-right', collapsed);
+            }
+        }
+
+        function setState(collapsed) {
+            root.classList.toggle('sidebar-collapsed', collapsed);
+            try { localStorage.setItem('sm.sidebarCollapsed', collapsed ? '1' : '0'); } catch (e) {}
+            syncButton(collapsed);
+            if (collapsed) { initTooltips(); } else { disposeTooltips(); }
+            setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 320);
+        }
+
+        btn.addEventListener('click', function () {
+            setState(!root.classList.contains('sidebar-collapsed'));
+        });
+
+        var collapsed = root.classList.contains('sidebar-collapsed');
+        syncButton(collapsed);
+        if (collapsed) { initTooltips(); }
+
+        var sidebarEl = document.getElementById('sidebar');
+        if (sidebarEl) {
+            sidebarEl.addEventListener('click', function (event) {
+                if (window.innerWidth >= 768) return;
+                if (!event.target.closest('a.nav-link')) return;
+                if (!window.bootstrap || !bootstrap.Offcanvas) return;
+                var instance = bootstrap.Offcanvas.getInstance(sidebarEl);
+                if (instance) instance.hide();
+            });
+        }
+    })();
+
+    document.addEventListener("DOMContentLoaded", function() {
+        if (typeof $ !== 'undefined' && $.fn.DataTable) {
+            $('.datatable').each(function() {
+                var $table = $(this);
+                
+                var options = {
+                    "pageLength": 25,
+                    "language": { "search": "Quick Filter:" },
+                    "columnDefs": [
+                        { "orderable": false, "targets": "no-sort" }
+                    ]
+                };
+                
+                var order = $table.data('order');
+                if (order) {
+                    try {
+                        options.order = (typeof order === 'string') ? JSON.parse(order) : order;
+                    } catch (e) {
+                        console.error("Invalid data-order on table", e);
+                    }
+                }
+                
+                var pageLength = $table.data('page-length');
+                if (pageLength) {
+                    options.pageLength = parseInt(pageLength, 10);
+                }
+                
+                $table.DataTable(options);
+            });
+        }
+
+    });
+</script>
+
+</body>
+</html>

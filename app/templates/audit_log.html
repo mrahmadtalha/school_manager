@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap align-items-center pt-3 pb-3 mb-3 border-bottom">
+    <div>
+        <h1 class="h3 fw-bold mb-1"><i class="fas fa-clipboard-list me-2 text-primary"></i>Audit Log</h1>
+        <p class="text-muted small mb-0">
+            Every create, edit, delete and business action, with the actor, timestamp and before/after values.
+        </p>
+    </div>
+    <a class="btn btn-dark btn-sm"
+       href="{{ url_for('main.audit_log_export') }}{% if request.query_string %}?{{ request.query_string.decode() }}{% endif %}">
+        <i class="fas fa-file-csv me-1"></i> Export CSV
+    </a>
+</div>
+
+<form method="GET" action="{{ url_for('main.audit_log') }}" class="card card-body shadow-sm border-0 mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+            <label class="form-label small fw-bold text-muted mb-1">Entity</label>
+            <select class="form-select form-select-sm" name="entity_type">
+                <option value="">All</option>
+                {% for item in entity_types %}
+                <option value="{{ item }}" {% if filters.entity_type == item %}selected{% endif %}>
+                    {{ entity_labels.get(item, item) }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small fw-bold text-muted mb-1">Action</label>
+            <select class="form-select form-select-sm" name="action">
+                <option value="">All</option>
+                {% for item in actions %}
+                <option value="{{ item }}" {% if filters.action == item %}selected{% endif %}>{{ item }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small fw-bold text-muted mb-1">User</label>
+            <select class="form-select form-select-sm" name="username">
+                <option value="">All</option>
+                {% for item in usernames %}
+                <option value="{{ item }}" {% if filters.username == item %}selected{% endif %}>{{ item }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small fw-bold text-muted mb-1">From</label>
+            <input type="date" class="form-control form-control-sm" name="date_from"
+                   value="{{ filters.date_from.isoformat() if filters.date_from else '' }}">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small fw-bold text-muted mb-1">To</label>
+            <input type="date" class="form-control form-control-sm" name="date_to"
+                   value="{{ filters.date_to.isoformat() if filters.date_to else '' }}">
+        </div>
+        <div class="col-md-2 d-flex gap-2">
+            <input type="text" class="form-control form-control-sm" name="search"
+                   value="{{ filters.search or '' }}" placeholder="Search summary/user">
+            <button class="btn btn-sm btn-dark" type="submit"><i class="fas fa-filter"></i></button>
+        </div>
+    </div>
+</form>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0 table-responsive">
+        <table id="auditTable" class="table table-sm table-hover align-middle mb-0 datatable" data-order='[[0, "desc"]]'>
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-3">When (local)</th>
+                    <th>Actor</th>
+                    <th>Action</th>
+                    <th>Entity</th>
+                    <th class="no-sort">Summary</th>
+                    <th class="no-sort">Changed fields</th>
+                    <th class="no-sort">Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td class="ps-3 text-nowrap small text-muted">
+                        {{ row.created_at | localtime or '—' }}
+                    </td>
+                    <td class="small">
+                        <strong>{{ row.username }}</strong>
+                        <span class="badge bg-secondary ms-1">{{ row.role }}</span>
+                    </td>
+                    <td>
+                        <span class="badge {% if row.action in ('delete', 'login_failed', 'void') %}bg-danger
+                            {% elif row.action in ('create', 'login', 'payment') %}bg-success
+                            {% elif row.action in ('update', 'settings_change', 'user_admin') %}bg-warning text-dark
+                            {% else %}bg-secondary{% endif %}">{{ row.action }}</span>
+                    </td>
+                    <td class="small">
+                        {{ entity_labels.get(row.entity_type, row.entity_type or '—') }}
+                        {% if row.entity_id %}<span class="text-muted">#{{ row.entity_id }}</span>{% endif %}
+                    </td>
+                    <td class="small">{{ row.summary }}</td>
+                    <td class="small text-muted">{{ row.changed_fields | join(', ') }}</td>
+                    <td>
+                        {% if row.before_json or row.after_json %}
+                        <details>
+                            <summary class="small text-primary" style="cursor:pointer;">before / after</summary>
+                            <div class="small mt-1">
+                                {% if row.before_json %}
+                                <div class="text-danger"><strong>before:</strong>
+                                    <code class="text-break">{{ row.before_json }}</code></div>
+                                {% endif %}
+                                {% if row.after_json %}
+                                <div class="text-success"><strong>after:</strong>
+                                    <code class="text-break">{{ row.after_json }}</code></div>
+                                {% endif %}
+                            </div>
+                        </details>
+                        {% else %}
+                        <span class="text-muted small">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-center text-muted py-4">No audit entries match these filters.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<p class="text-muted small mt-2">Showing up to 500 most recent matching entries (CSV export is uncapped).</p>
+{% endblock %}

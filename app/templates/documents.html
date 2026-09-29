@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Printable documents</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-id-card text-primary me-2"></i>ID Cards &amp; Certificates</h1>
+        <p class="text-muted small mb-0">Export student and staff identity cards, plus official certificates as print-ready PDFs.</p>
+    </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 analytics-panel h-100">
+            <div class="card-header bg-dark text-white fw-bold border-0">
+                <i class="fas fa-id-badge me-2"></i>Student ID Cards
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">Print one student or a full class. Leave both blank to export every active student.</p>
+                <form method="GET" action="{{ url_for('main.export_student_id_cards') }}">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Class</label>
+                        <select class="form-select" name="class_id">
+                            <option value="">— All classes —</option>
+                            {% for class_obj in classes %}
+                            <option value="{{ class_obj.id }}" {% if preselect_class_id == class_obj.id %}selected{% endif %}>{{ class_obj.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Single student <span class="text-muted fw-normal">(optional)</span></label>
+                        <select class="form-select" name="student_id">
+                            <option value="">— Entire class / all students —</option>
+                            {% for student in students %}
+                            <option value="{{ student.id }}" {% if preselect_student_id == student.id %}selected{% endif %}>
+                                {{ student.roll_number }} — {{ student.student_name }}
+                                {% if student.class_info %} ({{ student.class_info.name }}){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Academic session</label>
+                        <input type="text" class="form-control" name="session" value="{{ default_session }}">
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-file-pdf me-1"></i> Download student ID cards
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 analytics-panel h-100">
+            <div class="card-header bg-dark text-white fw-bold border-0">
+                <i class="fas fa-chalkboard-teacher me-2"></i>Staff ID Cards
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">Export a single teacher card or the full staff set.</p>
+                <form method="GET" action="{{ url_for('main.export_teacher_id_cards') }}">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Teacher</label>
+                        <select class="form-select" name="teacher_id">
+                            <option value="">— All active teachers —</option>
+                            {% for teacher in teachers %}
+                            <option value="{{ teacher.id }}" {% if preselect_teacher_id == teacher.id %}selected{% endif %}>
+                                {{ teacher.teacher_id_str }} — {{ teacher.teacher_name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Academic session</label>
+                        <input type="text" class="form-control" name="session" value="{{ default_session }}">
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-file-pdf me-1"></i> Download staff ID cards
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card shadow-sm border-0 analytics-panel">
+            <div class="card-header bg-dark text-white fw-bold border-0">
+                <i class="fas fa-certificate me-2"></i>Certificates
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    Choose a certificate type, then a student or a whole class. School name, logo, address, and phone from Settings are printed automatically.
+                </p>
+                <form method="GET" action="{{ url_for('main.export_certificates') }}" class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Certificate type</label>
+                        <select class="form-select" name="cert_type">
+                            {% for key, label in certificate_types.items() %}
+                            <option value="{{ key }}" {% if preselect_cert == key %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Class</label>
+                        <select class="form-select" name="class_id">
+                            <option value="">— Optional class filter —</option>
+                            {% for class_obj in classes %}
+                            <option value="{{ class_obj.id }}" {% if preselect_class_id == class_obj.id %}selected{% endif %}>{{ class_obj.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Student</label>
+                        <select class="form-select" name="student_id">
+                            <option value="">— Whole class / all matching —</option>
+                            {% for student in students %}
+                            <option value="{{ student.id }}" {% if preselect_student_id == student.id %}selected{% endif %}>
+                                {{ student.roll_number }} — {{ student.student_name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Issue date</label>
+                        <input type="date" class="form-control" name="issue_date" value="{{ today }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Academic session</label>
+                        <input type="text" class="form-control" name="session" value="{{ default_session }}">
+                    </div>
+                    <div class="col-md-9">
+                        <label class="form-label fw-bold">Remarks / achievement <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="text" class="form-control" name="remarks" placeholder="e.g. 1st position in Class 8 annual exams, 92%">
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-file-pdf me-1"></i> Download certificates PDF
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

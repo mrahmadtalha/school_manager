@@ -1,0 +1,20 @@
+# School Manager - runtime dependencies
+# Install with:  pip install -r requirements.txt
+
+Flask==3.1.0
+Flask-SQLAlchemy==3.1.1
+Flask-Login==0.6.3            # session/login handling (was missing before this repair)
+SQLAlchemy==2.1.1
+Werkzeug==3.1.9
+Jinja2==3.1.6
+
+# Reporting / export support
+pandas==2.2.3                 # Excel + CSV export and reporting
+openpyxl==3.1.5               # .xlsx writer used by pandas
+reportlab==4.2.5              # PDF result cards, ID cards, certificates
+
+# Outbound calls to the optional Node WhatsApp bridge
+requests==2.32.3
+
+# Test runner (the suite in tests/ is part of the deliverable)
+pytest==9.1.1

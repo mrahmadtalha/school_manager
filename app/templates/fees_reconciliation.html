@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap align-items-center pt-3 pb-3 mb-3 border-bottom">
+    <div>
+        <h1 class="h3 fw-bold mb-1"><i class="fas fa-scale-balanced me-2 text-primary"></i>Fee Reconciliation</h1>
+        <p class="text-muted small mb-0">
+            Every figure below is derived from <code>fee_transactions</code> and compared with the stored summary
+            in <code>fee_records</code>. A discrepancy is shown in red and means the cache must be rebuilt.
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        {% if month_year %}
+        <a class="btn btn-warning btn-sm" href="{{ url_for('main.fee_reminders', month_year=month_year) }}">
+            <i class="fas fa-bell me-1"></i> Fee reminders
+        </a>
+        {% endif %}
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.fees_list') }}">
+            <i class="fas fa-arrow-left me-1"></i> Back to fees
+        </a>
+    </div>
+</div>
+
+<form method="GET" action="{{ url_for('main.fees_reconciliation') }}" class="card card-body shadow-sm border-0 mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label small fw-bold text-muted mb-1">Billing month (blank = all months)</label>
+            <select class="form-select form-select-sm" name="month_year">
+                <option value="">All months</option>
+                {% for month in months %}
+                <option value="{{ month }}" {% if month_year == month %}selected{% endif %}>{{ month }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-sm btn-dark w-100" type="submit"><i class="fas fa-filter me-1"></i> Apply</button>
+        </div>
+    </div>
+</form>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="h4 fw-bold mb-0">{{ '%.2f'|format(totals.charged) }}</div>
+            <div class="small text-muted">Total charged (PKR)</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="h4 fw-bold text-success mb-0">{{ '%.2f'|format(totals.paid) }}</div>
+            <div class="small text-muted">Total received (PKR)</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="h4 fw-bold {% if totals.balance > 0 %}text-danger{% else %}text-success{% endif %} mb-0">
+                {{ '%.2f'|format(totals.balance) }}
+            </div>
+            <div class="small text-muted">Outstanding (PKR)</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="h4 fw-bold mb-0">{{ totals.rows }}</div>
+            <div class="small text-muted">Student-month rows</div>
+        </div>
+    </div>
+</div>
+
+{% if discrepancies %}
+<div class="alert alert-danger">
+    <strong>{{ discrepancies|length }} discrepanc{{ 'y' if discrepancies|length == 1 else 'ies' }} found.</strong>
+    The derived ledger totals do not match the cached summary for the rows highlighted below.
+    Run <code>python scripts/rebuild_fee_summaries.py</code> (or re-save the affected month) to rebuild them.
+</div>
+{% else %}
+<div class="alert alert-success">
+    <i class="fas fa-circle-check me-1"></i>
+    Ledger and summary agree for every row. Totals reconcile exactly.
+</div>
+{% endif %}
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0 table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-3">Student</th>
+                    <th>Class</th>
+                    <th>Month</th>
+                    <th class="text-end">Charged</th>
+                    <th class="text-end">Paid</th>
+                    <th class="text-end">Balance</th>
+                    <th class="text-end">Stored due</th>
+                    <th class="text-end">Stored paid</th>
+                    <th>Check</th>
+                    <th class="text-end pe-3">Ledger</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr class="{% if not row.balanced %}table-danger{% endif %}">
+                    <td class="ps-3 fw-bold">{{ row.student.student_name }}
+                        <span class="text-muted small font-monospace">{{ row.student.roll_number }}</span>
+                    </td>
+                    <td class="small">{{ row.student.class_info.name if row.student.class_info else '—' }}</td>
+                    <td class="small">{{ row.month_year }}</td>
+                    <td class="text-end">{{ '%.2f'|format(row.charged) }}</td>
+                    <td class="text-end text-success">{{ '%.2f'|format(row.paid) }}</td>
+                    <td class="text-end {% if row.balance > 0 %}text-danger fw-bold{% endif %}">{{ '%.2f'|format(row.balance) }}</td>
+                    <td class="text-end text-muted">{{ '%.2f'|format(row.stored_due) if row.stored_due is not none else '—' }}</td>
+                    <td class="text-end text-muted">{{ '%.2f'|format(row.stored_paid) if row.stored_paid is not none else '—' }}</td>
+                    <td>
+                        {% if row.balanced %}<span class="badge bg-success">OK</span>
+                        {% else %}<span class="badge bg-danger">MISMATCH</span>{% endif %}
+                    </td>
+                    <td class="text-end pe-3">
+                        <a class="btn btn-sm btn-outline-secondary"
+                           href="{{ url_for('main.fee_student_ledger', student_id=row.student.id) }}">
+                            <i class="fas fa-book"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="10" class="text-center text-muted py-4">No fee transactions recorded yet.</td></tr>
+                {% endfor %}
+            </tbody>
+            {% if rows %}
+            <tfoot class="table-light">
+                <tr class="fw-bold">
+                    <td class="ps-3" colspan="3">Totals</td>
+                    <td class="text-end">{{ '%.2f'|format(totals.charged) }}</td>
+                    <td class="text-end text-success">{{ '%.2f'|format(totals.paid) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(totals.balance) }}</td>
+                    <td colspan="4"></td>
+                </tr>
+            </tfoot>
+            {% endif %}
+        </table>
+    </div>
+</div>
+{% endblock %}

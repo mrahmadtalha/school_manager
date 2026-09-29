@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">System Administration</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-users-cog text-primary me-2"></i>Users &amp; Roles</h1>
+        <p class="text-muted small mb-0">
+            Administrators see everything. Teachers run daily academic work. Parents see only their own child.
+        </p>
+    </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show">
+      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endfor %}{% endif %}
+{% endwith %}
+
+<div class="card shadow-sm border-0 mb-4 form-panel">
+    <div class="card-header bg-white border-bottom-0 pt-4 pb-0">
+        <h5 class="card-title fw-bold text-dark mb-0"><i class="fas fa-user-plus text-primary me-2"></i>Create New User</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('main.create_user') }}" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Username</label>
+                <input type="text" class="form-control" name="username" required maxlength="80">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Full name</label>
+                <input type="text" class="form-control" name="full_name" maxlength="120">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Password (min 8)</label>
+                <input type="password" class="form-control" name="password" minlength="8" required>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Role</label>
+                <select class="form-select" name="role" id="roleSelect">
+                    {% for role in roles %}
+                    <option value="{{ role }}">{{ role_labels.get(role, role) }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted">Linked students (parents only)</label>
+                <select class="form-select" name="student_ids" id="studentSelect" multiple size="3">
+                    {% for student in students %}
+                    <option value="{{ student.id }}">
+                        {{ student.student_name }} ({{ student.roll_number }})
+                    </option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Ctrl+click to select one or more children.</div>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary w-100 fw-bold shadow-sm" type="submit"><i class="fas fa-plus me-1"></i> Create User</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 table-panel">
+    <div class="card-body p-0 table-responsive">
+        <table id="usersTable" class="table table-hover align-middle mb-0 datatable" data-order='[[0, "asc"]]'>
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-4 py-3">ID</th>
+                    <th class="py-3">Username</th>
+                    <th class="py-3">Full name</th>
+                    <th class="py-3">Role</th>
+                    <th class="no-sort py-3">Linked student</th>
+                    <th class="py-3">Status</th>
+                    <th class="py-3">Last login</th>
+                    <th class="text-end pe-4 py-3 no-sort">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td class="ps-4 font-monospace fw-bold text-primary">#{{ user.id }}</td>
+                    <td class="fw-bold">{{ user.username }}</td>
+                    <td class="text-muted">{{ user.full_name or '—' }}</td>
+                    <td>
+                        <span class="badge {% if user.role == 'admin' %}bg-danger{% elif user.role == 'teacher' %}bg-info text-dark{% elif user.role == 'parent' %}bg-success{% else %}bg-secondary{% endif %} rounded-pill px-3 py-2 shadow-sm">
+                            <i class="fas {% if user.role == 'admin' %}fa-user-shield{% elif user.role == 'teacher' %}fa-chalkboard-teacher{% elif user.role == 'parent' %}fa-user-friends{% else %}fa-user{% endif %} me-1"></i> {{ user.role_label }}
+                        </span>
+                    </td>
+                    <td class="small">
+                        {% set children = user.linked_students if user.linked_students else ([user.student] if user.student else []) %}
+                        {% if children %}
+                            {% for child in children %}
+                            <div>{{ child.student_name }} ({{ child.roll_number }})</div>
+                            {% endfor %}
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        {% if user.is_active %}<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill"><i class="fas fa-check-circle me-1"></i> Active</span>
+                        {% else %}<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill"><i class="fas fa-ban me-1"></i> Disabled</span>{% endif %}
+                    </td>
+                    <td class="small text-muted">
+                        {% if user.last_login_at %}
+                        <div class="d-flex align-items-center">
+                            <i class="far fa-clock me-1 text-info"></i> {{ user.last_login_at.strftime('%Y-%m-%d %H:%M') }}
+                        </div>
+                        {% else %}
+                        <span class="text-muted fst-italic">Never</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end pe-4">
+                        {% if user.is_parent %}
+                        <button class="btn btn-sm btn-outline-info me-1 rounded-circle" data-bs-toggle="modal"
+                                data-bs-target="#linkChildrenModal{{ user.id }}"
+                                title="Edit linked children" style="width: 32px; height: 32px; padding: 0;">
+                            <i class="fas fa-child"></i>
+                        </button>
+                        {% endif %}
+                        <form method="POST" action="{{ url_for('main.toggle_user_active', user_id=user.id) }}"
+                              class="d-inline">
+                            <button class="btn btn-sm btn-outline-secondary me-1" type="submit" 
+                                    title="{% if user.is_active %}Disable User{% else %}Enable User{% endif %}"
+                                    {% if user.id == current_user.id %}disabled{% endif %}>
+                                {% if user.is_active %}<i class="fas fa-ban"></i>{% else %}<i class="fas fa-check"></i>{% endif %}
+                            </button>
+                        </form>
+                        
+                        {% if user.role != 'admin' %}
+                        <form method="POST" action="{{ url_for('main.reset_user_password', user_id=user.id) }}"
+                              class="d-inline-flex gap-1 ms-1 align-items-center">
+                            <input type="password" class="form-control form-control-sm" name="password"
+                                   placeholder="New pass" minlength="8" style="width:110px; max-width:100%;" required>
+                            <button class="btn btn-sm btn-outline-primary" type="submit" title="Reset Password"><i class="fas fa-key"></i></button>
+                        </form>
+                        {% else %}
+                        <span class="d-inline-block ms-1" tabindex="0" data-bs-toggle="tooltip" title="Admin passwords must be changed via the dedicated 'Change Password' menu.">
+                            <button class="btn btn-sm btn-outline-secondary" type="button" disabled style="opacity: 0.5;"><i class="fas fa-key"></i></button>
+                        </span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% for user in users %}
+{% if user.is_parent %}
+{% set children = user.linked_students if user.linked_students else ([user.student] if user.student else []) %}
+{% set selected_ids = children | map(attribute='id') | list %}
+<div class="modal fade" id="linkChildrenModal{{ user.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('main.update_user_students', user_id=user.id) }}">
+                <div class="modal-header px-4 py-3 text-white" style="background: linear-gradient(135deg, #0284c7 0%, #3b82f6 100%); border: none;">
+                    <div>
+                        <p class="mb-1 small text-uppercase text-white-50 fw-bold" style="letter-spacing: 0.08em;">Parent Account</p>
+                        <h5 class="modal-title mb-0"><i class="fas fa-child me-2"></i>Linked children: {{ user.username }}</h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label small fw-bold text-muted">Select the children for this parent account</label>
+                    <select class="form-select" name="student_ids" multiple size="8" required>
+                        {% for student in students %}
+                        <option value="{{ student.id }}" {% if student.id in selected_ids %}selected{% endif %}>
+                            {{ student.student_name }} ({{ student.roll_number }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">At least one child is required. The first selected child becomes the primary (legacy) link.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-info px-4">Save children</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+{% endblock %}

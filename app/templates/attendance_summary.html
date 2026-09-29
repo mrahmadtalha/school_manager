@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Attendance analysis</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-calendar-alt text-primary me-2"></i>Class Attendance Summary &amp; Matrix</h1>
+        <p class="text-muted small mb-0">Monitor class-level attendance patterns and at-risk students.</p>
+    </div>
+    
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
+        <!-- Teacher Summary Quick Button -->
+        <a href="{{ url_for('main.teacher_attendance_summary') }}" class="btn btn-sm btn-dark">
+            <i class="fas fa-chalkboard-teacher me-1"></i> Teacher Attendance Summary
+        </a>
+
+        {% if selected_class_id %}
+        <div class="btn-group">
+            <a href="{{ url_for('main.export_attendance_summary_excel', class_id=selected_class_id, start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-success">
+                <i class="fas fa-file-excel me-1"></i> Excel
+            </a>
+            <a href="{{ url_for('main.export_attendance_summary_csv', class_id=selected_class_id, start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-file-csv me-1"></i> CSV
+            </a>
+            <a href="{{ url_for('main.export_attendance_summary_pdf', class_id=selected_class_id, start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-danger">
+                <i class="fas fa-file-pdf me-1"></i> PDF
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Simplified Filter Bar -->
+<div class="card shadow-sm mb-4 border-0 analytics-panel">
+    <div class="card-body py-3">
+        <form method="GET" action="{{ url_for('main.attendance_summary') }}" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label fw-bold small text-muted">Select Class:</label>
+                <select class="form-select border-primary" name="class_id" onchange="this.form.submit()">
+                    {% for c in classes %}
+                    <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label fw-bold small text-muted">Start Date:</label>
+                <input type="date" class="form-control" name="start_date" value="{{ start_date }}" onchange="this.form.submit()">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label fw-bold small text-muted">End Date:</label>
+                <input type="date" class="form-control" name="end_date" value="{{ end_date }}" onchange="this.form.submit()">
+            </div>
+            <div class="col-md-2">
+                <a href="{{ url_for('main.attendance_summary', class_id=selected_class_id) }}" class="btn btn-outline-secondary w-100">
+                    <i class="fas fa-undo me-1"></i> Reset
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if matrix_data and dates_list and stats %}
+<!-- KPI Summary Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card shadow-sm border-0 border-start border-primary border-4 h-100">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-muted small fw-bold text-uppercase">Total Students</div>
+                        <div class="fs-4 fw-bold text-dark">{{ stats.total_students }}</div>
+                    </div>
+                    <div class="bg-primary bg-opacity-10 text-primary rounded-circle p-3">
+                        <i class="fas fa-user-graduate fa-lg"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card shadow-sm border-0 border-start border-info border-4 h-100">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-muted small fw-bold text-uppercase">Class Avg Rate</div>
+                        <div class="fs-4 fw-bold {% if stats.avg_percentage >= 85 %}text-success{% elif stats.avg_percentage >= 75 %}text-warning{% else %}text-danger{% endif %}">
+                            {{ stats.avg_percentage }}%
+                        </div>
+                    </div>
+                    <div class="bg-info bg-opacity-10 text-info rounded-circle p-3">
+                        <i class="fas fa-chart-line fa-lg"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card shadow-sm border-0 border-start border-success border-4 h-100">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-muted small fw-bold text-uppercase">100% Attendance</div>
+                        <div class="fs-4 fw-bold text-success">{{ stats.perfect_count }}</div>
+                    </div>
+                    <div class="bg-success bg-opacity-10 text-success rounded-circle p-3">
+                        <i class="fas fa-award fa-lg"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card shadow-sm border-0 border-start border-danger border-4 h-100">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-muted small fw-bold text-uppercase">At Risk (&lt; 75%)</div>
+                        <div class="fs-4 fw-bold {% if stats.at_risk_count > 0 %}text-danger{% else %}text-muted{% endif %}">
+                            {{ stats.at_risk_count }}
+                        </div>
+                    </div>
+                    <div class="bg-danger bg-opacity-10 text-danger rounded-circle p-3">
+                        <i class="fas fa-exclamation-triangle fa-lg"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Matrix Table -->
+<div class="card shadow-sm border-0 table-panel">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="fw-bold text-dark">
+            <i class="fas fa-table me-2 text-primary"></i>Attendance Ledger
+            {% if dates_list %}
+            <span class="badge bg-light text-muted border ms-2">{{ dates_list|length }} days recorded</span>
+            {% endif %}
+        </div>
+        {% if matrix_data and dates_list %}
+        <div>
+            <button type="button" class="btn btn-sm btn-outline-danger" id="atRiskFilterBtn" onclick="toggleAtRiskFilter(this)">
+                <i class="fas fa-filter me-1"></i> Show At-Risk Only (&lt; 75%)
+                {% if stats and stats.at_risk_count > 0 %}
+                <span class="badge bg-danger text-white ms-1">{{ stats.at_risk_count }}</span>
+                {% endif %}
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="card-body table-responsive p-0">
+        {% if matrix_data and dates_list %}
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light text-nowrap text-center">
+                <tr>
+                    <th class="py-3" style="width: 50px;">Sr</th>
+                    <th class="py-3 text-start">Roll No</th>
+                    <th class="py-3 text-start">Student Name</th>
+                    <th class="py-3 text-start">Father Name</th>
+                    {% for d in dates_list %}
+                    <th class="py-3 px-3">{{ d.strftime('%d/%m') }}</th>
+                    {% endfor %}
+                    <th class="py-3 summary-stat-head summary-present-head">Present</th>
+                    <th class="py-3 summary-stat-head summary-absent-head">Absent</th>
+                    <th class="py-3 summary-stat-head summary-late-head">Late</th>
+                    <th class="py-3 summary-stat-head summary-rate-head">Rate</th>
+                </tr>
+            </thead>
+            <tbody id="attendanceMatrixBody">
+                {% for row in matrix_data %}
+                <tr data-at-risk="{{ 'true' if row.is_at_risk else 'false' }}">
+                    <td class="text-center text-muted fw-bold">{{ row.sr }}</td>
+                    <td class="font-monospace fw-bold text-primary">{{ row.student.roll_number }}</td>
+                    <td class="fw-bold text-dark">{{ row.student.student_name }}</td>
+                    <td class="text-muted small">{{ row.student.father_name }}</td>
+                    
+                    {% for d in dates_list %}
+                    {% set status = row.daily_status.get(d, '—') %}
+                    <td class="text-center text-nowrap">
+                        <span class="badge 
+                            {% if status == '—' %}bg-light text-muted
+                            {% elif 'Present' in status %}bg-success
+                            {% elif status == 'Absent' %}bg-danger
+                            {% elif status == 'Late' %}bg-warning text-dark
+                            {% elif status == 'Leave' %}bg-secondary
+                            {% else %}bg-light text-dark{% endif %} 
+                            px-2 py-1" style="font-size: 0.75rem;">
+                            {% if status == 'Present' %}P
+                            {% elif status == 'Absent' %}A
+                            {% elif status == 'Late' %}L
+                            {% elif status == 'Leave' %}LV
+                            {% else %}—
+                            {% endif %}
+                        </span>
+                    </td>
+                    {% endfor %}
+                    
+                    <td class="text-center fw-bold summary-stat-cell summary-present-cell">{{ row.p_count }}</td>
+                    <td class="text-center fw-bold summary-stat-cell summary-absent-cell">{{ row.a_count }}</td>
+                    <td class="text-center fw-bold summary-stat-cell summary-late-cell">{{ row.l_count }}</td>
+                    <td class="text-center fw-bold summary-stat-cell summary-rate-cell">
+                        {% if row.percentage < 75 and dates_list %}
+                            <span class="badge bg-danger px-2 py-1 shadow-sm" title="Attendance below 75% — Chronic Absenteeism Risk">
+                                <i class="fas fa-exclamation-circle me-1"></i>{{ row.percentage }}%
+                            </span>
+                        {% elif row.percentage < 85 and dates_list %}
+                            <span class="badge bg-warning text-dark px-2 py-1">
+                                {{ row.percentage }}%
+                            </span>
+                        {% elif dates_list %}
+                            <span class="badge bg-success px-2 py-1">
+                                {{ row.percentage }}%
+                            </span>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">No attendance logs found for this class and date range.</h5>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Legend Footer -->
+<div class="mt-3 text-muted small d-flex flex-wrap gap-3 align-items-center">
+    <span><strong>Legend:</strong></span>
+    <span><span class="badge bg-success px-2">P</span> Present</span>
+    <span><span class="badge bg-danger px-2">A</span> Absent</span>
+    <span><span class="badge bg-warning text-dark px-2">L</span> Late</span>
+    <span><span class="badge bg-secondary px-2">LV</span> Leave</span>
+    <span><span class="badge bg-light border text-muted px-2">—</span> Not taken</span>
+    <span class="ms-md-auto text-danger fw-bold"><i class="fas fa-exclamation-circle me-1"></i> Red badge (&lt; 75%) indicates Chronic Absenteeism</span>
+</div>
+
+<script>
+function toggleAtRiskFilter(btn) {
+    const isCurrentlyActive = btn.classList.contains('active');
+    const rows = document.querySelectorAll('#attendanceMatrixBody tr[data-at-risk]');
+    
+    if (!isCurrentlyActive) {
+        btn.classList.add('active', 'btn-danger');
+        btn.classList.remove('btn-outline-danger');
+        btn.innerHTML = '<i class="fas fa-eye me-1"></i> Show All Students';
+        rows.forEach(r => {
+            r.style.display = (r.getAttribute('data-at-risk') === 'true') ? '' : 'none';
+        });
+    } else {
+        btn.classList.remove('active', 'btn-danger');
+        btn.classList.add('btn-outline-danger');
+        btn.innerHTML = '<i class="fas fa-filter me-1"></i> Show At-Risk Only (&lt; 75%)' + 
+            ('{% if stats and stats.at_risk_count > 0 %} <span class="badge bg-danger text-white ms-1">{{ stats.at_risk_count }}</span>{% endif %}');
+        rows.forEach(r => {
+            r.style.display = '';
+        });
+    }
+}
+</script>
+{% endblock %}
