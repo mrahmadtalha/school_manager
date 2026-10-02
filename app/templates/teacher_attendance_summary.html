@@ -49,6 +49,7 @@
                     <th class="py-3 bg-success text-white">Present</th>
                     <th class="py-3 bg-danger text-white">Absent</th>
                     <th class="py-3 bg-warning text-dark">Late</th>
+                    <th class="py-3 bg-warning-subtle text-dark">Late min</th>
                     <th class="py-3 bg-secondary text-white">%</th>
                 </tr>
             </thead>
@@ -62,7 +63,11 @@
                     
                     {% for d in dates_list %}
                     {% set status = row.daily_status.get(d, '—') %}
+                    {% set late_minutes = row.daily_late_minutes.get(d) %}
                     <td class="text-center text-nowrap">
+                        {% if status == 'Late' and late_minutes is not none %}
+                        <span class="badge bg-warning text-dark" title="Late arrival: {{ late_minutes }} minutes">Late · {{ late_minutes }}m</span>
+                        {% else %}
                         <span class="badge 
                             {% if status == '—' %}bg-light text-muted
                             {% elif 'Present' in status %}bg-success
@@ -73,11 +78,13 @@
                             px-2 py-1">
                             {{ status.lower() }}
                         </span>
+                        {% endif %}
                     </td>
                     {% endfor %}
                     <td class="text-center fw-bold text-success bg-light">{{ row.p_count }}</td>
                     <td class="text-center fw-bold text-danger bg-light">{{ row.a_count }}</td>
                     <td class="text-center fw-bold text-warning bg-light">{{ row.l_count }}</td>
+                    <td class="text-center fw-bold text-dark bg-light">{{ row.total_late_minutes }}</td>
                     <td class="text-center fw-bold text-primary bg-light">{{ row.percentage }}%</td>
                 </tr>
                 {% endfor %}

@@ -16,8 +16,8 @@
     }
     .report-stat {
         border-radius: 18px;
-        padding: 18px 14px;
-        min-height: 110px;
+        padding: 16px 12px;
+        min-height: 104px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -25,12 +25,12 @@
         border: 1px solid rgba(148, 163, 184, 0.2);
     }
     .report-stat .value {
-        font-size: 2rem;
+        font-size: 1.7rem;
         font-weight: 800;
-        line-height: 1;
+        line-height: 1.1;
     }
     .report-stat .label {
-        font-size: 0.76rem;
+        font-size: 0.72rem;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         opacity: 0.8;
@@ -68,21 +68,51 @@
         color: #1d4ed8;
         font-weight: 800;
     }
+    .profile-tabs .nav-link {
+        font-weight: 700;
+        color: #475569;
+        border-radius: 999px;
+        padding: 0.45rem 1.1rem;
+    }
+    .profile-tabs .nav-link.active {
+        background: #0f172a;
+        color: #fff;
+    }
+    .medal { display: inline-block; padding: 0.25rem 0.6rem; border-radius: 999px; color: #fff; font-weight: 700; font-size: 0.75rem; }
 </style>
 
 <div class="student-report-shell">
+    {% set status_colors = {'enrolled': 'success', 'slc_issued': 'warning', 'graduated': 'info', 'struck_off': 'danger'} %}
     <div class="report-hero d-flex justify-content-between flex-wrap align-items-center gap-3">
         <div>
-            <p class="mb-2 text-white-50 text-uppercase small fw-semibold">Student report</p>
-            <h1 class="h2 fw-bold text-white mb-1"><i class="fas fa-user-check me-2"></i>{{ student.student_name }}</h1>
-            <div class="small text-white-50 mt-2">Roll No: {{ student.roll_number }} | Class: {{ student.class_info.name if student.class_info else 'N/A' }}</div>
+            <p class="mb-2 text-white-50 text-uppercase small fw-semibold">Student Profile Hub</p>
+            <h1 class="h2 fw-bold text-white mb-2"><i class="fas fa-user-check me-2"></i>{{ student.student_name }}</h1>
+            <div class="d-flex flex-wrap gap-2 align-items-center small">
+                <span class="badge bg-light text-dark">Class: {{ student.class_info.name if student.class_info else 'N/A' }}{% if student.section_info %} · {{ student.section_info.name }}{% endif %}</span>
+                <span class="badge bg-light text-dark">Roll {{ student.roll_number }}</span>
+                <span class="badge bg-{{ status_colors.get(student.status, 'secondary') }}">
+                    {{ {'enrolled': 'Enrolled', 'slc_issued': 'SLC Issued', 'graduated': 'Graduated', 'struck_off': 'Struck Off'}.get(student.status, student.status) }}
+                </span>
+                {% if student.date_of_birth %}<span class="text-white-50">DOB: {{ student.date_of_birth.strftime('%d %b %Y') }}</span>{% endif %}
+                {% if student.admission_number %}<span class="text-white-50">Adm #: {{ student.admission_number }}</span>{% endif %}
+            </div>
         </div>
-        <div class="btn-group">
-            <a class="btn btn-light btn-sm" href="{{ url_for('main.student_report_pdf', id=student.id) }}" target="_blank">
-                <i class="fas fa-file-pdf me-1"></i> Download Result Card
+        <div class="d-flex flex-wrap gap-2">
+            {% if student.guardian_phone %}
+            <a class="btn btn-light btn-sm" href="tel:{{ student.guardian_phone }}" title="Call guardian">
+                <i class="fas fa-phone me-1"></i> Call
+            </a>
+            {% endif %}
+            {% if wa_link %}
+            <a class="btn btn-success btn-sm" href="{{ wa_link }}" target="_blank" rel="noopener" title="WhatsApp guardian">
+                <i class="fab fa-whatsapp me-1"></i> WhatsApp
+            </a>
+            {% endif %}
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.student_transcript_pdf', id=student.id) }}" target="_blank">
+                <i class="fas fa-scroll me-1"></i> Transcript
             </a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.student_history', id=student.id) }}">
-                <i class="fas fa-clock-rotate-left me-1"></i> Change History
+                <i class="fas fa-clock-rotate-left me-1"></i> History
             </a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.students_list') }}">
                 <i class="fas fa-arrow-left me-1"></i> Back
@@ -90,133 +120,431 @@
         </div>
     </div>
 
+    <!-- Quick stats -->
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="report-stat bg-white">
                 <div>
-                    <div class="value text-primary">{{ summary.overall_percentage }}%</div>
-                    <div class="label text-muted">Overall</div>
+                    <div class="value text-primary">{{ summary.attendance_pct }}%</div>
+                    <div class="label text-muted">Attendance</div>
+                    <div class="small text-muted">{{ summary.present_count }}/{{ summary.attendance_total }} days</div>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="report-stat bg-white">
                 <div>
-                    <div class="value text-success">{{ summary.overall_grade }}</div>
-                    <div class="label text-muted">Grade</div>
+                    {% if dues and dues > 0 %}
+                    <div class="value text-danger">Rs {{ '{:,.0f}'.format(dues) }}</div>
+                    <div class="label text-muted">Pending Dues</div>
+                    <div class="small text-danger">Outstanding balance</div>
+                    {% else %}
+                    <div class="value text-success"><i class="fas fa-circle-check"></i></div>
+                    <div class="label text-muted">Fee Dues</div>
+                    <div class="small text-success">Cleared</div>
+                    {% endif %}
                 </div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="report-stat bg-white">
                 <div>
-                    <div class="value text-warning">{{ summary.present_count }}</div>
-                    <div class="label text-muted">Present</div>
+                    {% if term_results %}
+                    <div class="value text-warning">{{ term_results[0].row.position }}</div>
+                    <div class="label text-muted">Latest Position</div>
+                    <div class="small text-muted">{{ term_results[0].exam.exam_type }} · {{ term_results[0].row.grade }}</div>
+                    {% else %}
+                    <div class="value text-muted">—</div>
+                    <div class="label text-muted">Latest Position</div>
+                    <div class="small text-muted">No term exams yet</div>
+                    {% endif %}
                 </div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="report-stat bg-white">
                 <div>
-                    <div class="value text-danger">{{ summary.absent_count }}</div>
-                    <div class="label text-muted">Absent</div>
+                    <div class="value text-info">{{ summary.overall_percentage }}%</div>
+                    <div class="label text-muted">Overall (all marks)</div>
+                    <div class="small text-muted">Grade {{ summary.overall_grade }}</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="row g-4">
-        <div class="col-lg-4">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-primary text-white">
-                    <h6 class="mb-0">Student Profile</h6>
+    <!-- Tabs -->
+    <ul class="nav nav-pills profile-tabs gap-2 mb-3" id="profileTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tab-overview" type="button">
+                <i class="fas fa-id-badge me-1"></i>Overview
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-attendance" type="button">
+                <i class="fas fa-calendar-check me-1"></i>Attendance
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-results" type="button">
+                <i class="fas fa-award me-1"></i>Results
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-fees" type="button">
+                <i class="fas fa-wallet me-1"></i>Fees
+                {% if dues and dues > 0 %}<span class="badge bg-danger ms-1">{{ '{:,.0f}'.format(dues) }}</span>{% endif %}
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-documents" type="button">
+                <i class="fas fa-folder-open me-1"></i>Documents
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- ============ OVERVIEW ============ -->
+        <div class="tab-pane fade show active" id="tab-overview">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header bg-primary text-white"><h6 class="mb-0"><i class="fas fa-id-card me-2"></i>Identity</h6></div>
+                        <div class="card-body">
+                            <div class="row g-3 small">
+                                <div class="col-6"><strong>Father Name:</strong><br>{{ student.father_name }}</div>
+                                <div class="col-6"><strong>Guardian Phone:</strong><br>
+                                    {% if student.guardian_phone %}
+                                    {{ student.guardian_phone }}
+                                    {% if wa_link %}<a class="ms-1 text-success" href="{{ wa_link }}" target="_blank" rel="noopener" title="WhatsApp"><i class="fab fa-whatsapp"></i></a>{% endif %}
+                                    {% else %}—{% endif %}
+                                </div>
+                                <div class="col-6"><strong>Date of Birth:</strong><br>{{ student.date_of_birth.strftime('%d %b %Y') if student.date_of_birth else '—' }}</div>
+                                <div class="col-6"><strong>Gender:</strong><br>{{ student.gender or '—' }}</div>
+                                <div class="col-6"><strong>Admission No:</strong><br>{{ student.admission_number or '—' }}</div>
+                                <div class="col-6"><strong>Admission Date:</strong><br>{{ student.admission_date.strftime('%d %b %Y') if student.admission_date else '—' }}</div>
+                                <div class="col-6"><strong>Monthly Fee:</strong><br>PKR {{ '{:,.0f}'.format(student.monthly_fee or 0) }}</div>
+                                <div class="col-6"><strong>Best Test:</strong><br>{{ summary.best_test }}</div>
+                                <div class="col-12"><strong>Address:</strong><br>{{ student.address }}</div>
+                                {% if not student.is_active %}
+                                <div class="col-12">
+                                    <div class="alert alert-secondary mb-0 py-2">
+                                        <strong>Left school</strong> — {{ {'slc_issued': 'SLC Issued', 'graduated': 'Graduated', 'struck_off': 'Struck Off'}.get(student.status, student.status) }}
+                                        {% if student.leaving_date %}on {{ student.leaving_date.strftime('%d %b %Y') }}{% endif %}
+                                        {% if student.leaving_reason %}<br><span class="text-muted">{{ student.leaving_reason }}</span>{% endif %}
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <div class="mb-3"><strong>Father Name:</strong><br>{{ student.father_name }}</div>
-                    <div class="mb-3"><strong>Guardian Phone:</strong><br>{{ student.guardian_phone }}</div>
-                    <div class="mb-3"><strong>Address:</strong><br>{{ student.address }}</div>
-                    <div class="mb-3"><strong>Monthly Fee:</strong><br>PKR {{ student.monthly_fee or 0 }}</div>
-                    <div class="mb-3"><strong>Best Test:</strong><br>{{ summary.best_test }}</div>
+                <div class="col-lg-7">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header bg-info text-dark"><h6 class="mb-0"><i class="fas fa-layer-group me-2"></i>Enrollment History</h6></div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-striped align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th class="ps-3">Session</th>
+                                            <th>Class</th>
+                                            <th>Section</th>
+                                            <th>Roll</th>
+                                            <th>Period</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for e in enrollments %}
+                                        <tr>
+                                            <td class="ps-3">{{ e.session_label or '—' }}</td>
+                                            <td class="fw-bold">{{ e.class_name or '—' }}</td>
+                                            <td>{{ e.section_name or '—' }}</td>
+                                            <td>{{ e.roll_number if e.roll_number is not none else '—' }}</td>
+                                            <td class="text-muted small">
+                                                {{ e.start_date.strftime('%d %b %Y') if e.start_date else '—' }}
+                                                &rarr;
+                                                {% if e.end_date %}{{ e.end_date.strftime('%d %b %Y') }}{% else %}<span class="badge bg-success">Present</span>{% endif %}
+                                            </td>
+                                        </tr>
+                                        {% else %}
+                                        <tr><td colspan="5" class="text-center text-muted py-4">No enrollment history yet.</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="col-lg-8">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-success text-white">
-                    <h6 class="mb-0">Attendance History</h6>
-                </div>
+        <!-- ============ ATTENDANCE ============ -->
+        <div class="tab-pane fade" id="tab-attendance">
+            <div class="row g-3 mb-3">
+                <div class="col-6 col-md-3"><div class="report-stat bg-white"><div><div class="value text-success">{{ summary.present_count }}</div><div class="label text-muted">Present</div></div></div></div>
+                <div class="col-6 col-md-3"><div class="report-stat bg-white"><div><div class="value text-danger">{{ summary.absent_count }}</div><div class="label text-muted">Absent</div></div></div></div>
+                <div class="col-6 col-md-3"><div class="report-stat bg-white"><div><div class="value text-warning">{{ summary.late_count }}</div><div class="label text-muted">Late</div></div></div></div>
+                <div class="col-6 col-md-3"><div class="report-stat bg-white"><div><div class="value text-secondary">{{ summary.leave_count }}</div><div class="label text-muted">Leave</div></div></div></div>
+            </div>
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-success text-white"><h6 class="mb-0"><i class="fas fa-calendar-check me-2"></i>Attendance History ({{ summary.attendance_total }} records)</h6></div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-<table class="table table-striped mb-0 align-middle">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Status</th>
-                                <th>Late Time</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for item in attendance_records %}
-                            <tr>
-                                <td>{{ item.date }}</td>
-                                <td>
-                                    <span class="status-pill {% if item.status == 'Present' %}bg-success text-white{% elif item.status == 'Absent' %}bg-danger text-white{% elif item.status == 'Late' %}bg-warning text-dark{% else %}bg-secondary text-white{% endif %}">
-                                        {{ item.status }}
-                                    </span>
-                                </td>
-                                <td>{{ item.late_time or '—' }}</td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="3" class="text-center text-muted py-4">No attendance records available.</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-</div>
+                        <table class="table table-striped mb-0 align-middle">
+                            <thead>
+                                <tr>
+                                    <th class="ps-3">Date</th>
+                                    <th>Status</th>
+                                    <th>Check-in / Late</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in attendance_records %}
+                                <tr>
+                                    <td class="ps-3">{{ item.date }}</td>
+                                    <td>
+                                        <span class="status-pill {% if item.status == 'Present' %}bg-success text-white{% elif item.status == 'Absent' %}bg-danger text-white{% elif item.status == 'Late' %}bg-warning text-dark{% else %}bg-secondary text-white{% endif %}">
+                                            {{ item.status }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if item.late_time %}<span class="badge bg-light text-dark border">{{ item.late_time }}</span>{% else %}—{% endif %}
+                                        {% if item.status == 'Late' and item.late_minutes is not none %}<span class="badge bg-warning text-dark ms-1">Late by {{ item.late_minutes }} min</span>{% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="3" class="text-center text-muted py-4">No attendance records available.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="card border-0 shadow-sm mt-4">
-        <div class="card-header bg-dark text-white">
-            <h6 class="mb-0">Result Card</h6>
+        <!-- ============ RESULTS ============ -->
+        <div class="tab-pane fade" id="tab-results">
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-dark text-white"><h6 class="mb-0"><i class="fas fa-award me-2"></i>Term Exam Results</h6></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="ps-3">Examination</th>
+                                    <th>Type</th>
+                                    <th>Date</th>
+                                    <th>Total</th>
+                                    <th>%</th>
+                                    <th>Grade</th>
+                                    <th>Position</th>
+                                    {% if current_user.is_admin %}<th class="text-center">Card</th>{% endif %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for tr in term_results %}
+                                <tr>
+                                    <td class="ps-3 fw-bold">{{ tr.exam.name }}</td>
+                                    <td>{{ tr.exam.exam_type }}</td>
+                                    <td class="small text-muted">{{ tr.exam.start_date.strftime('%d %b %Y') if tr.exam.start_date else '—' }}</td>
+                                    <td>{{ '%g'|format(tr.row.total_obt) }}/{{ tr.total_max|int }}</td>
+                                    <td>{{ tr.row.pct }}%</td>
+                                    <td><span class="grade-badge">{{ tr.row.grade }}</span></td>
+                                    <td>
+                                        {% if tr.row.rank == 1 %}<span class="medal" style="background:#d4af37;">🥇 {{ tr.row.position }}</span>
+                                        {% elif tr.row.rank == 2 %}<span class="medal" style="background:#9ca3af;">🥈 {{ tr.row.position }}</span>
+                                        {% elif tr.row.rank == 3 %}<span class="medal" style="background:#cd7f32;">🥉 {{ tr.row.position }}</span>
+                                        {% else %}<span class="text-muted">{{ tr.row.position }}</span>{% endif %}
+                                    </td>
+                                    {% if current_user.is_admin %}
+                                    <td class="text-center">
+                                        <a class="btn btn-sm btn-outline-danger" target="_blank"
+                                           href="{{ url_for('main.examinations_result_card', id=tr.exam.id, student_id=student.id) }}" title="Report card PDF">
+                                            <i class="fas fa-file-pdf"></i>
+                                        </a>
+                                    </td>
+                                    {% endif %}
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="8" class="text-center text-muted py-4">No term exam results yet.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="fas fa-file-alt me-2"></i>Result Card — All Marks</h6>
+                    <div class="d-flex gap-2">
+                        <a class="btn btn-light btn-sm" href="{{ url_for('main.student_report_pdf', id=student.id) }}" target="_blank">
+                            <i class="fas fa-file-pdf me-1"></i> Download PDF
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body p-0 report-table">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="ps-3">Test</th>
+                                    <th>Type</th>
+                                    <th>Subject</th>
+                                    <th>Date</th>
+                                    <th>Obtained</th>
+                                    <th>Percentage</th>
+                                    <th>Grade</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for mark in marks %}
+                                <tr>
+                                    <td class="ps-3">{{ mark.test_info.test_title if mark.test_info else 'N/A' }}</td>
+                                    <td>{{ mark.test_info.test_type if mark.test_info else 'N/A' }}</td>
+                                    <td>{{ mark.test_info.subject_info.name if mark.test_info and mark.test_info.subject_info else 'N/A' }}</td>
+                                    <td>{{ mark.test_info.test_date if mark.test_info else 'N/A' }}</td>
+                                    <td>{{ mark.marks_obtained }}</td>
+                                    <td>{{ mark.percentage if mark.percentage is not none else '—' }}%</td>
+                                    <td><span class="grade-badge">{{ mark.grade or '—' }}</span></td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="7" class="text-center text-muted py-4">No test results yet.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="card-body p-0 report-table">
-            <div class="table-responsive">
-<table class="table table-hover align-middle mb-0">
-                <thead>
-                    <tr>
-                        <th>Test</th>
-                        <th>Type</th>
-                        <th>Subject</th>
-                        <th>Date</th>
-                        <th>Obtained</th>
-                        <th>Percentage</th>
-                        <th>Grade</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for mark in marks %}
-                    <tr>
-                        <td>{{ mark.test_info.test_title if mark.test_info else 'N/A' }}</td>
-                        <td>{{ mark.test_info.test_type if mark.test_info else 'N/A' }}</td>
-                        <td>{{ mark.test_info.subject_info.name if mark.test_info and mark.test_info.subject_info else 'N/A' }}</td>
-                        <td>{{ mark.test_info.test_date if mark.test_info else 'N/A' }}</td>
-                        <td>{{ mark.marks_obtained }}</td>
-                        <td>{{ mark.percentage if mark.percentage is not none else '—' }}%</td>
-                        <td><span class="grade-badge">{{ mark.grade or '—' }}</span></td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="7" class="text-center text-muted py-4">No test results yet.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-</div>
+
+        <!-- ============ FEES ============ -->
+        <div class="tab-pane fade" id="tab-fees">
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="report-stat bg-white h-100">
+                        <div>
+                            {% if dues and dues > 0 %}
+                            <div class="value text-danger">Rs {{ '{:,.0f}'.format(dues) }}</div>
+                            <div class="label text-muted">Pending Dues</div>
+                            {% else %}
+                            <div class="value text-success">Cleared</div>
+                            <div class="label text-muted">Fee Dues</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="report-stat bg-white h-100">
+                        <div>
+                            <div class="value text-primary">Rs {{ '{:,.0f}'.format(student.monthly_fee or 0) }}</div>
+                            <div class="label text-muted">Monthly Fee</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm h-100"><div class="card-body d-flex flex-column justify-content-center gap-2">
+                        <a class="btn btn-primary btn-sm" href="{{ url_for('main.fee_student_ledger', student_id=student.id) }}">
+                            <i class="fas fa-book me-1"></i> Open Full Fee Ledger
+                        </a>
+                        <a class="btn btn-outline-success btn-sm" href="{{ url_for('main.fees_list') }}">
+                            <i class="fas fa-cash-register me-1"></i> Receive Payment (Fees page)
+                        </a>
+                    </div></div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-warning text-dark"><h6 class="mb-0"><i class="fas fa-receipt me-2"></i>Recent Fee Months</h6></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="ps-3">Month</th>
+                                    <th class="text-end">Due</th>
+                                    <th class="text-end">Paid</th>
+                                    <th class="text-end">Balance</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for rec in fee_recent %}
+                                <tr>
+                                    <td class="ps-3 fw-bold">{{ rec.month_year }}</td>
+                                    <td class="text-end">{{ '{:,.0f}'.format(rec.amount_due or 0) }}</td>
+                                    <td class="text-end text-success">{{ '{:,.0f}'.format(rec.amount_paid or 0) }}</td>
+                                    <td class="text-end {{ 'text-danger fw-bold' if (rec.balance or 0) > 0 else 'text-muted' }}">{{ '{:,.0f}'.format(rec.balance or 0) }}</td>
+                                    <td>
+                                        {% if rec.status == 'Paid' %}<span class="badge bg-success">Paid</span>
+                                        {% elif rec.status == 'Partial' %}<span class="badge bg-warning text-dark">Partial</span>
+                                        {% else %}<span class="badge bg-danger">{{ rec.status or 'Pending' }}</span>{% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="5" class="text-center text-muted py-4">No fee records yet.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============ DOCUMENTS ============ -->
+        <div class="tab-pane fade" id="tab-documents">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-dark text-white"><h6 class="mb-0"><i class="fas fa-folder-open me-2"></i>Documents &amp; Certificates</h6></div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <a class="btn btn-outline-primary w-100 py-3" href="{{ url_for('main.export_student_id_cards', student_id=student.id) }}">
+                                <i class="fas fa-id-card me-1"></i> Student ID Card (PDF)
+                            </a>
+                        </div>
+                        <div class="col-md-4">
+                            <a class="btn btn-outline-danger w-100 py-3" href="{{ url_for('main.student_report_pdf', id=student.id) }}" target="_blank">
+                                <i class="fas fa-file-pdf me-1"></i> Result Card (PDF)
+                            </a>
+                        </div>
+                        <div class="col-md-4">
+                            <a class="btn btn-outline-dark w-100 py-3" href="{{ url_for('main.student_transcript_pdf', id=student.id) }}" target="_blank">
+                                <i class="fas fa-scroll me-1"></i> Academic Transcript (PDF)
+                            </a>
+                        </div>
+                        <div class="col-md-4">
+                            <a class="btn btn-outline-warning w-100 py-3" href="{{ url_for('main.documents_hub', student_id=student.id, cert_type='leaving') }}">
+                                <i class="fas fa-door-open me-1"></i> School Leaving Certificate
+                            </a>
+                        </div>
+                        <div class="col-md-4">
+                            <a class="btn btn-outline-secondary w-100 py-3" href="{{ url_for('main.documents_hub', student_id=student.id, cert_type='character') }}">
+                                <i class="fas fa-certificate me-1"></i> Character Certificate
+                            </a>
+                        </div>
+                        <div class="col-md-4">
+                            <a class="btn btn-outline-secondary w-100 py-3" href="{{ url_for('main.documents_hub', student_id=student.id, cert_type='bonafide') }}">
+                                <i class="fas fa-certificate me-1"></i> Bonafide / Studentship
+                            </a>
+                        </div>
+                        <div class="col-md-4">
+                            <a class="btn btn-outline-success w-100 py-3" href="{{ url_for('main.documents_hub', student_id=student.id, cert_type='merit') }}">
+                                <i class="fas fa-medal me-1"></i> Merit / Achievement Certificate
+                            </a>
+                        </div>
+                        <div class="col-md-4">
+                            <a class="btn btn-outline-info w-100 py-3" href="{{ url_for('main.student_history', id=student.id) }}">
+                                <i class="fas fa-clock-rotate-left me-1"></i> Full Change History
+                            </a>
+                        </div>
+                        <div class="col-md-4">
+                            <a class="btn btn-outline-primary w-100 py-3" href="{{ url_for('main.documents_hub', student_id=student.id) }}">
+                                <i class="fas fa-folder-open me-1"></i> Open Documents Hub
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

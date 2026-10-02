@@ -3,7 +3,7 @@
 from datetime import date
 
 from app.database import db
-from app.models import MessageQueue, StudentModel
+from app.models import AutomationSettings, MessageQueue, StudentModel
 from app.services import fee_ledger
 from app.services import fee_reminders as reminders
 
@@ -84,6 +84,20 @@ def test_no_phone_is_skipped(app, seed):
         summary = reminders.queue_fee_reminders(MONTH)
         assert summary['queued'] == 0
         assert summary['skipped_no_phone'] == 1
+        assert MessageQueue.query.filter_by(trigger='fee_reminder').count() == 0
+
+
+def test_reminders_respect_automation_setting(app, seed):
+    _add_debt(app, 'Ali Khan', charge=2000, paid=800)
+    with app.app_context():
+        AutomationSettings.get().notify_fee_reminders = False
+        db.session.commit()
+        try:
+            reminders.queue_fee_reminders(MONTH)
+        except ValueError as error:
+            assert 'turned off' in str(error)
+        else:
+            raise AssertionError('Disabled fee reminders should not be queued.')
         assert MessageQueue.query.filter_by(trigger='fee_reminder').count() == 0
 
 

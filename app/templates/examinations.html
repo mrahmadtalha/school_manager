@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Assessment center</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-file-signature text-primary me-2"></i>Term Examinations</h1>
+        <p class="text-muted small mb-0">Official term exams with schedules, marks and results.</p>
+    </div>
+    {% if current_user.is_admin %}
+    <div class="btn-toolbar gap-2">
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTermExamModal">
+            <i class="fas fa-plus me-1"></i> New Term Exam
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+{% set exam_active = 'examinations' %}
+{% include '_exam_module_switch.html' %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show">
+      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endfor %}{% endif %}
+{% endwith %}
+
+<!-- Filters -->
+<div class="card border-0 bg-light shadow-sm mb-4">
+    <div class="card-body py-2">
+        <form method="GET" action="{{ url_for('main.examinations_page') }}" class="row g-2 align-items-center">
+            <div class="col-auto"><label class="col-form-label small fw-bold text-muted">Class:</label></div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" name="class_id" onchange="this.form.submit()">
+                    <option value="">— All Classes —</option>
+                    {% for c in classes %}
+                    <option value="{{ c.id }}" {% if filters.class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
+                    <option value="">— All Status —</option>
+                    {% for st in statuses %}
+                    <option value="{{ st }}" {% if filters.status == st %}selected{% endif %}>{{ st }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="session" onchange="this.form.submit()">
+                    <option value="">— All Sessions —</option>
+                    {% for s in sessions %}
+                    <option value="{{ s }}" {% if filters.session == s %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto ms-auto text-muted small">
+                <span>{{ exam_rows|length }}</span> term exam(s)
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Exam cards -->
+{% if exam_rows %}
+<div class="row g-3">
+    {% for row in exam_rows %}
+    {% set exam = row.exam %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-header bg-{{ row.color }} bg-opacity-10 border-0 pb-0 pt-3 px-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <span class="badge bg-{{ row.color }} mb-2">{{ exam.exam_type }}</span>
+                    <span class="badge bg-{{ row.status_color }}">{{ exam.status }}</span>
+                </div>
+                <h6 class="fw-bold text-dark mb-2">{{ exam.name }}</h6>
+            </div>
+            <div class="card-body pt-2 pb-3">
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <div class="small text-muted">Class</div>
+                        <div class="fw-bold text-dark"><i class="fas fa-chalkboard text-secondary me-1"></i>{{ exam.class_info.name if exam.class_info else 'N/A' }}</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="small text-muted">Session</div>
+                        <div class="fw-bold text-dark"><i class="fas fa-calendar-week text-secondary me-1"></i>{{ exam.session_label or '—' }}</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="small text-muted">Dates</div>
+                        <div class="fw-bold text-dark">
+                            {% if exam.start_date %}{{ exam.start_date.strftime('%d %b') }}{% else %}—{% endif %}
+                            {% if exam.end_date %} – {{ exam.end_date.strftime('%d %b %Y') }}{% endif %}
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="small text-muted">Subjects · Total</div>
+                        <div class="fw-bold text-dark">{{ row.subject_count }} · {{ '{:,.0f}'.format(row.total_marks) }} marks</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    {% if row.progress_state == 'done' %}
+                    <span class="badge bg-success-subtle text-success-emphasis border"><i class="fas fa-circle-check me-1"></i>{{ row.progress_label }}</span>
+                    {% elif row.progress_state == 'partial' %}
+                    <span class="badge bg-warning-subtle text-warning-emphasis border"><i class="fas fa-hourglass-half me-1"></i>{{ row.progress_label }}</span>
+                    {% elif row.progress_state == 'none' %}
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis border">{{ row.progress_label }}</span>
+                    {% else %}
+                    <span class="badge bg-light text-muted border">{{ row.progress_label }}</span>
+                    {% endif %}
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('main.examinations_detail', id=exam.id) }}" class="btn btn-{{ row.color }} btn-sm flex-fill">
+                        <i class="fas fa-folder-open me-1"></i> Open
+                    </a>
+                    <a href="{{ url_for('main.enter_batch_marks', term_exam_id=exam.id) }}" class="btn btn-sm btn-outline-secondary" title="Enter marks">
+                        <i class="fas fa-edit"></i>
+                    </a>
+                    <a href="{{ url_for('main.examinations_date_sheet', id=exam.id) }}" class="btn btn-sm btn-outline-secondary" title="Date sheet">
+                        <i class="fas fa-print"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-5">
+    <i class="fas fa-file-signature fa-3x text-muted mb-3"></i>
+    <p class="text-muted fs-5">No term exams yet.{% if current_user.is_admin %} Click <strong>New Term Exam</strong> to schedule one.{% endif %}</p>
+</div>
+{% endif %}
+
+{% if current_user.is_admin %}
+<!-- Create Term Exam modal -->
+<div class="modal fade" id="addTermExamModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg overflow-hidden">
+            <form action="{{ url_for('main.examinations_create') }}" method="POST" id="addTermExamForm">
+                <div class="modal-header px-4 py-3 text-white" style="background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%); border: none;">
+                    <div>
+                        <p class="mb-1 small text-uppercase text-white-50 fw-bold" style="letter-spacing: 0.08em;">Term Examination</p>
+                        <h5 class="modal-title mb-0"><i class="fas fa-file-signature me-2"></i>New Term Exam</h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4 bg-light">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small text-muted">Exam Type</label>
+                            <select class="form-select" id="termExamTypeSelect" name="exam_type" required>
+                                {% for tt in create_types %}
+                                <option value="{{ tt.name }}">{{ tt.name }}{% if tt.default_marks %} (out of {{ '{:,.0f}'.format(tt.default_marks) }}){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small text-muted">Class</label>
+                            <select class="form-select" id="termClassSelect" name="class_id" required>
+                                {% for c in classes %}
+                                <option value="{{ c.id }}">{{ c.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small text-muted">Session</label>
+                            <input type="text" class="form-control" name="session_label" value="{{ current_session }}" maxlength="50">
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold small text-muted">Exam Name <span class="fw-normal">(leave blank for auto: “Type Examination — Class”)</span></label>
+                            <input type="text" class="form-control" name="name" maxlength="120" placeholder="e.g. Mid-Term Examination — Class 5">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small text-muted">Start Date</label>
+                            <input type="date" class="form-control" id="termStartDate" name="start_date" value="{{ today.isoformat() }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small text-muted">End Date</label>
+                            <input type="date" class="form-control" id="termEndDate" name="end_date">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small text-muted">Result Announcement (optional)</label>
+                            <input type="date" class="form-control" name="announce_date">
+                        </div>
+                        <div class="col-12 mt-2">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label fw-bold small text-muted mb-0">Date Sheet — Subjects, Dates, Times &amp; Rooms — <span id="teCounter">0 of 0 included</span></label>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="font-size:.75rem;" onclick="teSelectAll(true)">Select all</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="font-size:.75rem;" onclick="teSelectAll(false)">Select none</button>
+                                    <button type="button" class="btn btn-outline-primary btn-sm py-0" style="font-size:.75rem;" onclick="teUseStartDate()">Use start date for all</button>
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered mb-2">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th width="46px" class="text-center">Inc</th>
+                                            <th>Subject</th>
+                                            <th width="150px">Exam Date</th>
+                                            <th width="110px">Time</th>
+                                            <th width="130px">Room</th>
+                                            <th width="110px">Max Marks</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for s in subjects %}
+                                        <tr class="te-subject-row" data-class-id="{{ s.class_id }}" style="display:none;">
+                                            <td class="text-center align-middle">
+                                                <input class="form-check-input" type="checkbox" name="include_subject_{{ s.id }}" checked>
+                                            </td>
+                                            <td class="align-middle">{{ s.name }}</td>
+                                            <td><input type="date" class="form-control form-control-sm" name="exam_date_{{ s.id }}"></td>
+                                            <td><input type="time" class="form-control form-control-sm" name="exam_time_{{ s.id }}"></td>
+                                            <td><input type="text" class="form-control form-control-sm" name="exam_room_{{ s.id }}" maxlength="60" placeholder="e.g. Hall A"></td>
+                                            <td><input type="number" step="0.5" min="0.5" class="form-control form-control-sm" name="marks_{{ s.id }}" placeholder="100"></td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <span class="text-muted small">Blank dates fall back to the start date · blank marks fall back to the category default (or 100).</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer px-4 py-3 border-0 bg-white">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary px-4" id="createTermExamBtn">
+                        <i class="fas fa-save me-1"></i> Create Term Exam
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var classSelect = document.getElementById('termClassSelect');
+
+    function teVisibleRows() {
+        return Array.prototype.filter.call(
+            document.querySelectorAll('.te-subject-row'),
+            function (row) { return row.style.display !== 'none'; });
+    }
+
+    function teUpdateCounter() {
+        var rows = teVisibleRows();
+        var checked = rows.filter(function (row) {
+            var box = row.querySelector('input[type="checkbox"]');
+            return box && box.checked;
+        }).length;
+        var el = document.getElementById('teCounter');
+        if (el) el.textContent = checked + ' of ' + rows.length + ' included';
+    }
+
+    function teFilterSubjects() {
+        if (!classSelect) return;
+        var cid = classSelect.value;
+        document.querySelectorAll('.te-subject-row').forEach(function (row) {
+            row.style.display = (row.getAttribute('data-class-id') === cid) ? '' : 'none';
+        });
+        teUpdateCounter();
+    }
+
+    if (classSelect) { classSelect.addEventListener('change', teFilterSubjects); teFilterSubjects(); }
+    document.querySelectorAll('.te-subject-row input[type="checkbox"]').forEach(function (box) {
+        box.addEventListener('change', teUpdateCounter);
+    });
+
+    var addForm = document.getElementById('addTermExamForm');
+    if (addForm) {
+        addForm.addEventListener('submit', function () {
+            var btn = document.getElementById('createTermExamBtn');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Creating…'; }
+            setTimeout(function () {
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save me-1"></i> Create Term Exam'; }
+            }, 4000);
+        });
+    }
+});
+
+function teSelectAll(checked) {
+    document.querySelectorAll('.te-subject-row').forEach(function (row) {
+        if (row.style.display === 'none') return;
+        var box = row.querySelector('input[type="checkbox"]');
+        if (box) box.checked = checked;
+    });
+    var counter = document.getElementById('teCounter');
+    if (counter) {
+        var rows = Array.prototype.filter.call(document.querySelectorAll('.te-subject-row'),
+            function (row) { return row.style.display !== 'none'; });
+        counter.textContent = (checked ? rows.length : 0) + ' of ' + rows.length + ' included';
+    }
+}
+
+function teUseStartDate() {
+    var start = document.getElementById('termStartDate').value;
+    if (!start) { alert('Pick a start date first.'); return; }
+    document.querySelectorAll('.te-subject-row').forEach(function (row) {
+        if (row.style.display === 'none') return;
+        var dateInput = row.querySelector('input[type="date"]');
+        if (dateInput && !dateInput.value) dateInput.value = start;
+    });
+}
+</script>
+{% endblock %}

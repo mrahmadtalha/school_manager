@@ -1,7 +1,8 @@
 import io
 import csv
+import re
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 from flask import (
     render_template, 
     request, 
@@ -29,9 +30,27 @@ from app.models import (
     FeeTransaction,
     MessageQueue,
     GuardianStudentLink,
+    StudentRemark,
+    StudentEnrollment,
 )
+from app.models.student import STUDENT_STATUSES, STUDENT_STATUS_LABELS
 from app.routes import main
+from sqlalchemy import func
 from app.services.audit import log_action, serialize
+from app.models.settings import calculate_grade, get_custom_fields
+from app.services.custom_fields import (
+    collect_custom_field_values,
+    has_custom_field_input,
+    missing_required_custom_fields,
+    prefixed_custom_values,
+    serialize_custom_field_values,
+)
+from app.services.id_documents import default_academic_session
+from app.services.enrollments import (
+    close_open_enrollment,
+    start_enrollment,
+    sync_open_enrollment,
+)
 from app.services.roll_numbers import (
     FIRST_ROLL_NUMBER,
     apply_shift_plan,
@@ -41,31 +60,99 @@ from app.services.roll_numbers import (
 )
 
 
-def delete_student_permanently(student):
-    # Bulk deletes bypass the object-level audit hook, so record the purge
-    # explicitly before the related rows disappear.
-    log_action('delete', entity_type='StudentModel', entity_id=student.id,
-               summary=(f'Student "{student.student_name}" ({student.roll_number}) and all '
-                        'related attendance, marks and fee records permanently deleted'),
-               before=serialize(student))
-
-    StudentMarkModel.query.filter_by(student_id=student.id).delete(synchronize_session=False)
-    FeeRecordModel.query.filter_by(student_id=student.id).delete(synchronize_session=False)
-    FeeTransaction.query.filter_by(student_id=student.id).delete(synchronize_session=False)
-    AttendanceModel.query.filter_by(target_type='student', target_id=student.id).delete(synchronize_session=False)
-
-    for message in MessageQueue.query.filter_by(student_id=student.id).all():
-        for delivery_log in message.delivery_logs:
-            db.session.delete(delivery_log)
-        db.session.delete(message)
-
-    GuardianStudentLink.query.filter_by(student_id=student.id).delete(synchronize_session=False)
-
-    db.session.delete(student)
-    db.session.commit()
-
 # STUDENT MANAGEMENT & EXPORTS
 # ==========================================
+def _student_filters():
+    """Read the students list filters from the request."""
+    gender = (request.args.get('gender') or '').strip()
+    if gender not in ('Male', 'Female', 'Other'):
+        gender = ''
+    status = (request.args.get('status') or '').strip()
+    if status not in ('all', 'enrolled', 'slc_issued', 'graduated', 'struck_off'):
+        status = ''
+    return {
+        'class_id': request.args.get('class_id', type=int),
+        'section_id': request.args.get('section_id', type=int),
+        'search': (request.args.get('search') or '').strip(),
+        'gender': gender,
+        'status': status,
+        'has_dues': request.args.get('has_dues') == '1',
+    }
+
+
+def _apply_student_filters(query, filters, dues_ids=None):
+    if filters['class_id']:
+        query = query.filter(StudentModel.class_id == filters['class_id'])
+    if filters['section_id']:
+        query = query.filter(StudentModel.section_id == filters['section_id'])
+    if filters['gender']:
+        query = query.filter(StudentModel.gender == filters['gender'])
+    status = filters['status']
+    if status in ('slc_issued', 'graduated', 'struck_off'):
+        query = query.filter(StudentModel.status == status)
+    elif status == 'enrolled':
+        query = query.filter(StudentModel.is_active.is_(True),
+                             StudentModel.status == 'enrolled')
+    elif status == 'all':
+        pass
+    else:
+        query = query.filter(StudentModel.is_active.is_(True))
+    if filters['search']:
+        like = '%' + filters['search'] + '%'
+        query = query.filter(db.or_(
+            StudentModel.student_name.ilike(like),
+            db.cast(StudentModel.roll_number, db.String).ilike(like),
+            StudentModel.father_name.ilike(like),
+            StudentModel.guardian_phone.ilike(like),
+        ))
+    if filters['has_dues'] and dues_ids is not None:
+        query = query.filter(StudentModel.id.in_(dues_ids or [-1]))
+    return query
+
+
+def _dues_balances(student_ids=None):
+    """Live pending dues per student from the fee records (max(0, due - paid))."""
+    query = db.session.query(
+        FeeRecordModel.student_id,
+        func.coalesce(func.sum(func.max(
+            FeeRecordModel.amount_due - FeeRecordModel.amount_paid, 0)), 0.0))
+    if student_ids is not None:
+        if not student_ids:
+            return {}
+        query = query.filter(FeeRecordModel.student_id.in_(student_ids))
+    query = query.group_by(FeeRecordModel.student_id)
+    return {sid: round(float(value or 0), 2) for sid, value in query.all()}
+
+
+def _parse_gender(value):
+    value = (value or '').strip()
+    return value if value in ('Male', 'Female', 'Other') else None
+
+
+def _parse_optional_date(value):
+    value = (value or '').strip()
+    if not value:
+        return None
+
+
+def _student_sponsor_values(form, existing=None):
+    sponsor_type = (form.get('sponsor_type') or
+                    (existing.sponsor_type if existing else 'Father') or 'Father').strip()
+    if sponsor_type not in {'Father', 'Guardian'}:
+        raise ValueError('Choose Father or Guardian as the sponsor type.')
+
+    raw_cnic = form.get('sponsor_cnic')
+    sponsor_cnic = (raw_cnic if raw_cnic is not None else
+                    (existing.sponsor_cnic if existing else '')).strip()
+    if sponsor_cnic and not re.fullmatch(r'\d{5}-\d{7}-\d', sponsor_cnic):
+        raise ValueError('CNIC must use the format 12345-1234567-1.')
+    return sponsor_type, sponsor_cnic or None
+    try:
+        return datetime.strptime(value, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
 def _student_form_context():
     """Render context shared by the students page and the cascade preview."""
     classes = ClassModel.query.all()
@@ -81,6 +168,11 @@ def _student_form_context():
         'sections_by_class': sections_by_class,
         'next_roll_by_class': next_roll_map(),
         'first_roll_number': FIRST_ROLL_NUMBER,
+        'student_custom_fields': get_custom_fields('student'),
+        'class_fee_by_class': {str(class_obj.id): class_obj.monthly_fee
+                               for class_obj in classes
+                               if class_obj.monthly_fee is not None},
+        'today': date.today().isoformat(),
     }
 
 
@@ -91,52 +183,90 @@ def _render_students_page(**extra):
     of a redirect.
     """
     context = _student_form_context()
+    listed = (StudentModel.query.filter_by(is_active=True)
+              .order_by(StudentModel.student_name).all())
     context.update({
-        'students': StudentModel.query.filter_by(is_active=True)
-                                      .order_by(StudentModel.student_name).all(),
+        'students': listed,
         'sections': [],
         'selected_class': None,
         'selected_section': None,
         'search': '',
+        'dues_map': _dues_balances([s.id for s in listed]),
+        'selected_gender': '',
+        'selected_status': '',
+        'has_dues': False,
     })
     context.update(extra)
     return render_template('students.html', **context)
 
 
+def _student_fee_values(payload):
+    """Return (class_fee, net_fee, discount_type, discount_value) for a student form.
+
+    The posted fee is the class/base fee (auto-filled, editable); the discount
+    is applied server-side to compute the persisted net monthly fee.
+    """
+    fee_input = (payload.get('monthly_fee') or '').strip()
+    class_fee = float(fee_input) if fee_input else None
+    if class_fee is not None and class_fee < 0:
+        raise ValueError('Fee cannot be negative.')
+
+    discount_type = (payload.get('discount_type') or '').strip().lower()
+    if discount_type not in ('percentage', 'fixed'):
+        discount_type = None
+
+    raw_value = (payload.get('discount_value') or '').strip()
+    try:
+        discount_value = float(raw_value) if raw_value else 0.0
+    except ValueError:
+        raise ValueError('Please enter a valid discount value.')
+    if discount_value < 0:
+        discount_value = 0.0
+
+    if class_fee is None or discount_value <= 0 or discount_type is None:
+        return class_fee, class_fee, None, None
+
+    if discount_type == 'percentage':
+        net_fee = class_fee * (1.0 - discount_value / 100.0)
+    else:
+        net_fee = class_fee - discount_value
+    return class_fee, round(max(0.0, net_fee), 2), discount_type, round(discount_value, 2)
+
+
 @main.route('/students')
 @main.route('/students/')
 def students_list():
-    class_id = request.args.get('class_id', type=int)
-    section_id = request.args.get('section_id', type=int)
-    search = request.args.get('search', '').strip()
-
-    query = StudentModel.query.filter_by(is_active=True)
-    if class_id:
-        query = query.filter_by(class_id=class_id)
-    if section_id:
-        query = query.filter_by(section_id=section_id)
-    if search:
-        like = f'%{search}%'
-        query = query.filter(
-            db.or_(
-                StudentModel.student_name.ilike(like),
-                db.cast(StudentModel.roll_number, db.String).ilike(like),
-                StudentModel.father_name.ilike(like),
-                StudentModel.guardian_phone.ilike(like)
-            )
-        )
+    filters = _student_filters()
+    dues_ids = None
+    if filters['has_dues']:
+        dues_ids = [sid for sid, bal in _dues_balances().items() if bal > 0]
+    query = _apply_student_filters(StudentModel.query, filters, dues_ids=dues_ids)
     students = query.order_by(StudentModel.student_name).all()
-    sections = SectionModel.query.filter_by(class_id=class_id).all() if class_id else []
-    return render_template('students.html', students=students,
-                           sections=sections,
-                           selected_class=class_id, selected_section=section_id, search=search,
-                           **_student_form_context())
+    dues_map = _dues_balances([s.id for s in students]) if students else {}
+    sections = (SectionModel.query.filter_by(class_id=filters['class_id']).all()
+                if filters['class_id'] else [])
+    return render_template(
+        'students.html', students=students, sections=sections,
+        dues_map=dues_map,
+        selected_class=filters['class_id'], selected_section=filters['section_id'],
+        search=filters['search'], selected_gender=filters['gender'],
+        selected_status=filters['status'], has_dues=filters['has_dues'],
+        **_student_form_context())
 
 @main.route('/students/add', methods=['POST'])
 def add_student():
     payload = {field: (request.form.get(field) or '') for field in (
         'roll_number', 'student_name', 'father_name', 'guardian_phone',
-        'address', 'class_id', 'section_id', 'monthly_fee')}
+        'address', 'class_id', 'section_id', 'monthly_fee',
+        'discount_type', 'discount_value', 'date_of_birth',
+        'gender', 'admission_number', 'admission_date', 'sponsor_type', 'sponsor_cnic')}
+    custom_field_definitions = get_custom_fields('student')
+    missing_fields = missing_required_custom_fields(request.form, custom_field_definitions)
+    if missing_fields:
+        flash('Complete required custom fields: ' + ', '.join(missing_fields), 'danger')
+        return redirect(url_for('main.students_list'))
+    custom_values = collect_custom_field_values(request.form, custom_field_definitions)
+    payload.update(prefixed_custom_values(custom_values))
     try:
         roll_number = parse_roll_number(payload['roll_number'])
         class_id = int(payload['class_id'])
@@ -144,9 +274,14 @@ def add_student():
         if class_obj is None:
             raise ValueError('Please choose a valid class.')
 
-        fee_input = payload['monthly_fee']
-        monthly_fee = float(fee_input) if fee_input.strip() else None
+        class_fee, monthly_fee, discount_type, discount_value = _student_fee_values(payload)
+        sponsor_type, sponsor_cnic = _student_sponsor_values(request.form)
         section_id = int(payload['section_id']) if payload['section_id'] else None
+        if section_id:
+            with db.session.no_autoflush:
+                section_obj = db.session.get(SectionModel, section_id)
+            if section_obj is None or section_obj.class_id != class_id:
+                raise ValueError('The selected section does not belong to the chosen class.')
 
         conflict = StudentModel.query.filter_by(class_id=class_id,
                                                 roll_number=roll_number).first()
@@ -168,13 +303,25 @@ def add_student():
             roll_number=roll_number,
             student_name=payload['student_name'],
             father_name=payload['father_name'],
+            sponsor_type=sponsor_type,
+            sponsor_cnic=sponsor_cnic,
             guardian_phone=payload['guardian_phone'],
             address=payload['address'],
+            date_of_birth=_parse_optional_date(payload['date_of_birth']),
+            gender=_parse_gender(payload['gender']),
+            admission_number=(payload['admission_number'].strip()[:40] or None),
+            admission_date=_parse_optional_date(payload['admission_date']),
             monthly_fee=monthly_fee,
             class_id=class_id,
             section_id=section_id,
+            class_fee=class_fee,
+            discount_type=discount_type,
+            discount_value=discount_value,
+            custom_fields_data=serialize_custom_field_values(custom_values),
         )
         db.session.add(new_student)
+        start_enrollment(new_student, reason='enrolled', start_date=date.today(),
+                         end_previous=False)
         db.session.commit()
         flash('Student added successfully!', 'success')
     except ValueError as error:
@@ -192,9 +339,19 @@ def add_student():
 @main.route('/students/edit/<int:id>', methods=['POST'])
 def edit_student(id):
     student = StudentModel.query.get_or_404(id)
+    previous_class_id = student.class_id
     payload = {field: (request.form.get(field) or '') for field in (
         'roll_number', 'student_name', 'father_name', 'guardian_phone',
-        'address', 'class_id', 'section_id', 'monthly_fee')}
+        'address', 'class_id', 'section_id', 'monthly_fee',
+        'discount_type', 'discount_value', 'date_of_birth',
+        'gender', 'admission_number', 'admission_date', 'sponsor_type', 'sponsor_cnic')}
+    custom_field_definitions = get_custom_fields('student')
+    missing_fields = missing_required_custom_fields(request.form, custom_field_definitions)
+    if missing_fields:
+        flash('Complete required custom fields: ' + ', '.join(missing_fields), 'danger')
+        return redirect(url_for('main.students_list'))
+    custom_values = collect_custom_field_values(request.form, custom_field_definitions)
+    payload.update(prefixed_custom_values(custom_values))
     try:
         roll_number = parse_roll_number(payload['roll_number'])
         class_id = int(payload['class_id'])
@@ -231,11 +388,41 @@ def edit_student(id):
         student.father_name = payload['father_name']
         student.guardian_phone = payload['guardian_phone']
         student.address = payload['address']
+        student.date_of_birth = _parse_optional_date(payload['date_of_birth'])
+        student.gender = _parse_gender(payload['gender'])
+        student.admission_number = payload['admission_number'].strip()[:40] or None
+        student.admission_date = _parse_optional_date(payload['admission_date'])
         student.class_id = class_id
-        student.section_id = int(payload['section_id']) if payload['section_id'] else None
+        section_id = int(payload['section_id']) if payload['section_id'] else None
+        if section_id:
+            with db.session.no_autoflush:
+                section_obj = db.session.get(SectionModel, section_id)
+            if section_obj is None or section_obj.class_id != class_id:
+                raise ValueError('The selected section does not belong to the chosen class.')
+        student.section_id = section_id
 
         fee_input = payload['monthly_fee']
-        student.monthly_fee = float(fee_input) if fee_input.strip() else None
+        sponsor_type, sponsor_cnic = _student_sponsor_values(request.form, existing=student)
+        student.sponsor_type = sponsor_type
+        student.sponsor_cnic = sponsor_cnic
+        if 'discount_type' in request.form or 'discount_value' in request.form:
+            class_fee, monthly_fee, discount_type, discount_value = _student_fee_values(payload)
+            student.class_fee = class_fee
+            student.discount_type = discount_type
+            student.discount_value = discount_value
+            student.monthly_fee = monthly_fee
+        else:
+            # Legacy submission without discount inputs: keep the stored discount
+            # data and treat the posted fee as the net monthly fee (previous behavior).
+            student.monthly_fee = float(fee_input) if fee_input.strip() else None
+
+        if has_custom_field_input(request.form):
+            student.custom_fields_data = serialize_custom_field_values(custom_values)
+
+        if previous_class_id != student.class_id:
+            start_enrollment(student, reason='class_change', start_date=date.today())
+        else:
+            sync_open_enrollment(student)
 
         db.session.commit()
         flash('Student record updated successfully!', 'success')
@@ -251,31 +438,84 @@ def edit_student(id):
 
     return redirect(url_for('main.students_list'))
 
+@main.route('/students/<int:id>/transfer-section', methods=['POST'])
+def transfer_student_section(id):
+    student = StudentModel.query.get_or_404(id)
+    raw = (request.form.get('to_section_id') or '').strip()
+    try:
+        target_id = int(raw) if raw else None
+    except ValueError:
+        target_id = None
+
+    target = None
+    if target_id:
+        with db.session.no_autoflush:
+            target = db.session.get(SectionModel, target_id)
+        if target is None or target.class_id != student.class_id:
+            flash('That section is not available for this student\'s class.', 'danger')
+            return redirect(url_for('main.classes_list'))
+
+    new_section_id = target.id if target else None
+    if student.section_id == new_section_id:
+        flash('Student is already in that section.', 'info')
+        return redirect(url_for('main.classes_list'))
+
+    student.section_id = new_section_id
+    db.session.commit()
+    destination = target.name if target else 'unassigned'
+    flash(f'{student.student_name} moved to section {destination}.', 'success')
+    return redirect(url_for('main.classes_list'))
+
+
 @main.route('/students/delete/<int:id>', methods=['POST'])
 def delete_student(id):
     try:
         student = StudentModel.query.get_or_404(id)
+        status = (request.form.get('status') or 'slc_issued').strip().lower()
+        if status not in STUDENT_STATUSES or status == 'enrolled':
+            status = 'slc_issued'
+        reason = (request.form.get('leaving_reason') or '').strip() or None
+        date_str = (request.form.get('leaving_date') or '').strip()
+        leaving_date = None
+        if date_str:
+            try:
+                leaving_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                leaving_date = None
+
         student.is_active = False
+        student.status = status
+        student.leaving_reason = reason
+        student.leaving_date = leaving_date or date.today()
+        close_open_enrollment(student, end_date=student.leaving_date)
         db.session.commit()
-        flash(f'Student "{student.student_name}" moved to archive safely.', 'warning')
+        label = STUDENT_STATUS_LABELS.get(status, status)
+        flash(f'"{student.student_name}" archived with status: {label}.', 'warning')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error deleting student: {str(e)}', 'danger')
+        flash(f'Error archiving student: {str(e)}', 'danger')
 
     return redirect(url_for('main.students_list'))
 
 @main.route('/students/archived')
 def archived_students_list():
-    archived = StudentModel.query.filter_by(is_active=False).all()
-    return render_template('archived_students.html', students=archived)
+    archived = (StudentModel.query.filter_by(is_active=False)
+                .order_by(StudentModel.leaving_date.desc(),
+                          StudentModel.student_name).all())
+    return render_template('archived_students.html', students=archived,
+                           status_labels=STUDENT_STATUS_LABELS,
+                           default_session=default_academic_session(),
+                           today=date.today().isoformat())
 
 @main.route('/students/restore/<int:id>', methods=['POST'])
 def restore_student(id):
     try:
         student = StudentModel.query.get_or_404(id)
         student.is_active = True
+        student.status = 'enrolled'
+        start_enrollment(student, reason='restored', start_date=date.today())
         db.session.commit()
-        flash(f'Student "{student.student_name}" has been restored successfully!', 'success')
+        flash(f'Student "{student.student_name}" has been restored to Enrolled status.', 'success')
     except IntegrityError:
         db.session.rollback()
         flash(f'Cannot restore: Roll No {student.roll_number} is used by another student '
@@ -286,24 +526,13 @@ def restore_student(id):
 
     return redirect(url_for('main.archived_students_list'))
 
-@main.route('/students/permanent-delete/<int:id>', methods=['POST'])
-def permanent_delete_student(id):
-    try:
-        student = StudentModel.query.get_or_404(id)
-        if student.is_active:
-            flash('Error: Cannot permanently delete an active student.', 'danger')
-            return redirect(url_for('main.students_list'))
-
-        delete_student_permanently(student)
-        flash(f'Student "{student.student_name}" has been permanently deleted from the system.', 'danger')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error permanent deleting student: {str(e)}', 'danger')
-
-    return redirect(url_for('main.archived_students_list'))
-
 @main.route('/students/<int:id>/report')
 def student_detailed_report(id):
+    from app.models import TermExam
+    from app.routes.term_exams import build_tabulation
+    from app.services.fee_ledger import _month_sort_key
+    from app.services.whatsapp_automation import normalize_whatsapp_number
+
     student = StudentModel.query.get_or_404(id)
     attendance_records = AttendanceModel.query.filter_by(target_type='student', target_id=student.id).order_by(AttendanceModel.date.desc()).all()
     marks = StudentMarkModel.query.filter_by(student_id=student.id).join(TestModel).order_by(TestModel.test_date.desc()).all()
@@ -313,24 +542,13 @@ def student_detailed_report(id):
     absent_count = sum(1 for r in attendance_records if r.status == 'Absent')
     late_count = sum(1 for r in attendance_records if r.status == 'Late')
     leave_count = sum(1 for r in attendance_records if r.status == 'Leave')
+    attendance_pct = round(present_count * 100.0 / total_records, 1) if total_records else 0.0
 
     overall_percentage = 0.0
     if marks:
         percentages = [m.percentage for m in marks if m.percentage is not None]
         overall_percentage = round(sum(percentages) / len(percentages), 1) if percentages else 0.0
-
-    if overall_percentage >= 85:
-        overall_grade = 'A+'
-    elif overall_percentage >= 70:
-        overall_grade = 'A'
-    elif overall_percentage >= 60:
-        overall_grade = 'B'
-    elif overall_percentage >= 50:
-        overall_grade = 'C'
-    elif overall_percentage >= 40:
-        overall_grade = 'D'
-    else:
-        overall_grade = 'F'
+    overall_grade = calculate_grade(overall_percentage)
 
     summary = {
         'attendance_total': total_records,
@@ -338,16 +556,46 @@ def student_detailed_report(id):
         'absent_count': absent_count,
         'late_count': late_count,
         'leave_count': leave_count,
+        'attendance_pct': attendance_pct,
         'overall_percentage': overall_percentage,
         'overall_grade': overall_grade,
         'best_test': max(marks, key=lambda m: (m.percentage or 0)).test_info.test_title if marks else 'N/A',
     }
 
+    enrollments = (StudentEnrollment.query.filter_by(student_id=student.id)
+                   .order_by(StudentEnrollment.id).all())
+
+    # Live dues + recent fee ledger (newest first)
+    dues = _dues_balances([student.id]).get(student.id, 0.0)
+    fee_rows = FeeRecordModel.query.filter_by(student_id=student.id).all()
+    fee_rows.sort(key=lambda record: _month_sort_key(record.month_year), reverse=True)
+    fee_recent = fee_rows[:12]
+
+    # Recent term-exam results with positions (latest 4 exams of the class)
+    term_results = []
+    exams = (TermExam.query.filter_by(class_id=student.class_id)
+             .order_by(TermExam.id.desc()).limit(4).all())
+    for exam in exams:
+        tests, rows, exam_summary = build_tabulation(exam)
+        row = next((r for r in rows if r['student'].id == student.id), None)
+        if row:
+            term_results.append({'exam': exam, 'row': row,
+                                 'total_max': exam_summary['total_max'],
+                                 'complete': exam_summary['complete']})
+
+    wa_digits = normalize_whatsapp_number(student.guardian_phone or '')
+    wa_link = ('https://wa.me/%s' % wa_digits) if wa_digits else None
+
     return render_template('student_report.html',
                            student=student,
                            attendance_records=attendance_records,
                            marks=marks,
-                           summary=summary)
+                           enrollments=enrollments,
+                           summary=summary,
+                           dues=dues,
+                           fee_recent=fee_recent,
+                           term_results=term_results,
+                           wa_link=wa_link)
 
 @main.route('/students/<int:id>/report/pdf')
 def student_report_pdf(id):
@@ -445,17 +693,44 @@ def student_report_pdf(id):
     output.seek(0)
     return send_file(output, mimetype='application/pdf', as_attachment=True, download_name=f'{student.roll_number}_{student.student_name}_result_card.pdf')
 
+@main.route('/students/<int:id>/transcript.pdf')
+def student_transcript_pdf(id):
+    student = StudentModel.query.get_or_404(id)
+    enrollments = (StudentEnrollment.query.filter_by(student_id=student.id)
+                   .order_by(StudentEnrollment.id).all())
+    marks = (StudentMarkModel.query.filter_by(student_id=student.id)
+             .join(TestModel).order_by(TestModel.test_date.asc()).all())
+
+    from flask import current_app
+    from app.services.transcripts import build_transcript_pdf
+
+    output = build_transcript_pdf(student, enrollments, marks, current_app.root_path)
+    return send_file(output, mimetype='application/pdf', as_attachment=True,
+                     download_name=f'transcript_{student.roll_number}_{student.student_name}.pdf')
+
 @main.route('/students/export/csv')
 def export_students_csv():
-    students = StudentModel.query.filter_by(is_active=True).all()
+    filters = _student_filters()
+    dues_ids = ([sid for sid, bal in _dues_balances().items() if bal > 0]
+                if filters['has_dues'] else None)
+    students = (_apply_student_filters(StudentModel.query, filters,
+                                       dues_ids=dues_ids)
+                .order_by(StudentModel.student_name).all())
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Roll Number', 'Student Name', 'Father Name', 'Class', 'Section', 'Guardian Phone', 'Address'])
+    writer.writerow(['Roll Number', 'Student Name', 'Father Name', 'Class', 'Section',
+                     'Gender', 'Date of Birth', 'Admission No', 'Admission Date',
+                     'Guardian Phone', 'Address', 'Status'])
     
     for s in students:
         class_name = s.class_info.name if s.class_info else 'N/A'
         section_name = s.section_info.name if s.section_info else 'N/A'
-        writer.writerow([s.roll_number, s.student_name, s.father_name, class_name, section_name, s.guardian_phone, s.address])
+        writer.writerow([
+            s.roll_number, s.student_name, s.father_name, class_name, section_name,
+            s.gender or '', s.date_of_birth.isoformat() if s.date_of_birth else '',
+            s.admission_number or '',
+            s.admission_date.isoformat() if s.admission_date else '',
+            s.guardian_phone, s.address, s.status])
     
     output.seek(0)
     return Response(output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment;filename=students_report.csv"})
@@ -481,15 +756,25 @@ def students_template_excel():
 
 @main.route('/students/export/excel')
 def export_students_excel():
-    students = StudentModel.query.filter_by(is_active=True).all()
+    filters = _student_filters()
+    dues_ids = ([sid for sid, bal in _dues_balances().items() if bal > 0]
+                if filters['has_dues'] else None)
+    students = (_apply_student_filters(StudentModel.query, filters,
+                                       dues_ids=dues_ids)
+                .order_by(StudentModel.student_name).all())
     data = [{
         'Roll Number': s.roll_number,
         'Student Name': s.student_name,
         'Father Name': s.father_name,
         'Class': s.class_info.name if s.class_info else 'N/A',
         'Section': s.section_info.name if s.section_info else 'N/A',
+        'Gender': s.gender or '',
+        'Date of Birth': s.date_of_birth.isoformat() if s.date_of_birth else '',
+        'Admission No': s.admission_number or '',
+        'Admission Date': s.admission_date.isoformat() if s.admission_date else '',
         'Guardian Phone': s.guardian_phone,
-        'Address': s.address
+        'Address': s.address,
+        'Status': s.status
     } for s in students]
     
     df = pd.DataFrame(data)
@@ -502,7 +787,12 @@ def export_students_excel():
 
 @main.route('/students/export/pdf')
 def export_students_pdf():
-    students = StudentModel.query.filter_by(is_active=True).all()
+    filters = _student_filters()
+    dues_ids = ([sid for sid, bal in _dues_balances().items() if bal > 0]
+                if filters['has_dues'] else None)
+    students = (_apply_student_filters(StudentModel.query, filters,
+                                       dues_ids=dues_ids)
+                .order_by(StudentModel.student_name).all())
     output = io.BytesIO()
     doc = SimpleDocTemplate(output, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     story = []
@@ -648,16 +938,6 @@ def restore_all_students():
     count = StudentModel.query.filter_by(is_active=False).update({'is_active': True})
     db.session.commit()
     flash(f'{count} student(s) restored successfully.', 'success')
-    return redirect(url_for('main.archived_students_list'))
-
-
-@main.route('/students/delete-all-permanent', methods=['POST'])
-def delete_all_students_permanent():
-    students = StudentModel.query.filter_by(is_active=False).all()
-    count = len(students)
-    for student in students:
-        delete_student_permanently(student)
-    flash(f'{count} student(s) permanently deleted.', 'danger')
     return redirect(url_for('main.archived_students_list'))
 
 

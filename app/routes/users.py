@@ -5,9 +5,10 @@ from flask_login import current_user
 
 from app.database import db
 from app.models import (ROLES, ROLE_ADMIN, ROLE_LABELS, AdminUser,
-                        GuardianStudentLink, StudentModel)
+                        GuardianStudentLink, StudentModel, TeacherModel)
 from app.routes import main
-from app.security import role_required
+from app.security import password_problem, role_required
+from app.services import audit as audit_service
 from app.services.audit import log_action
 
 
@@ -18,12 +19,32 @@ def _student_choices():
             .all())
 
 
+def _teacher_choices():
+    return (TeacherModel.query
+            .filter_by(is_active=True)
+            .order_by(TeacherModel.teacher_name)
+            .all())
+
+
 @main.route('/users')
 @role_required(ROLE_ADMIN)
 def users_list():
     users = AdminUser.query.order_by(AdminUser.id).all()
+    stats = {
+        'total': len(users),
+        'active': sum(1 for user in users if user.is_active),
+        'disabled': sum(1 for user in users if not user.is_active),
+        'admins': sum(1 for user in users if user.role == ROLE_ADMIN),
+        'teachers': sum(1 for user in users if user.role == 'teacher'),
+        'parents': sum(1 for user in users if user.role == 'parent'),
+        'owners': sum(1 for user in users if user.role == 'owner'),
+        'accountants': sum(1 for user in users if user.role == 'accountant'),
+    }
+    recent_user_activity = audit_service.query_logs(entity_type='AdminUser', limit=6)
     return render_template('users.html', users=users, roles=ROLES,
-                           role_labels=ROLE_LABELS, students=_student_choices())
+                           role_labels=ROLE_LABELS, students=_student_choices(),
+                           teachers=_teacher_choices(), stats=stats,
+                           recent_user_activity=recent_user_activity)
 
 
 @main.route('/users/create', methods=['POST'])
@@ -49,8 +70,9 @@ def create_user():
     if role not in ROLES:
         flash('Unknown role.', 'danger')
         return redirect(url_for('main.users_list'))
-    if len(password) < 8:
-        flash('Password must be at least 8 characters.', 'danger')
+    problem = password_problem(password)
+    if problem:
+        flash(problem, 'danger')
         return redirect(url_for('main.users_list'))
     if role != 'parent':
         requested_ids = []
@@ -68,7 +90,17 @@ def create_user():
         flash(f'Username "{username}" already exists.', 'danger')
         return redirect(url_for('main.users_list'))
 
+    teacher = None
+    if role == 'teacher':
+        teacher_id = request.form.get('teacher_id', type=int)
+        if teacher_id:
+            teacher = db.session.get(TeacherModel, teacher_id)
+            if teacher is None:
+                flash('The selected teacher record no longer exists.', 'danger')
+                return redirect(url_for('main.users_list'))
+
     user = AdminUser(username=username, role=role, full_name=full_name,
+                     teacher_id=teacher.id if teacher else None,
                      student_id=requested_ids[0] if requested_ids else None)
     user.set_password(password)
     db.session.add(user)
@@ -80,6 +112,7 @@ def create_user():
     log_action('user_admin', entity_type='AdminUser', entity_id=user.id,
                summary=f'Created user "{username}" with role {role}',
                after={'username': username, 'role': role,
+                      'teacher_id': user.teacher_id,
                       'student_id': user.student_id, 'student_ids': requested_ids})
     db.session.commit()
     flash(f'User "{username}" created.', 'success')
@@ -137,8 +170,9 @@ def reset_user_password(user_id):
         return redirect(url_for('main.users_list'))
 
     password = request.form.get('password') or ''
-    if len(password) < 8:
-        flash('Password must be at least 8 characters.', 'danger')
+    problem = password_problem(password)
+    if problem:
+        flash(problem, 'danger')
         return redirect(url_for('main.users_list'))
 
     user.set_password(password)
@@ -147,6 +181,72 @@ def reset_user_password(user_id):
                after={'password': 'reset'})
     db.session.commit()
     flash(f'Password reset for "{user.username}".', 'success')
+    return redirect(url_for('main.users_list'))
+
+
+@main.route('/users/<int:user_id>/edit', methods=['POST'])
+@role_required(ROLE_ADMIN)
+def edit_user(user_id):
+    """Update an account's profile, role and teacher link (self-lockout safe)."""
+    user = db.session.get(AdminUser, user_id)
+    if user is None:
+        flash('User not found.', 'danger')
+        return redirect(url_for('main.users_list'))
+
+    full_name = (request.form.get('full_name') or '').strip() or None
+    role = (request.form.get('role') or user.role).strip()
+    if role not in ROLES:
+        flash('Unknown role.', 'danger')
+        return redirect(url_for('main.users_list'))
+
+    # Self-lockout protection: an administrator can never demote themselves.
+    if user.id == current_user.id and role != user.role:
+        flash('You cannot change your own role - self-lockout protection.',
+              'warning')
+        return redirect(url_for('main.users_list'))
+
+    # At least one active administrator must always remain.
+    if user.role == ROLE_ADMIN and role != ROLE_ADMIN:
+        active_admins = AdminUser.query.filter_by(role=ROLE_ADMIN,
+                                                  is_active=True).count()
+        if active_admins <= 1:
+            flash('At least one active administrator must remain.', 'danger')
+            return redirect(url_for('main.users_list'))
+
+    teacher = None
+    if role == 'teacher':
+        teacher_id = request.form.get('teacher_id', type=int)
+        if teacher_id:
+            teacher = db.session.get(TeacherModel, teacher_id)
+            if teacher is None:
+                flash('The selected teacher record no longer exists.', 'danger')
+                return redirect(url_for('main.users_list'))
+
+    before = {'full_name': user.full_name, 'role': user.role,
+              'teacher_id': user.teacher_id}
+    user.full_name = full_name
+    user.role = role
+    user.teacher_id = teacher.id if teacher else None
+
+    changes = []
+    if before['role'] != user.role:
+        changes.append(f'role {before["role"]} -> {user.role}')
+    if before['teacher_id'] != user.teacher_id:
+        changes.append('teacher link updated')
+    if before['full_name'] != user.full_name:
+        changes.append('name updated')
+    summary = ('Updated user "%s"' % user.username) +               ((': ' + '; '.join(changes)) if changes else '')
+
+    log_action('user_admin', entity_type='AdminUser', entity_id=user.id,
+               summary=summary, before=before,
+               after={'full_name': user.full_name, 'role': user.role,
+                      'teacher_id': user.teacher_id})
+    db.session.commit()
+
+    note = ''
+    if user.role == 'parent' and not user.linked_students:
+        note = ' Link at least one child to this parent account.'
+    flash(f'User "{user.username}" updated.{note}', 'success')
     return redirect(url_for('main.users_list'))
 
 

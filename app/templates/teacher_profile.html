@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .teacher-profile-shell {
+        background: linear-gradient(135deg, #f8fafc 0%, #eef6ff 100%);
+        border-radius: 22px;
+        padding: 24px;
+        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+    }
+    .profile-hero {
+        background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%);
+        border-radius: 20px;
+        padding: 24px 26px;
+        color: white;
+        margin-bottom: 24px;
+    }
+    .profile-stat {
+        border-radius: 18px;
+        padding: 14px 10px;
+        text-align: center;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: #fff;
+        height: 100%;
+    }
+    .profile-stat .value { font-size: 1.45rem; font-weight: 800; line-height: 1.1; }
+    .profile-stat .label { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; }
+    .profile-tabs .nav-link { font-weight: 700; color: #475569; border-radius: 999px; padding: 0.45rem 1.1rem; }
+    .profile-tabs .nav-link.active { background: #0f172a; color: #fff; }
+    .info-label { color: #64748b; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .profile-table thead th {
+        background: #f1f5f9;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #475569;
+    }
+</style>
+
+<div class="teacher-profile-shell">
+    <div class="profile-hero d-flex justify-content-between flex-wrap align-items-center gap-3">
+        <div>
+            <p class="mb-2 text-white-50 text-uppercase small fw-semibold">Staff Profile Hub</p>
+            <h1 class="h2 fw-bold text-white mb-2"><i class="fas fa-chalkboard-teacher me-2"></i>{{ teacher.teacher_name }}</h1>
+            <div class="d-flex flex-wrap gap-2 align-items-center small">
+                <span class="badge bg-light text-dark">{{ teacher.teacher_id_str }}</span>
+                {% if teacher.designation %}<span class="badge bg-light text-dark">{{ teacher.designation }}</span>{% endif %}
+                {% if teacher.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Archived</span>{% endif %}
+                {% if teacher.cnic %}<span class="text-white-50">CNIC: {{ teacher.cnic }}</span>{% endif %}
+                <span class="text-white-50">Joined: {{ teacher.joining_date.strftime('%d %b %Y') if teacher.joining_date else 'N/A' }}</span>
+                <span class="text-white-50">Attendance (this month): {% if hero_rate is not none %}{{ '%.1f' | format(hero_rate) }}%{% else %}N/A{% endif %}</span>
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            {% if teacher.contact_number %}
+            <a class="btn btn-light btn-sm" href="tel:{{ teacher.contact_number }}" title="Call"><i class="fas fa-phone me-1"></i> Call</a>
+            {% endif %}
+            {% if wa_link %}
+            <a class="btn btn-success btn-sm" href="{{ wa_link }}" target="_blank" rel="noopener" title="WhatsApp"><i class="fab fa-whatsapp me-1"></i> WhatsApp</a>
+            {% endif %}
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.teachers_list') }}"><i class="fas fa-arrow-left me-1"></i> Back</a>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-pills profile-tabs gap-2 mb-3" id="teacherTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if tab == 'overview' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#pane-overview" type="button">
+                <i class="fas fa-id-badge me-1"></i>Overview
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if tab == 'assignments' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#pane-assignments" type="button">
+                <i class="fas fa-book-open me-1"></i>Assignments
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if tab == 'attendance' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#pane-attendance" type="button">
+                <i class="fas fa-calendar-check me-1"></i>Attendance
+            </button>
+        </li>
+        {% if current_user.is_admin %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if tab == 'payroll' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#pane-payroll" type="button">
+                <i class="fas fa-money-check-dollar me-1"></i>Payroll
+            </button>
+        </li>
+        {% endif %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if tab == 'documents' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#pane-documents" type="button">
+                <i class="fas fa-folder-open me-1"></i>Documents
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- Overview -->
+        <div class="tab-pane fade {% if tab == 'overview' %}show active{% endif %}" id="pane-overview">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h6 class="fw-bold text-uppercase text-muted small mb-3"><i class="fas fa-user me-1"></i>Identity</h6>
+                            <div class="row row-cols-1 row-cols-sm-2 g-3">
+                                <div><div class="info-label">Full Name</div><div class="fw-bold">{{ teacher.teacher_name }}</div></div>
+                                <div><div class="info-label">Teacher ID</div><div class="font-monospace fw-bold text-primary">{{ teacher.teacher_id_str }}</div></div>
+                                <div><div class="info-label">Designation</div><div>{{ teacher.designation or 'N/A' }}</div></div>
+                                <div><div class="info-label">Gender</div><div>{{ teacher.gender or 'N/A' }}</div></div>
+                                <div><div class="info-label">Qualification</div><div>{{ teacher.qualification or 'N/A' }}</div></div>
+                                <div><div class="info-label">CNIC</div><div>{{ teacher.cnic or 'N/A' }}</div></div>
+                                <div><div class="info-label">Date of Birth</div><div>{% if teacher.date_of_birth %}{{ teacher.date_of_birth.strftime('%d %b %Y') }}{% else %}N/A{% endif %}</div></div>
+                                <div><div class="info-label">Joining Date</div><div>{% if teacher.joining_date %}{{ teacher.joining_date.strftime('%d %b %Y') }}{% else %}N/A{% endif %}</div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h6 class="fw-bold text-uppercase text-muted small mb-3"><i class="fas fa-address-book me-1"></i>Contact &amp; Experience</h6>
+                            <div class="row row-cols-1 row-cols-sm-2 g-3">
+                                <div><div class="info-label">Phone</div><div>{{ teacher.contact_number or 'N/A' }}</div></div>
+                                <div><div class="info-label">Emergency Contact</div><div>{{ teacher.emergency_contact_number or 'N/A' }}</div></div>
+                                <div class="col-12"><div class="info-label">Address</div><div>{{ teacher.address or 'N/A' }}</div></div>
+                                <div><div class="info-label">Experience</div><div>{% if teacher.previous_experience_years is not none %}{{ teacher.previous_experience_years }} year(s){% else %}N/A{% endif %}</div></div>
+                                {% if current_user.is_admin %}
+                                <div><div class="info-label">Previous Salary</div><div>{% if teacher.previous_salary %}{{ '{:,.0f}'.format(teacher.previous_salary) }} PKR{% else %}N/A{% endif %}</div></div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Assignments -->
+        <div class="tab-pane fade {% if tab == 'assignments' %}show active{% endif %}" id="pane-assignments">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h6 class="fw-bold text-uppercase text-muted small mb-3"><i class="fas fa-book-open me-1"></i>Assigned Classes</h6>
+                            {% if assignments.classes %}
+                            <div class="d-flex flex-wrap gap-2">
+                                {% for c in assignments.classes %}
+                                <span class="badge bg-info text-dark">{{ c }}</span>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <p class="text-muted small mb-0">No classes assigned.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h6 class="fw-bold text-uppercase text-muted small mb-3"><i class="fas fa-book me-1"></i>Assigned Subjects</h6>
+                            {% if assignments.subjects %}
+                            <div class="d-flex flex-wrap gap-2">
+                                {% for s in assignments.subjects %}
+                                <span class="badge bg-light text-dark border">{{ s }}</span>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <p class="text-muted small mb-0">No subjects assigned.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="text-muted small mt-3 mb-0"><i class="fas fa-info-circle me-1"></i>Class and subject assignments are managed from the teacher edit form on the Teachers page.</p>
+        </div>
+
+        <!-- Attendance -->
+        <div class="tab-pane fade {% if tab == 'attendance' %}show active{% endif %}" id="pane-attendance">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <div class="fw-bold text-dark"><i class="fas fa-calendar-day me-1 text-primary"></i>{{ month_label }}</div>
+                <div class="btn-group btn-group-sm">
+                    <a class="btn btn-outline-secondary" href="{{ url_for('main.teacher_profile', id=teacher.id, month=prev_month, tab='attendance') }}"><i class="fas fa-chevron-left me-1"></i>Previous</a>
+                    {% if can_next %}
+                    <a class="btn btn-outline-secondary" href="{{ url_for('main.teacher_profile', id=teacher.id, month=next_month, tab='attendance') }}">Next<i class="fas fa-chevron-right ms-1"></i></a>
+                    {% else %}
+                    <button class="btn btn-outline-secondary" disabled>Next<i class="fas fa-chevron-right ms-1"></i></button>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-6 col-md"><div class="profile-stat"><div class="value text-success">{{ stats.present }}</div><div class="label">Present</div></div></div>
+                <div class="col-6 col-md"><div class="profile-stat"><div class="value text-danger">{{ stats.absent }}</div><div class="label">Absent</div></div></div>
+                <div class="col-6 col-md"><div class="profile-stat"><div class="value text-warning">{{ stats.late }}</div><div class="label">Late</div></div></div>
+                <div class="col-6 col-md"><div class="profile-stat"><div class="value text-secondary">{{ stats.leave }}</div><div class="label">Leave</div></div></div>
+                <div class="col-6 col-md"><div class="profile-stat"><div class="value text-primary">{% if stats.rate is not none %}{{ '%.1f' | format(stats.rate) }}%{% else %}N/A{% endif %}</div><div class="label">Rate</div></div></div>
+            </div>
+            <p class="text-muted small mb-2">Working days: <b>{{ stats.working_days }}</b> &middot; Days marked: <b>{{ stats.marked_days }}</b></p>
+            <div class="table-responsive">
+                <table class="table profile-table align-middle mb-0">
+                    <thead>
+                        <tr><th>Date</th><th>Day</th><th>Status</th><th>Check-in / Late</th><th class="text-end">Locked</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for r in att_records %}
+                        <tr>
+                            <td class="fw-bold">{{ r.date.strftime('%d %b %Y') }}</td>
+                            <td class="text-muted">{{ r.date.strftime('%a') }}</td>
+                            <td>
+                                {% if r.status == 'Present' %}<span class="badge bg-success">Present</span>
+                                {% elif r.status == 'Absent' %}<span class="badge bg-danger">Absent</span>
+                                {% elif r.status == 'Late' %}<span class="badge bg-warning text-dark">Late</span>
+                                {% elif r.status == 'Leave' %}<span class="badge bg-secondary">Leave</span>
+                                {% else %}<span class="badge bg-light text-dark">{{ r.status }}</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if r.late_time %}<span class="badge bg-light text-dark border">{{ r.late_time }}</span>{% else %}&mdash;{% endif %}
+                                {% if r.status == 'Late' and r.late_minutes is not none %}<span class="badge bg-warning text-dark ms-1">Late by {{ r.late_minutes }} min</span>{% endif %}
+                            </td>
+                            <td class="text-end">{% if r.is_locked %}<i class="fas fa-lock text-success" title="Locked"></i>{% else %}<i class="fas fa-lock-open text-muted"></i>{% endif %}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted py-4">No attendance marked for this month.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {% if current_user.is_admin %}
+        <!-- Payroll -->
+        <div class="tab-pane fade {% if tab == 'payroll' %}show active{% endif %}" id="pane-payroll">
+            <div class="table-responsive">
+                <table class="table profile-table align-middle mb-0">
+                    <thead>
+                        <tr><th>Month</th><th class="text-end">Base</th><th class="text-end">Bonus</th><th class="text-end">Deductions</th><th class="text-end">Net Salary</th><th>Status</th><th class="text-end">Payslip</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for row in payroll_rows %}
+                        <tr>
+                            <td class="fw-bold">{{ row.label }}</td>
+                            <td class="text-end">{{ '{:,.0f}'.format(row.record.base_salary) }}</td>
+                            <td class="text-end">{{ '{:,.0f}'.format(row.record.bonus) }}</td>
+                            <td class="text-end text-danger">{{ '{:,.0f}'.format(row.record.deductions) }}</td>
+                            <td class="text-end fw-bold text-success">Rs. {{ '{:,.0f}'.format(row.record.net_salary) }}</td>
+                            <td>
+                                {% if row.record.payment_status == 'Paid' %}<span class="badge bg-success">Paid</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
+                            </td>
+                            <td class="text-end">
+                                <a class="btn btn-sm btn-outline-dark" href="{{ url_for('main.payroll_payslip_pdf', id=row.record.id) }}" title="Payslip PDF"><i class="fas fa-file-invoice me-1"></i>PDF</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="text-center text-muted py-4">No payroll rows recorded yet for this teacher.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-muted small mt-3 mb-0"><i class="fas fa-info-circle me-1"></i>Generate and manage monthly salaries from the <a href="{{ url_for('main.payroll_page') }}">Payroll page</a>.</p>
+        </div>
+        {% endif %}
+
+        <!-- Documents -->
+        <div class="tab-pane fade {% if tab == 'documents' %}show active{% endif %}" id="pane-documents">
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h6 class="fw-bold text-uppercase text-muted small mb-3"><i class="fas fa-file-lines me-1"></i>Documents</h6>
+                            {% if teacher.is_active %}
+                            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('main.export_teacher_id_cards', teacher_id=teacher.id) }}">
+                                <i class="fas fa-id-card me-1"></i> Download ID Card
+                            </a>
+                            {% else %}
+                            <p class="text-muted small mb-0">ID cards are available for active staff only.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-7">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h6 class="fw-bold text-uppercase text-muted small mb-3"><i class="fas fa-certificate me-1"></i>Credentials</h6>
+                            <div class="d-flex justify-content-between border-bottom py-2"><span class="info-label">Qualification</span><span class="fw-bold">{{ teacher.qualification or 'N/A' }}</span></div>
+                            <div class="d-flex justify-content-between border-bottom py-2"><span class="info-label">Experience</span><span>{% if teacher.previous_experience_years is not none %}{{ teacher.previous_experience_years }} year(s){% else %}N/A{% endif %}</span></div>
+                            <div class="d-flex justify-content-between border-bottom py-2"><span class="info-label">Joining Date</span><span>{% if teacher.joining_date %}{{ teacher.joining_date.strftime('%d %b %Y') }}{% else %}N/A{% endif %}</span></div>
+                            <div class="d-flex justify-content-between py-2"><span class="info-label">Status</span><span>{% if teacher.is_active %}Active{% else %}Archived{% endif %}</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body">
+                            <h6 class="fw-bold text-uppercase text-muted small mb-3"><i class="fas fa-clipboard-list me-1"></i>Custom Fields</h6>
+                            {% if custom_display %}
+                            {% for name, value in custom_display %}
+                            <div class="d-flex justify-content-between border-bottom py-2">
+                                <span class="info-label">{{ name }}</span>
+                                <span>{{ value }}</span>
+                            </div>
+                            {% endfor %}
+                            {% else %}
+                            <p class="text-muted small mb-0">No custom fields recorded for this teacher.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

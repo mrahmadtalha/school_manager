@@ -56,9 +56,13 @@
             <input type="hidden" name="show_unpaid" value="1">
             {% endif %}
 
-            <div class="col-md-5">
+            <div class="col-md-4">
                 <label class="form-label fw-bold small text-muted">Billing Month &amp; Year:</label>
                 <input type="text" class="form-control" name="month_year" value="{{ month_year }}" placeholder="e.g. September 2026">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label fw-bold small text-muted">Reference / Slip No</label>
+                <input type="text" class="form-control" name="ref_query" value="{{ ref_query or '' }}" placeholder="e.g. SLIP-20261002-0001">
             </div>
             <div class="col-md-2">
                 <button type="submit" class="btn btn-dark w-100"><i class="fas fa-filter me-1"></i> Filter</button>
@@ -72,13 +76,14 @@
     <div class="card-body">
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
             <div>
-                <h5 class="mb-1 text-dark"><i class="fas fa-layer-group me-2 text-primary"></i>Set Monthly Fee for Entire Class</h5>
-                <p class="text-muted mb-0 small">Apply one fee to every active student in the selected class, then override individual students as needed.</p>
+                <h5 class="mb-1 text-dark"><i class="fas fa-layer-group me-2 text-primary"></i>Set Monthly Fee for Entire Class <i class="fas fa-circle-info ms-1 text-secondary" data-bs-toggle="tooltip" title="Bulk update: changes the fee on ALL existing student records in this class, and syncs the standard fee used for new admissions."></i></h5>
+                <p class="text-muted mb-0 small">Apply one fee to every active student in the selected class. This also updates the class standard fee (Classes page) used for new admissions. <b class="text-danger-emphasis">Bulk-updates ALL existing student records.</b></p>
             </div>
-            <form method="POST" action="{{ url_for('main.bulk_update_class_fees') }}" class="row g-2 align-items-end">
+            <form method="POST" action="{{ url_for('main.bulk_update_class_fees') }}" class="row g-2 align-items-end" id="bulk-fee-form">
+                <input type="hidden" name="confirm_bulk_update" id="confirm_bulk_update" value="no">
                 <div class="col-auto">
                     <label class="form-label fw-bold small text-muted mb-1">Class</label>
-                    <select class="form-select" name="class_id" required>
+                    <select class="form-select" name="class_id" data-class-fee="class" required>
                         {% for c in classes %}
                         <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
                         {% endfor %}
@@ -86,7 +91,9 @@
                 </div>
                 <div class="col-auto">
                     <label class="form-label fw-bold small text-muted mb-1">Monthly Fee (PKR)</label>
-                    <input type="number" step="0.01" min="0" class="form-control" name="monthly_fee" placeholder="e.g. 3500" required>
+                    <input type="number" step="0.01" min="0" class="form-control" name="monthly_fee"
+                           data-class-fee="fee" placeholder="e.g. 3500"
+                           value="{{ selected_class_fee if selected_class_fee is not none else '' }}" required>
                 </div>
                 <div class="col-auto">
                     <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i> Apply to Class</button>
@@ -161,6 +168,7 @@
                     {% if show_unpaid %}<th class="py-3">Class</th>{% endif %}
                     <th class="py-3">Monthly Due</th>
                     <th class="py-3">Amount Paid</th>
+                    <th class="py-3">Reference / Slip</th>
                     <th class="py-3">Payment Date</th>
                     <th class="py-3">Status</th>
                     <th class="text-end py-3 pe-3">Actions</th>
@@ -183,6 +191,7 @@
                         {% else %}<span class="text-danger small">Not set</span>{% endif %}
                     </td>
                     <td class="fw-bold text-success">{{ paid }} PKR</td>
+                    <td class="text-muted small fw-semibold">{{ row.reference or '—' }}</td>
                     <td class="text-muted small">
                         {{ row.record.payment_date.strftime('%Y-%m-%d') if row.record and row.record.payment_date else 'Not Paid' }}
                     </td>
@@ -268,13 +277,14 @@
                                                class="form-control form-control-lg border-success"
                                                name="amount_paid"
                                                id="paid_{{ row.student.id }}"
-                                               value="{{ paid if paid > 0 else '' }}"
-                                               placeholder="0.00" required>
+                                               value="{{ row.balance if row.balance > 0 else '' }}"
+                                               data-previous-paid="{{ paid }}"
+                                               placeholder="0.00" required max="{{ row.balance if row.balance > 0 else 0 }}">
                                         <div class="form-text" id="balance_{{ row.student.id }}">
-                                            {% if due > 0 and paid > 0 %}
-                                                {% set bal = due - paid %}
-                                                {% if bal > 0 %}<span class="text-warning">Balance remaining: {{ bal }} PKR</span>
-                                                {% else %}<span class="text-success">Fully paid ✓</span>{% endif %}
+                                            {% if row.balance > 0 %}
+                                                <span class="text-warning">Balance remaining: {{ row.balance }} PKR</span>
+                                            {% elif due > 0 %}
+                                                <span class="text-success">Fully paid ✓</span>
                                             {% endif %}
                                         </div>
                                     </div>
@@ -291,7 +301,7 @@
                                         <div class="col-6">
                                             <label class="form-label fw-bold">Reference / Slip No</label>
                                             <input type="text" class="form-control" name="reference"
-                                                   placeholder="e.g. RCPT-1042">
+                                                   placeholder="e.g. SLIP-20261002-0001" value="">
                                         </div>
                                     </div>
 
@@ -333,16 +343,30 @@ function getDue(id) {
     var v = parseFloat(document.getElementById('due_' + id).value);
     return isNaN(v) ? 0 : v;
 }
+function getCurrentPaid(id) {
+    var due = getDue(id);
+    var input = document.getElementById('paid_' + id);
+    if (!input || input.dataset.previousPaid === undefined) return 0;
+    var previousPaid = parseFloat(input.dataset.previousPaid) || 0;
+    if (due > 0 && previousPaid > due) previousPaid = due;
+    return previousPaid;
+}
 function setFull(id) {
     var due = getDue(id);
+    var previousPaid = getCurrentPaid(id);
+    var remaining = Math.max(due - previousPaid, 0);
     if (due <= 0) { alert('Please enter the Monthly Due amount first.'); return; }
-    document.getElementById('paid_' + id).value = due.toFixed(2);
+    if (remaining <= 0) { alert('This student already has no remaining dues for this month.'); return; }
+    document.getElementById('paid_' + id).value = remaining.toFixed(2);
     updateBalance(id);
 }
 function setHalf(id) {
     var due = getDue(id);
+    var previousPaid = getCurrentPaid(id);
+    var remaining = Math.max(due - previousPaid, 0);
     if (due <= 0) { alert('Please enter the Monthly Due amount first.'); return; }
-    document.getElementById('paid_' + id).value = (due / 2).toFixed(2);
+    if (remaining <= 0) { alert('This student already has no remaining dues for this month.'); return; }
+    document.getElementById('paid_' + id).value = Math.min(remaining / 2, remaining).toFixed(2);
     updateBalance(id);
 }
 function setCustom(id) {
@@ -352,11 +376,17 @@ function setCustom(id) {
 }
 function updateBalance(id) {
     var due = getDue(id);
+    var previousPaid = getCurrentPaid(id);
+    var remaining = Math.max(due - previousPaid, 0);
     var paid = parseFloat(document.getElementById('paid_' + id).value) || 0;
     var el = document.getElementById('balance_' + id);
     if (!el) return;
-    if (due > 0 && paid > 0) {
-        var bal = due - paid;
+    if (due > 0) {
+        if (paid > remaining) {
+            paid = remaining;
+            document.getElementById('paid_' + id).value = paid.toFixed(2);
+        }
+        var bal = remaining - paid;
         el.innerHTML = bal > 0
             ? '<span class="text-warning">Balance remaining: ' + bal.toFixed(2) + ' PKR</span>'
             : '<span class="text-success">Fully paid ✓</span>';
@@ -367,11 +397,46 @@ function updateBalance(id) {
 document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('[id^="paid_"]').forEach(function(el) {
         var id = el.id.replace('paid_', '');
+        if (!el.dataset.previousPaid) {
+            el.dataset.previousPaid = '0';
+        }
         el.addEventListener('input', function() { updateBalance(id); });
     });
     document.querySelectorAll('[id^="due_"]').forEach(function(el) {
         var id = el.id.replace('due_', '');
         el.addEventListener('input', function() { updateBalance(id); });
+    });
+});
+
+// Bulk "Set Monthly Fee for Entire Class": keep the fee input showing the
+// class standard fee (the same value managed on the Classes page).
+var classFeeByClass = {{ class_fee_by_class|tojson }};
+(function () {
+    var form = document.querySelector('form[action="{{ url_for('main.bulk_update_class_fees') }}"]');
+    if (!form) return;
+    form.addEventListener('submit', function (event) {
+        var confirmInput = document.getElementById('confirm_bulk_update');
+        if (!confirmInput || confirmInput.value === 'yes') return;
+        if (!confirm('Are you sure you want to update monthly fees for ALL active students in this class?')) {
+            event.preventDefault();
+            return;
+        }
+        confirmInput.value = 'yes';
+    });
+    var classSelect = form.querySelector('[data-class-fee="class"]');
+    var feeInput = form.querySelector('[data-class-fee="fee"]');
+    if (!classSelect || !feeInput) return;
+    classSelect.addEventListener('change', function () {
+        var fee = classFeeByClass[classSelect.value];
+        feeInput.value = (fee === undefined || fee === null) ? '' : fee;
+    });
+})();
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    if (!window.bootstrap || !bootstrap.Tooltip) return;
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+        if (!el._tip) el._tip = new bootstrap.Tooltip(el);
     });
 });
 </script>

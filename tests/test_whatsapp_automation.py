@@ -137,6 +137,12 @@ class WhatsAppAutomationTests(unittest.TestCase):
                         error_msg TEXT
                     )
                 ''')
+                conn.execute('''
+                    CREATE TABLE automation_settings (
+                        id INTEGER PRIMARY KEY,
+                        mode TEXT DEFAULT 'approval'
+                    )
+                ''')
                 conn.commit()
                 conn.close()
 
@@ -144,8 +150,16 @@ class WhatsAppAutomationTests(unittest.TestCase):
 
                 conn = sqlite3.connect(db_path)
                 columns = [row[1] for row in conn.execute('PRAGMA table_info(message_queue)').fetchall()]
+                automation_columns = [row[1] for row in conn.execute(
+                    'PRAGMA table_info(automation_settings)').fetchall()]
                 conn.close()
                 self.assertIn('retry_count', columns)
+                self.assertIn('integration_method', automation_columns)
+                self.assertIn('whatsapp_api_token', automation_columns)
+                self.assertIn('whatsapp_phone_number_id', automation_columns)
+                self.assertIn('whatsapp_business_account_id', automation_columns)
+                self.assertIn('notify_fee_reminders', automation_columns)
+                self.assertIn('notify_fee_receipts', automation_columns)
 
 
 if __name__ == '__main__':

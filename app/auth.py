@@ -5,11 +5,13 @@ from flask_login import current_user, login_required, login_user, logout_user
 
 from app.bootstrap import seed_demo_data
 from app.database import db
-from app.models import ROLE_ADMIN, AdminUser, SchoolSettings
+from app.models import (ROLE_ACCOUNTANT, ROLE_ADMIN, ROLE_OWNER, AdminUser,
+                        SchoolSettings)
 from app.security import (
     clear_failed_logins,
     is_login_locked,
     lockout_seconds_remaining,
+    password_problem,
     register_failed_login,
 )
 from app.services.audit import log_action
@@ -121,9 +123,12 @@ def login():
                        summary=f'User "{user.username}" logged in ({user.role})')
             db.session.commit()
 
-            if user.role != ROLE_ADMIN:
-                return redirect(_safe_next(request.args.get('next')) or url_for('main.dashboard'))
-            return redirect(_safe_next(request.args.get('next')) or url_for('main.dashboard'))
+            landing = url_for('main.dashboard')
+            if user.role == ROLE_OWNER:
+                landing = url_for('main.executive_dashboard')
+            elif user.role == ROLE_ACCOUNTANT:
+                landing = url_for('main.fees_list')
+            return redirect(_safe_next(request.args.get('next')) or landing)
 
         register_failed_login(username)
         log_action('login_failed', entity_type='AdminUser',
@@ -153,12 +158,13 @@ def change_password():
     new_pw = request.form.get('new_password') or ''
     confirm_pw = request.form.get('confirm_password') or ''
 
+    problem = password_problem(new_pw)
     if not current_user.check_password(current_pw):
         flash('Current password is incorrect.', 'danger')
     elif new_pw != confirm_pw:
         flash('New passwords do not match.', 'danger')
-    elif len(new_pw) < 8:
-        flash('New password must be at least 8 characters.', 'danger')
+    elif problem:
+        flash(problem.replace('Password', 'New password', 1), 'danger')
     else:
         current_user.set_password(new_pw)
         log_action('user_admin', entity_type='AdminUser', entity_id=current_user.id,

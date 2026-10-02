@@ -28,6 +28,7 @@ ENTITY_LABELS = {
     'FeeTransaction': 'Fee transaction',
     'SchoolSettings': 'School settings',
     'AdminUser': 'User',
+    'ExecutiveSummary': 'Executive summary',
 }
 
 

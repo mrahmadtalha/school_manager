@@ -4,7 +4,7 @@
     <div>
         <p class="eyebrow mb-2">Archive</p>
         <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-archive text-warning me-2"></i>Archived Students Bin</h1>
-        <p class="text-muted small mb-0">Review, restore, or permanently remove archived student records.</p>
+        <p class="text-muted small mb-0">Review or restore archived student records. Permanent deletion is disabled to protect school records.</p>
     </div>
     <a href="{{ url_for('main.students_list') }}" class="btn btn-secondary btn-sm">
         <i class="fas fa-arrow-left me-1"></i> Back to Active Students
@@ -35,11 +35,6 @@
                     <i class="fas fa-undo me-1"></i> Restore All ({{ students | length }})
                 </button>
             </form>
-            <!-- Delete All Forever -->
-            <button class="btn btn-danger btn-sm px-3"
-                    data-bs-toggle="modal" data-bs-target="#deleteAllStudentsModal">
-                <i class="fas fa-trash me-1"></i> Delete All Forever ({{ students | length }})
-            </button>
         </div>
     </div>
 </div>
@@ -55,6 +50,9 @@
                     <th class="py-3">Father Name</th>
                     <th class="py-3">Class</th>
                     <th class="py-3">Phone</th>
+                    <th class="py-3">Status</th>
+                    <th class="py-3">Leaving Date</th>
+                    <th class="py-3">Leaving Reason</th>
                     <th class="text-end py-3 pe-3">Actions</th>
                 </tr>
             </thead>
@@ -66,35 +64,81 @@
                     <td class="text-muted">{{ student.father_name }}</td>
                     <td><span class="badge bg-secondary">{{ student.class_info.name if student.class_info else 'N/A' }}</span></td>
                     <td class="text-muted small">{{ student.guardian_phone }}</td>
+                    <td>
+                        {% set st = student.status or 'slc_issued' %}
+                        <span class="badge
+                            {% if st == 'graduated' %}bg-success
+                            {% elif st == 'struck_off' %}bg-danger
+                            {% elif st == 'slc_issued' %}bg-info text-dark
+                            {% elif st == 'enrolled' %}bg-primary
+                            {% else %}bg-secondary{% endif %}">
+                            {{ status_labels.get(st, st | replace('_', ' ') | title) }}
+                        </span>
+                    </td>
+                    <td class="text-muted small">{{ student.leaving_date.strftime('%d %b %Y') if student.leaving_date else '—' }}</td>
+                    <td class="text-muted small">{{ student.leaving_reason or '—' }}</td>
                     <td class="text-end pe-3">
+                        <a class="btn btn-sm btn-outline-info me-1" href="{{ url_for('main.student_detailed_report', id=student.id) }}" title="View report">
+                            <i class="fas fa-file-lines"></i>
+                        </a>
+                        <a class="btn btn-sm btn-outline-secondary me-1" href="{{ url_for('main.student_history', id=student.id) }}" title="Change history">
+                            <i class="fas fa-clock-rotate-left"></i>
+                        </a>
+                        <a class="btn btn-sm btn-outline-dark me-1" href="{{ url_for('main.student_transcript_pdf', id=student.id) }}" title="Academic transcript">
+                            <i class="fas fa-scroll"></i>
+                        </a>
+                        <button class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#certModal{{ student.id }}" title="Print certificate">
+                            <i class="fas fa-certificate"></i>
+                        </button>
                         <form action="{{ url_for('main.restore_student', id=student.id) }}" method="POST" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-outline-success me-1" title="Restore">
+                            <button type="submit" class="btn btn-sm btn-outline-success" title="Restore">
                                 <i class="fas fa-undo me-1"></i> Restore
                             </button>
                         </form>
-                        <button class="btn btn-sm btn-outline-danger"
-                                data-bs-toggle="modal" data-bs-target="#permDelete{{ student.id }}" title="Delete Forever">
-                            <i class="fas fa-times"></i>
-                        </button>
                     </td>
                 </tr>
 
-                <!-- Individual Delete Modal -->
-                <div class="modal fade" id="permDelete{{ student.id }}" tabindex="-1" aria-hidden="true">
+                <!-- Certificate Modal -->
+                <div class="modal fade" id="certModal{{ student.id }}" tabindex="-1" aria-hidden="true">
                     <div class="modal-dialog">
                         <div class="modal-content">
-                            <form action="{{ url_for('main.permanent_delete_student', id=student.id) }}" method="POST">
-                                <div class="modal-header bg-danger text-white">
-                                    <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Permanent Deletion</h5>
+                            <form method="GET" action="{{ url_for('main.export_certificates') }}">
+                                <input type="hidden" name="student_id" value="{{ student.id }}">
+                                <div class="modal-header bg-primary text-white">
+                                    <h5 class="modal-title"><i class="fas fa-certificate me-1"></i>Print Certificate</h5>
                                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                                 </div>
-                                <div class="modal-body">
-                                    <p>Permanently delete <strong>{{ student.student_name }}</strong> (Roll No: {{ student.roll_number }})?</p>
-                                    <p class="text-danger fw-bold mb-0"><i class="fas fa-exclamation-circle me-1"></i>This cannot be undone. All data will be lost forever.</p>
+                                <div class="modal-body text-start">
+                                    <p class="mb-3">Certificate for <strong>{{ student.student_name }}</strong> ({{ status_labels.get(student.status or 'slc_issued', 'Ex-student') }}).</p>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Certificate Type</label>
+                                        <select class="form-select" name="cert_type">
+                                            <option value="leaving" {% if (student.status or 'slc_issued') == 'slc_issued' %}selected{% endif %}>School Leaving (SLC)</option>
+                                            <option value="character" {% if student.status == 'struck_off' %}selected{% endif %}>Character</option>
+                                            <option value="bonafide">Bonafide / Studentship</option>
+                                            <option value="merit">Merit / Achievement</option>
+                                        </select>
+                                    </div>
+                                    <div class="row g-2">
+                                        <div class="col-6 mb-3">
+                                            <label class="form-label fw-bold">Issue Date</label>
+                                            <input type="date" class="form-control" name="issue_date"
+                                                   value="{{ student.leaving_date.strftime('%Y-%m-%d') if student.leaving_date else today }}">
+                                        </div>
+                                        <div class="col-6 mb-3">
+                                            <label class="form-label fw-bold">Academic Session</label>
+                                            <input type="text" class="form-control" name="session" value="{{ default_session }}" placeholder="e.g. 2025-2026">
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Remarks / Achievement <span class="text-muted small">(optional)</span></label>
+                                        <input type="text" class="form-control" name="remarks" placeholder="e.g. Left after completing Class 10">
+                                    </div>
+                                    <p class="text-muted small mb-0">The PDF downloads with school branding, logo and a serial number.</p>
                                 </div>
                                 <div class="modal-footer">
                                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                    <button type="submit" class="btn btn-danger">Yes, Delete Forever</button>
+                                    <button type="submit" class="btn btn-primary"><i class="fas fa-file-pdf me-1"></i>Download Certificate</button>
                                 </div>
                             </form>
                         </div>
@@ -103,31 +147,6 @@
                 {% endfor %}
             </tbody>
         </table>
-    </div>
-</div>
-
-<!-- Delete ALL Confirmation Modal -->
-<div class="modal fade" id="deleteAllStudentsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form action="{{ url_for('main.delete_all_students_permanent') }}" method="POST">
-                <div class="modal-header bg-danger text-white">
-                    <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Delete ALL Archived Students?</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p>You are about to <strong>permanently delete all {{ students | length }} archived students</strong>.</p>
-                    <div class="alert alert-danger mb-0">
-                        <i class="fas fa-exclamation-circle me-1"></i>
-                        <strong>This cannot be undone.</strong> Every student record, attendance log, fee record and mark associated with these students will be erased forever.
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel — Keep Data</button>
-                    <button type="submit" class="btn btn-danger px-4">Yes, Delete All Forever</button>
-                </div>
-            </form>
-        </div>
     </div>
 </div>
 

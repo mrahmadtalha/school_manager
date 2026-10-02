@@ -16,6 +16,9 @@ env/
 *.db
 instance/
 
+# License signing keys - PRIVATE, vendor machine only. Never commit or ship.
+vendor_keys/
+
 # VS Code / editors
 .vscode/
 .idea/

@@ -9,6 +9,11 @@
     </div>
     {% if selected_class_id and matrix_data %}
     <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('main.export_class_tabulation_pdf', class_id=selected_class_id,
+                            test_type=selected_type, session=session_value, announce_date=announce_value) }}"
+           class="btn btn-sm btn-dark">
+            <i class="fas fa-file-pdf me-1"></i> Export Whole Class Result (PDF)
+        </a>
         <a href="{{ url_for('main.export_class_results_excel', class_id=selected_class_id) }}"
            class="btn btn-sm btn-outline-success">
             <i class="fas fa-file-excel me-1"></i> Excel
@@ -17,7 +22,8 @@
            class="btn btn-sm btn-outline-primary">
             <i class="fas fa-file-csv me-1"></i> CSV
         </a>
-        <a href="{{ url_for('main.export_all_report_cards_pdf', class_id=selected_class_id) }}"
+        <a href="{{ url_for('main.export_all_report_cards_pdf', class_id=selected_class_id,
+                            test_type=selected_type, session=session_value, announce_date=announce_value) }}"
            class="btn btn-sm btn-danger">
             <i class="fas fa-file-pdf me-1"></i> All Report Cards PDF
         </a>
@@ -37,7 +43,7 @@
 <div class="card shadow-sm mb-4 bg-light border-0">
     <div class="card-body py-2">
         <form method="GET" action="{{ url_for('main.class_results_matrix') }}" class="row g-2 align-items-end">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label fw-bold small text-muted mb-1">Class</label>
                 <select class="form-select" name="class_id" onchange="this.form.submit()">
                     {% for c in classes %}
@@ -45,7 +51,7 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label fw-bold small text-muted mb-1">Test Type</label>
                 <select class="form-select" name="test_type" onchange="this.form.submit()">
                     <option value="">— All Types —</option>
@@ -55,13 +61,22 @@
                 </select>
             </div>
             <div class="col-md-2">
+                <label class="form-label fw-bold small text-muted mb-1">Academic Session</label>
+                <input type="text" class="form-control" name="session" value="{{ session_value }}" placeholder="e.g. 2025-2026">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-bold small text-muted mb-1">Announcement Date</label>
+                <input type="date" class="form-control" name="announce_date" value="{{ announce_value }}">
+            </div>
+            <div class="col-md-2">
                 <button type="submit" class="btn btn-dark w-100">
                     <i class="fas fa-filter me-1"></i> Filter
                 </button>
             </div>
             {% if selected_type %}
             <div class="col-auto">
-                <a href="{{ url_for('main.class_results_matrix', class_id=selected_class_id) }}"
+                <a href="{{ url_for('main.class_results_matrix', class_id=selected_class_id,
+                                    session=session_value, announce_date=announce_value) }}"
                    class="btn btn-outline-secondary">
                     <i class="fas fa-times"></i> Clear
                 </a>
@@ -70,6 +85,17 @@
         </form>
     </div>
 </div>
+
+{% if selected_class_id %}
+<!-- Result header metadata -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-body py-2 d-flex flex-wrap gap-4 small align-items-center">
+        <span><span class="text-muted fw-bold">Academic Session:</span> {{ session_value or '—' }}</span>
+        <span><span class="text-muted fw-bold">Exam Type:</span> {{ selected_type or 'All Types' }}</span>
+        <span><span class="text-muted fw-bold">Result Announcement Date:</span> {{ announce_display or '—' }}</span>
+    </div>
+</div>
+{% endif %}
 
 {% if summary %}
 <!-- Summary Cards -->
@@ -125,8 +151,19 @@
 
 <!-- Matrix Table -->
 <div class="card shadow-sm border-0">
-    <div class="card-body table-responsive p-0">
-        <table class="table table-striped table-hover align-middle mb-0" id="resultsTable">
+    <form method="POST" action="{{ url_for('main.save_class_result_remarks') }}">
+        <input type="hidden" name="class_id" value="{{ selected_class_id }}">
+        <input type="hidden" name="test_type" value="{{ selected_type }}">
+        <input type="hidden" name="session" value="{{ session_value }}">
+        <input type="hidden" name="announce_date" value="{{ announce_value }}">
+        <div class="d-flex justify-content-between align-items-center gap-2 px-3 pt-3">
+            <span class="text-muted small"><i class="fas fa-comment-dots me-1"></i>Type teacher remarks in the table below, then save.</span>
+            <button type="submit" class="btn btn-sm btn-primary">
+                <i class="fas fa-save me-1"></i> Save Remarks
+            </button>
+        </div>
+        <div class="card-body table-responsive p-0">
+            <table class="table table-striped table-hover align-middle mb-0" id="resultsTable">
             <thead class="table-dark text-nowrap">
                 <tr>
                     <th class="py-3 ps-3 sortable" data-col="0" style="cursor:pointer">
@@ -158,6 +195,8 @@
                         % <i class="fas fa-sort ms-1 text-secondary"></i>
                     </th>
                     <th class="text-center py-3">Grade</th>
+                    <th class="text-center py-3">Result</th>
+                    <th class="py-3" style="min-width:220px;">Teacher Remarks</th>
                     <th class="text-center py-3 pe-3">Report</th>
                 </tr>
             </thead>
@@ -205,7 +244,7 @@
                         {% if pct >= 70 %}text-success
                         {% elif pct >= 40 %}text-warning
                         {% else %}text-danger{% endif %}">
-                        {{ pct }}%
+                        {{ '%s%%'|format(pct) }}
                     </td>
                     <td class="text-center">
                         <span class="badge
@@ -220,8 +259,23 @@
                             {{ row.overall_grade }}
                         </span>
                     </td>
+                    <td class="text-center">
+                        {% if row.status == 'Pass' %}
+                        <span class="badge bg-success px-2 py-1">Pass</span>
+                        {% elif row.status == 'Fail' %}
+                        <span class="badge bg-danger px-2 py-1">Fail</span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <input type="text" class="form-control form-control-sm" name="remark_{{ row.student.id }}"
+                               value="{{ row.remarks or '' }}" placeholder="Remark...">
+                    </td>
                     <td class="text-center pe-3">
-                        <a href="{{ url_for('main.student_report_card_pdf', student_id=row.student.id) }}"
+                        <a href="{{ url_for('main.student_report_card_pdf', student_id=row.student.id,
+                                            class_id=selected_class_id, test_type=selected_type,
+                                            session=session_value, announce_date=announce_value) }}"
                            class="btn btn-sm btn-outline-danger" title="Individual Report Card PDF">
                             <i class="fas fa-file-pdf"></i>
                         </a>
@@ -230,7 +284,8 @@
                 {% endfor %}
             </tbody>
         </table>
-    </div>
+        </div>
+    </form>
 </div>
 
 {% else %}

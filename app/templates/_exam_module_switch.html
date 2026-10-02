@@ -1,0 +1,17 @@
+<!-- Module switch: Class Tests <-> Term Examinations -->
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div class="btn-group" role="group" aria-label="Evaluation module switch">
+        <a class="btn btn-sm {% if exam_active == 'tests' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+           href="{{ url_for('main.tests_list') }}">
+            <i class="fas fa-clipboard-check me-1"></i>Class Tests
+        </a>
+        <a class="btn btn-sm {% if exam_active == 'examinations' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+           href="{{ url_for('main.examinations_page') }}">
+            <i class="fas fa-file-signature me-1"></i>Term Examinations
+        </a>
+    </div>
+    <span class="text-muted small">
+        {% if exam_active == 'tests' %}Daily / weekly assessments &amp; quick quizzes
+        {% else %}Official term exams, date sheets &amp; results{% endif %}
+    </span>
+</div>

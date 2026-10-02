@@ -7,6 +7,8 @@ so the two can never disagree.
 
 from datetime import datetime
 
+from sqlalchemy import func
+
 from app.database import db
 from app.models import (
     FeeRecordModel, FeeTransaction, StudentModel,
@@ -58,12 +60,36 @@ def set_month_charge(student, month_year, amount):
     return txn
 
 
+def generate_unique_reference(reference=None, *, prefix='SLIP'):
+    """Create a unique slip/reference number for a payment."""
+    candidate = (reference or '').strip()
+    if candidate:
+        existing = FeeTransaction.query.filter_by(reference=candidate, is_void=False).first()
+        if existing is None:
+            return candidate[:80]
+
+    today = datetime.now().strftime('%Y%m%d')
+    pattern = f'{prefix}-{today}-%'
+    serial = (db.session.query(func.coalesce(func.max(func.cast(
+        func.substr(FeeTransaction.reference, len(f'{prefix}-{today}-') + 1, 255), db.Integer
+    )), 0)).filter(FeeTransaction.reference.like(pattern)).scalar() or 0) + 1
+
+    while True:
+        generated = f'{prefix}-{today}-{serial:04d}'
+        exists = FeeTransaction.query.filter_by(reference=generated, is_void=False).first()
+        if exists is None:
+            return generated
+        serial += 1
+
+
 def record_payment(student, month_year, amount, method=None, reference=None,
                    note=None, created_by=None):
     """Append a payment transaction for the month."""
     amount = _round(amount)
     if amount <= 0:
         raise ValueError('Payment amount must be greater than zero.')
+
+    ref = generate_unique_reference(reference)
     _, username, _ = current_actor()
     txn = FeeTransaction(
         student_id=student.id,
@@ -71,7 +97,7 @@ def record_payment(student, month_year, amount, method=None, reference=None,
         txn_type=TXN_PAYMENT,
         amount=amount,
         method=(method or 'cash')[:30],
-        reference=(reference or None) and str(reference)[:80],
+        reference=ref[:80],
         note=(note or None) and str(note)[:255],
         created_by_id=created_by if created_by is not None else None,
         created_by_name=username,

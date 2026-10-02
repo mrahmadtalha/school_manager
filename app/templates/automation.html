@@ -1,17 +1,27 @@
 {% extends "base.html" %}
 {% block content %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+.wa-category { border: 1px solid var(--bs-border-color); border-radius: 6px; padding: 1rem; height: 100%; }
+.wa-category-title { display: flex; align-items: center; gap: .55rem; font-weight: 700; margin-bottom: .75rem; }
+.wa-option { display: flex; align-items: flex-start; gap: .55rem; padding: .5rem 0; }
+.wa-option + .wa-option { border-top: 1px solid var(--bs-border-color); }
+.wa-option .form-check-input { margin-top: .2rem; }
+.wa-status-badges { display: flex; flex-wrap: wrap; gap: .5rem; }
+</style>
 <script>
 function friendlyStatusText(statusValue) {
     const map = {
         connected: 'Connected',
         connecting: 'Connecting',
-        qr_ready: 'QR ready',
+        qr_ready: 'QR needed',
+        disconnected: 'QR needed',
         reconnecting: 'Reconnecting',
-        logged_out: 'Session ended',
+        logged_out: 'QR needed',
         offline: 'Offline',
         error: 'Error',
         starting: 'Starting',
+        cloud_api: 'Cloud API',
         sending: 'Sending message',
         retrying: 'Retrying',
         session_reset: 'Starting fresh session',
@@ -27,10 +37,17 @@ function updateStatusBadge(badge, textElem, detailElem, statusData) {
     const serviceReachable = statusData?.serviceReachable !== false;
     const phonePaired = !!statusData?.phonePaired;
     const messageSent = !!statusData?.messageSent;
+    const integrationBadge = document.getElementById('wa-integration-badge');
+    const selectedMethod = document.getElementById('integration_method')?.value || 'qr_scan';
 
-    if (statusData?.connected) {
+    if (integrationBadge) {
+        integrationBadge.textContent = selectedMethod === 'cloud_api' ? 'Cloud API selected' : 'QR Scan selected';
+        integrationBadge.className = 'badge ' + (selectedMethod === 'cloud_api' ? 'bg-primary' : 'bg-dark');
+    }
+
+    if (rawStatus === 'cloud_api' || statusData?.connected) {
         badge.className = 'badge bg-success px-3 py-2';
-    } else if (rawStatus === 'qr_ready') {
+    } else if (rawStatus === 'qr_ready' || rawStatus === 'disconnected' || rawStatus === 'logged_out') {
         badge.className = 'badge bg-warning text-dark px-3 py-2';
     } else if (rawStatus === 'connecting' || rawStatus === 'reconnecting' || rawStatus === 'starting' || rawStatus === 'retrying') {
         badge.className = 'badge bg-secondary px-3 py-2';
@@ -41,21 +58,25 @@ function updateStatusBadge(badge, textElem, detailElem, statusData) {
     badge.textContent = friendly;
     textElem.textContent = message;
     if (detailElem) {
-        detailElem.textContent = serviceReachable && phonePaired
-            ? 'Phone paired and ready to send messages.'
-            : (serviceReachable && rawStatus === 'qr_ready'
-                ? 'Service reachable. Scan the QR code to pair the phone.'
-                : (serviceReachable ? 'Service is reachable, but phone pairing is not complete.' : 'Service is not reachable right now.'));
+        detailElem.textContent = rawStatus === 'cloud_api'
+            ? 'Official WhatsApp Cloud API is active and ready to send.'
+            : (serviceReachable && phonePaired
+                ? 'Phone paired and ready to send messages.'
+                : (serviceReachable && rawStatus === 'qr_ready'
+                    ? 'Service reachable. Scan the QR code to pair the phone.'
+                    : (serviceReachable ? 'Service is reachable, but phone pairing is not complete.' : 'Service is not reachable right now.')));
     }
 
     if (lastEvent) {
-        const eventText = messageSent
-            ? 'Latest event: A WhatsApp message was sent successfully.'
-            : (phonePaired
-                ? 'Latest event: Phone is paired and ready to send messages.'
-                : (rawStatus === 'qr_ready'
-                    ? 'Latest event: QR code is ready. Please scan it from your phone.'
-                    : 'Latest event: WhatsApp service is not connected yet.'));
+        const eventText = rawStatus === 'cloud_api'
+            ? 'Latest event: Cloud API delivery is ready.'
+            : (messageSent
+                ? 'Latest event: A WhatsApp message was sent successfully.'
+                : (phonePaired
+                    ? 'Latest event: Phone is paired and ready to send messages.'
+                    : (rawStatus === 'qr_ready'
+                        ? 'Latest event: QR code is ready. Please scan it from your phone.'
+                        : 'Latest event: WhatsApp service is not connected yet.')));
         lastEvent.textContent = eventText;
     }
 }
@@ -84,6 +105,19 @@ async function refreshWhatsAppStatus() {
 
         updateStatusBadge(badge, text, detail, status);
 
+        const integrationSelect = document.getElementById('integration_method');
+        if (integrationSelect && integrationSelect.value === 'cloud_api') {
+            const qrStatusPanel = document.getElementById('qr-status-panel');
+            if (qrStatusPanel) qrStatusPanel.hidden = true;
+            qrBox.dataset.qrValue = '';
+            qrBox.innerHTML = '<div class="text-muted small">QR scanning is not used with Cloud API.</div>';
+            qrStatus.textContent = 'Not required in Cloud API mode';
+            qrStatus.className = 'small fw-semibold text-success';
+            return;
+        }
+        const qrStatusPanel = document.getElementById('qr-status-panel');
+        if (qrStatusPanel) qrStatusPanel.hidden = false;
+
         const qrRes = await fetchWithTimeout('/api/whatsapp/qr');
         if (qrRes.ok) {
             const qrData = await qrRes.json();
@@ -101,9 +135,14 @@ async function refreshWhatsAppStatus() {
             }
         } else {
             qrBox.dataset.qrValue = '';
-            qrBox.innerHTML = '<div class="text-muted small">No QR available yet.</div>';
-            qrStatus.textContent = status.connected ? 'Connected and ready' : 'QR not ready yet';
-            qrStatus.className = 'small fw-semibold ' + (status.connected ? 'text-success' : 'text-muted');
+            const cloudMode = status.status === 'cloud_api';
+            qrBox.innerHTML = cloudMode
+                ? '<div class="text-muted small">QR scanning is not used with Cloud API.</div>'
+                : '<div class="text-muted small">No QR available yet.</div>';
+            qrStatus.textContent = cloudMode
+                ? 'Not required in Cloud API mode'
+                : (status.connected ? 'Connected and ready' : 'QR not ready yet');
+            qrStatus.className = 'small fw-semibold ' + (cloudMode || status.connected ? 'text-success' : 'text-muted');
         }
     } catch (error) {
         badge.className = 'badge bg-danger px-3 py-2';
@@ -119,27 +158,113 @@ async function refreshWhatsAppStatus() {
 }
 
 async function testWhatsappConnection() {
+    const button = document.getElementById('send-test-button');
+    const feedback = document.getElementById('wa-test-feedback');
+    if (button) button.disabled = true;
     try {
-        const response = await fetchWithTimeout('/api/whatsapp/test', {
+        const phone = document.getElementById('wa-test-phone').value.trim();
+        const response = await fetchWithTimeout('/api/whatsapp/send-test', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({})
-        }, 6000);
+            body: JSON.stringify({phone: phone || null})
+        }, 25000);
         const data = await response.json();
-        alert(data.ok ? 'Test message sent successfully. The WhatsApp number is connected and working.' : (data.message || 'Unable to send test message.'));
+        if (feedback) {
+            feedback.hidden = false;
+            feedback.className = 'alert ' + (response.ok && data.ok ? 'alert-success' : 'alert-danger');
+            feedback.textContent = data.message || (data.ok ? 'Test message sent.' : 'Unable to send test message.');
+        }
         refreshWhatsAppStatus();
     } catch (error) {
-        alert('WhatsApp service is unavailable or timed out. Please check that the service is running.');
+        if (feedback) {
+            feedback.hidden = false;
+            feedback.className = 'alert alert-danger';
+            feedback.textContent = 'The message could not be sent. Check the connection and try again.';
+        }
+    } finally {
+        if (button) button.disabled = false;
     }
 }
 
 window.addEventListener('DOMContentLoaded', function () {
     refreshWhatsAppStatus();
     setInterval(refreshWhatsAppStatus, 3000);
+
+    const integrationSelect = document.getElementById('integration_method');
+    const cloudConfig = document.getElementById('cloud-api-config');
+    const qrPanel = document.getElementById('qr-integration-panel');
+    const testHelp = document.getElementById('wa-test-help');
+    const integrationBadge = document.getElementById('wa-integration-badge');
+    const audienceSelect = document.getElementById('broadcast-audience');
+    const classField = document.getElementById('broadcast-class-field');
+    const studentField = document.getElementById('broadcast-student-field');
+    if (integrationSelect && cloudConfig) {
+        const updateIntegrationFields = function () {
+            const cloudMode = integrationSelect.value === 'cloud_api';
+            cloudConfig.hidden = !cloudMode;
+            if (qrPanel) qrPanel.hidden = cloudMode;
+            if (integrationBadge) {
+                integrationBadge.textContent = cloudMode ? 'Cloud API selected' : 'QR Scan selected';
+                integrationBadge.className = 'badge ' + (cloudMode ? 'bg-primary' : 'bg-dark');
+            }
+            if (testHelp) {
+                testHelp.textContent = cloudMode
+                    ? 'Enter a recipient number to test Cloud API delivery.'
+                    : 'Leave blank to send to the connected account\'s Message Yourself chat.';
+            }
+        };
+        integrationSelect.addEventListener('change', updateIntegrationFields);
+        updateIntegrationFields();
+    }
+
+    if (audienceSelect) {
+        const updateBroadcastAudience = function () {
+            if (classField) classField.hidden = audienceSelect.value !== 'class';
+            if (studentField) studentField.hidden = audienceSelect.value !== 'student';
+        };
+        audienceSelect.addEventListener('change', updateBroadcastAudience);
+        updateBroadcastAudience();
+    }
+
+    const placeholderSelect = document.getElementById('message-placeholder');
+    const messageInput = document.getElementById('broadcast-message');
+    if (placeholderSelect && messageInput) {
+        placeholderSelect.addEventListener('change', function () {
+            const placeholder = placeholderSelect.value;
+            if (!placeholder) return;
+            const start = messageInput.selectionStart;
+            const end = messageInput.selectionEnd;
+            messageInput.setRangeText(placeholder, start, end, 'end');
+            messageInput.focus();
+            placeholderSelect.value = '';
+        });
+    }
+
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (element) {
+        if (window.bootstrap?.Tooltip) new bootstrap.Tooltip(element);
+    });
+
+    const broadcastForm = document.getElementById('broadcast-form');
+    if (broadcastForm && audienceSelect) {
+        broadcastForm.addEventListener('submit', function (event) {
+            if (['whole_school', 'staff'].includes(audienceSelect.value)
+                && !confirm('Queue this message for every selected recipient?')) {
+                event.preventDefault();
+            }
+        });
+    }
 });
 </script>
-<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2"><i class="fab fa-whatsapp me-2"></i>WhatsApp Automation</h1>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 pt-3 pb-3 mb-4 border-bottom">
+    <div>
+        <div class="text-muted small text-uppercase fw-bold">Messages &amp; delivery</div>
+        <h1 class="h2 mb-0"><i class="fab fa-whatsapp text-success me-2"></i>WhatsApp Center</h1>
+    </div>
+    <div class="wa-status-badges">
+        <span class="badge {% if settings.enabled %}bg-success{% else %}bg-secondary{% endif %}">{% if settings.enabled %}Automation on{% else %}Automation off{% endif %}</span>
+        <span id="wa-integration-badge" class="badge {% if settings.integration_method == 'cloud_api' %}bg-primary{% else %}bg-dark{% endif %}">{% if settings.integration_method == 'cloud_api' %}Cloud API selected{% else %}QR Scan selected{% endif %}</span>
+        <span class="badge bg-light text-dark border">{% if settings.mode == 'approval' %}Approval required{% elif settings.mode == 'delayed' %}Delayed sending{% else %}Automatic sending{% endif %}</span>
+    </div>
 </div>
 
 {% with messages = get_flashed_messages(with_categories=true) %}
@@ -153,6 +278,27 @@ window.addEventListener('DOMContentLoaded', function () {
   {% endif %}
 {% endwith %}
 
+<ul class="nav nav-tabs mb-3" id="automation-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if active_tab == 'connection' %}active{% endif %}" id="connection-tab" data-bs-toggle="tab" data-bs-target="#connection-panel" type="button" role="tab" aria-controls="connection-panel" aria-selected="{{ 'true' if active_tab == 'connection' else 'false' }}">
+            <i class="fas fa-sliders me-1"></i> Connection &amp; Settings
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if active_tab == 'broadcast' %}active{% endif %}" id="broadcast-tab" data-bs-toggle="tab" data-bs-target="#broadcast-panel" type="button" role="tab" aria-controls="broadcast-panel" aria-selected="{{ 'true' if active_tab == 'broadcast' else 'false' }}">
+            <i class="fas fa-bullhorn me-1"></i> Quick Broadcast
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if active_tab == 'queue' %}active{% endif %}" id="queue-tab" data-bs-toggle="tab" data-bs-target="#queue-panel" type="button" role="tab" aria-controls="queue-panel" aria-selected="{{ 'true' if active_tab == 'queue' else 'false' }}">
+            <i class="fas fa-list-check me-1"></i> Message Queue &amp; Logs
+            <span class="badge bg-secondary ms-1">{{ queue_summary.total }}</span>
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="automation-tabs-content">
+<section class="tab-pane fade {% if active_tab == 'connection' %}show active{% endif %}" id="connection-panel" role="tabpanel" aria-labelledby="connection-tab" tabindex="0">
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
@@ -167,14 +313,14 @@ window.addEventListener('DOMContentLoaded', function () {
                 <button type="button" class="btn btn-sm btn-success" onclick="refreshWhatsAppStatus()">
                     <i class="fas fa-sync-alt me-1"></i> Refresh
                 </button>
-                <button type="button" class="btn btn-sm btn-primary" onclick="testWhatsappConnection()">
-                    <i class="fab fa-whatsapp me-1"></i> Test Connection
+                <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#testMessageModal">
+                    <i class="fab fa-whatsapp me-1"></i> Send Test Message
                 </button>
             </div>
         </div>
 
         <div class="row g-3">
-            <div class="col-md-4">
+            <div class="col-md-4" id="qr-status-panel" {% if settings.integration_method == 'cloud_api' %}hidden{% endif %}>
                 <div class="border rounded p-3 bg-light h-100">
                     <div class="small text-muted text-uppercase fw-bold">Status detail</div>
                     <div id="wa-status-detail" class="mt-2 fw-semibold text-dark">Checking service status...</div>
@@ -215,6 +361,28 @@ window.addEventListener('DOMContentLoaded', function () {
     </div>
 </div>
 
+<div class="modal fade" id="testMessageModal" tabindex="-1" aria-labelledby="testMessageTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="testMessageTitle"><i class="fab fa-whatsapp text-success me-2"></i>Send a test message</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="wa-test-feedback" class="alert mb-3" role="status" hidden></div>
+                <label for="wa-test-phone" class="form-label fw-semibold">Recipient phone number</label>
+                <input id="wa-test-phone" type="tel" class="form-control" inputmode="tel"
+                       placeholder="+923001234567" autocomplete="tel">
+                <div id="wa-test-help" class="form-text">{% if settings.integration_method == 'cloud_api' %}Enter a recipient number to test Cloud API delivery.{% else %}Leave blank to send to your connected WhatsApp account.{% endif %}</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="send-test-button" onclick="testWhatsappConnection()"><i class="fab fa-whatsapp me-1"></i> Send test</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row g-4">
     <div class="col-lg-6">
         <div class="card shadow-sm border-0 h-100">
@@ -239,41 +407,83 @@ window.addEventListener('DOMContentLoaded', function () {
                         </select>
                     </div>
 
-                    <div class="row">
-                        <div class="col-md-4">
-                            <div class="form-check form-switch mb-2">
-                                <input class="form-check-input" type="checkbox" id="notify_absent" name="notify_absent" {% if settings.notify_absent %}checked{% endif %}>
-                                <label class="form-check-label" for="notify_absent">Absent alerts</label>
-                            </div>
+                    <div class="mb-3">
+                        <label for="integration_method" class="form-label fw-bold">Integration Method</label>
+                        <select class="form-select" id="integration_method" name="integration_method">
+                            <option value="qr_scan" {% if settings.integration_method != 'cloud_api' %}selected{% endif %}>QR Scan (Baileys Web API)</option>
+                            <option value="cloud_api" {% if settings.integration_method == 'cloud_api' %}selected{% endif %}>Official WhatsApp Cloud API</option>
+                        </select>
+                    </div>
+
+                    <div id="cloud-api-config" class="border rounded p-3 mb-3" {% if settings.integration_method != 'cloud_api' %}hidden{% endif %}>
+                        <div class="mb-3">
+                            <label for="whatsapp_api_token" class="form-label fw-bold">Access Token</label>
+                            <input type="password" class="form-control" id="whatsapp_api_token"
+                                   name="whatsapp_api_token" autocomplete="new-password"
+                                   placeholder="{% if settings.whatsapp_api_token %}Saved token retained when blank{% else %}Enter Meta access token{% endif %}">
                         </div>
-                        <div class="col-md-4">
-                            <div class="form-check form-switch mb-2">
-                                <input class="form-check-input" type="checkbox" id="notify_late" name="notify_late" {% if settings.notify_late %}checked{% endif %}>
-                                <label class="form-check-label" for="notify_late">Late alerts</label>
-                            </div>
+                        <div class="mb-3">
+                            <label for="whatsapp_phone_number_id" class="form-label fw-bold">Phone Number ID</label>
+                            <input type="text" class="form-control" id="whatsapp_phone_number_id"
+                                   name="whatsapp_phone_number_id" value="{{ settings.whatsapp_phone_number_id or '' }}">
                         </div>
-                        <div class="col-md-4">
-                            <div class="form-check form-switch mb-2">
-                                <input class="form-check-input" type="checkbox" id="notify_results" name="notify_results" {% if settings.notify_results %}checked{% endif %}>
-                                <label class="form-check-label" for="notify_results">Result alerts</label>
-                            </div>
+                        <div>
+                            <label for="whatsapp_business_account_id" class="form-label fw-bold">WhatsApp Business Account ID (WABA ID)</label>
+                            <input type="text" class="form-control" id="whatsapp_business_account_id"
+                                   name="whatsapp_business_account_id" value="{{ settings.whatsapp_business_account_id or '' }}">
                         </div>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Absent template</label>
-                        <textarea class="form-control" name="template_absent" rows="5">{{ settings.template_absent }}</textarea>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-4">
+                            <section class="wa-category">
+                                <h3 class="wa-category-title h6"><i class="fas fa-calendar-check text-primary"></i> Attendance alerts</h3>
+                                <label class="wa-option" for="notify_absent">
+                                    <input class="form-check-input" type="checkbox" id="notify_absent" name="notify_absent" {% if settings.notify_absent %}checked{% endif %}>
+                                    <span><strong>Absent</strong><span class="d-block small text-muted">Tell guardians when a student is absent.</span></span>
+                                </label>
+                                <label class="wa-option" for="notify_late">
+                                    <input class="form-check-input" type="checkbox" id="notify_late" name="notify_late" {% if settings.notify_late %}checked{% endif %}>
+                                    <span><strong>Late arrival</strong><span class="d-block small text-muted">Let guardians know about late arrivals.</span></span>
+                                </label>
+                            </section>
+                        </div>
+                        <div class="col-md-4">
+                            <section class="wa-category">
+                                <h3 class="wa-category-title h6"><i class="fas fa-graduation-cap text-success"></i> Academic alerts</h3>
+                                <label class="wa-option" for="notify_results">
+                                    <input class="form-check-input" type="checkbox" id="notify_results" name="notify_results" {% if settings.notify_results %}checked{% endif %}>
+                                    <span><strong>Results &amp; exam cards</strong><span class="d-block small text-muted">Notify guardians when results are published.</span></span>
+                                </label>
+                                <p class="small text-muted mb-0 mt-2">Published exam messages use the current delivery mode and queue.</p>
+                            </section>
+                        </div>
+                        <div class="col-md-4">
+                            <section class="wa-category">
+                                <h3 class="wa-category-title h6"><i class="fas fa-receipt text-warning"></i> Finance alerts</h3>
+                                <label class="wa-option" for="notify_fee_reminders">
+                                    <input class="form-check-input" type="checkbox" id="notify_fee_reminders" name="notify_fee_reminders" {% if settings.notify_fee_reminders %}checked{% endif %}>
+                                    <span><strong>Fee reminders</strong><span class="d-block small text-muted">Allow fee reminders to be added to the queue.</span></span>
+                                </label>
+                                <label class="wa-option" for="notify_fee_receipts">
+                                    <input class="form-check-input" type="checkbox" id="notify_fee_receipts" name="notify_fee_receipts" {% if settings.notify_fee_receipts %}checked{% endif %}>
+                                    <span><strong>Payment slips</strong><span class="d-block small text-muted">Send a WhatsApp receipt after collecting a payment.</span></span>
+                                </label>
+                            </section>
+                        </div>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Late template</label>
-                        <textarea class="form-control" name="template_late" rows="5">{{ settings.template_late }}</textarea>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Result template</label>
-                        <textarea class="form-control" name="template_result" rows="5">{{ settings.template_result }}</textarea>
-                    </div>
+                    <details class="border rounded p-3 mb-3">
+                        <summary class="fw-semibold">Edit message wording</summary>
+                        <div class="mt-3">
+                            <label class="form-label fw-semibold">Absent alert</label>
+                            <textarea class="form-control mb-3" name="template_absent" rows="3">{{ settings.template_absent }}</textarea>
+                            <label class="form-label fw-semibold">Late arrival</label>
+                            <textarea class="form-control mb-3" name="template_late" rows="3">{{ settings.template_late }}</textarea>
+                            <label class="form-label fw-semibold">Result</label>
+                            <textarea class="form-control" name="template_result" rows="3">{{ settings.template_result }}</textarea>
+                        </div>
+                    </details>
 
                     <button type="submit" class="btn btn-success">
                         <i class="fas fa-save me-1"></i> Save Settings
@@ -283,61 +493,97 @@ window.addEventListener('DOMContentLoaded', function () {
         </div>
     </div>
 
-    <div class="col-lg-6">
+    <div class="col-lg-6" id="qr-integration-panel" {% if settings.integration_method == 'cloud_api' %}hidden{% endif %}>
         <div class="card shadow-sm border-0 h-100">
-            <div class="card-header bg-light text-dark fw-bold">
-                <i class="fas fa-qrcode me-2"></i>WhatsApp QR
+            <div class="card-header bg-light text-dark fw-bold d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-qrcode me-2"></i>Connect by QR code</span>
+                <span class="badge bg-light text-dark border" title="Only needed when QR Scan is the selected integration." data-bs-toggle="tooltip">QR Scan</span>
             </div>
             <div class="card-body text-center">
                 <div id="wa-qr-box" class="d-flex justify-content-center align-items-center" style="min-height: 220px;">
                     <div class="text-muted small">QR will appear here when the service is ready.</div>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-lg-6">
-        <div class="card shadow-sm border-0 h-100">
-            <div class="card-header bg-dark text-white fw-bold">
-                <i class="fas fa-bolt me-2"></i>Manual Queue Test
-            </div>
-            <div class="card-body">
-                <form method="POST">
-                    <input type="hidden" name="action" value="queue_message">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Select student</label>
-                        <select class="form-select" name="student_id" required>
-                            <option value="">Choose a student...</option>
-                            {% for student in students %}
-                            <option value="{{ student.id }}">{{ student.student_name }} ({{ student.guardian_phone }})</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Trigger</label>
-                        <select class="form-select" name="trigger">
-                            <option value="attendance_absent">Absent alert</option>
-                            <option value="attendance_late">Late alert</option>
-                            <option value="result">Result update</option>
-                            <option value="fee_due">Fee due reminder</option>
-                            <option value="fee_overdue">Fee overdue reminder</option>
-                            <option value="school_notice">School notice</option>
-                        </select>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fab fa-whatsapp me-1"></i> Queue Message
-                    </button>
-                </form>
+                <p class="small text-muted mb-0">Open WhatsApp on your phone and scan this code to connect.</p>
             </div>
         </div>
     </div>
 </div>
+</section>
 
+<section class="tab-pane fade {% if active_tab == 'broadcast' %}show active{% endif %}" id="broadcast-panel" role="tabpanel" aria-labelledby="broadcast-tab" tabindex="0">
+<form method="POST" class="row g-3 mt-1" id="broadcast-form">
+    <input type="hidden" name="action" value="queue_broadcast">
+    <div class="col-lg-5">
+        <section class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-light fw-bold"><i class="fas fa-bullhorn me-2 text-primary"></i>Direct broadcasts</div>
+            <div class="card-body">
+                <label for="broadcast-audience" class="form-label fw-semibold">Who should receive this?</label>
+                <select class="form-select mb-3" id="broadcast-audience" name="audience" required>
+                    <option value="whole_school">Whole school (all active students)</option>
+                    <option value="class">One class</option>
+                    <option value="student">One student's guardian</option>
+                    <option value="staff">Whole staff</option>
+                </select>
+                <div id="broadcast-class-field" class="mb-3" hidden>
+                    <label for="broadcast-class" class="form-label">Class</label>
+                    <select class="form-select" id="broadcast-class" name="class_id">
+                        <option value="">Choose a class</option>
+                        {% for class_obj in classes %}
+                        <option value="{{ class_obj.id }}">{{ class_obj.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div id="broadcast-student-field" class="mb-3" hidden>
+                    <label for="broadcast-student" class="form-label">Student</label>
+                    <select class="form-select" id="broadcast-student" name="student_id">
+                        <option value="">Choose a student</option>
+                        {% for student in students %}
+                        <option value="{{ student.id }}">{{ student.student_name }}{% if student.class_info %} · {{ student.class_info.name }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="small text-muted">Messages follow the current delivery setting. If approval is on, they wait for review.</div>
+            </div>
+        </section>
+    </div>
+    <div class="col-lg-7">
+        <section class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-light fw-bold"><i class="fas fa-pen-to-square me-2 text-success"></i>Custom message builder</div>
+            <div class="card-body d-flex flex-column">
+                <div class="row g-2 mb-3">
+                    <div class="col-sm-6">
+                        <label for="message-placeholder" class="form-label small fw-semibold">Insert a detail</label>
+                        <select class="form-select form-select-sm" id="message-placeholder" aria-label="Choose a message detail to insert">
+                            <option value="">Choose a placeholder...</option>
+                            <option value="{student_name}">Student name</option>
+                            <option value="{staff_name}">Staff name</option>
+                            <option value="{fee_amount}">Fee amount</option>
+                            <option value="{due_date}">Due date</option>
+                            <option value="{class_name}">Class name</option>
+                            <option value="{school_name}">School name</option>
+                        </select>
+                    </div>
+                    <div class="col-sm-6">
+                        <label for="broadcast-due-date" class="form-label small fw-semibold">Due date <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="date" class="form-control form-control-sm" id="broadcast-due-date" name="due_date">
+                    </div>
+                </div>
+                <label for="broadcast-message" class="form-label fw-semibold">Your message</label>
+                <textarea class="form-control flex-grow-1 mb-3" id="broadcast-message" name="message" rows="5" maxlength="4096" required placeholder="Hello {student_name}, here is an update from {school_name}..."></textarea>
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span class="small text-muted">Details are filled in for each recipient.</span>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane me-1"></i> Queue messages</button>
+                </div>
+            </div>
+        </section>
+    </div>
+</form>
+</section>
+
+<section class="tab-pane fade {% if active_tab == 'queue' %}show active{% endif %}" id="queue-panel" role="tabpanel" aria-labelledby="queue-tab" tabindex="0">
 <div class="card shadow-sm border-0 mt-4">
     <div class="card-header bg-warning text-dark fw-bold d-flex justify-content-between align-items-center">
-        <span><i class="fas fa-list me-2"></i>Message Queue</span>
+        <span><i class="fas fa-list me-2"></i>Message Queue &amp; Logs</span>
         <span class="badge bg-dark text-white">{{ queue_summary.total }} total</span>
     </div>
     <div class="card-body">
@@ -369,11 +615,12 @@ window.addEventListener('DOMContentLoaded', function () {
         </div>
 
         <form method="GET" class="row g-2 mb-3">
+            <input type="hidden" name="tab" value="queue">
             <div class="col-md-3">
                 <select class="form-select" name="status">
                     <option value="">All statuses</option>
-                    {% for status in ['pending','approved','rejected','sending','sent','failed'] %}
-                    <option value="{{ status }}" {% if status_filter == status %}selected{% endif %}>{{ status|capitalize }}</option>
+                    {% for status in ['pending','approved','rejected','sending','sending_auto','sent','failed'] %}
+                    <option value="{{ status }}" {% if status_filter == status %}selected{% endif %}>{% if status == 'sending_auto' %}Sending{% else %}{{ status|capitalize }}{% endif %}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -386,7 +633,7 @@ window.addEventListener('DOMContentLoaded', function () {
                 </select>
             </div>
             <div class="col-md-4">
-                <input type="text" class="form-control" name="search" value="{{ search_term }}" placeholder="Search phone or trigger">
+                <input type="search" class="form-control" name="search" value="{{ search_term }}" placeholder="Search phone, message, or category">
             </div>
             <div class="col-md-2 d-grid">
                 <button type="submit" class="btn btn-dark">Filter</button>
@@ -425,12 +672,17 @@ window.addEventListener('DOMContentLoaded', function () {
                             {% set status_label = 'Rejected' %}
                         {% elif item.status == 'sending' %}
                             {% set status_label = 'Sending' %}
+                        {% elif item.status == 'sending_auto' %}
+                            {% set status_label = 'Sending' %}
                         {% elif item.status == 'sent' %}
                             {% set status_label = 'Delivered' %}
                         {% elif item.status == 'failed' %}
                             {% set status_label = 'Failed' %}
                         {% endif %}
                         <span class="badge {% if item.status == 'sent' %}bg-success{% elif item.status == 'failed' %}bg-danger{% elif item.status == 'pending' %}bg-warning text-dark{% elif item.status == 'approved' %}bg-info text-dark{% else %}bg-secondary{% endif %}">{{ status_label }}</span>
+                        {% if item.status == 'failed' and item.error_msg %}
+                        <div class="small text-danger mt-1">{{ item.error_msg }}</div>
+                        {% endif %}
                     </td>
                     <td>{{ item.retry_count or 0 }}</td>
                     <td>{{ item.sent_at.strftime('%Y-%m-%d %H:%M') if item.sent_at else 'Not sent yet' }}</td>
@@ -465,6 +717,32 @@ window.addEventListener('DOMContentLoaded', function () {
                 {% endfor %}
             </tbody>
         </table>
-    </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 px-3 pb-3">
+            <small class="text-muted">Page {{ queue_pagination.page }} of {{ queue_pagination.pages or 1 }} · {{ queue_pagination.total }} message(s)</small>
+            {% if queue_pagination.pages > 1 %}
+            <nav aria-label="Message queue pages">
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item {% if not queue_pagination.has_prev %}disabled{% endif %}">
+                        <a class="page-link" aria-label="Previous page" href="{{ url_for('main.automation_panel', tab='queue', page=queue_pagination.prev_num, status=status_filter or '', trigger=trigger_filter or '', search=search_term) if queue_pagination.has_prev else '#' }}">Previous</a>
+                    </li>
+                    {% for page_num in queue_pagination.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=1) %}
+                        {% if page_num %}
+                        <li class="page-item {% if page_num == queue_pagination.page %}active{% endif %}">
+                            <a class="page-link" href="{{ url_for('main.automation_panel', tab='queue', page=page_num, status=status_filter or '', trigger=trigger_filter or '', search=search_term) }}">{{ page_num }}</a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                    {% endfor %}
+                    <li class="page-item {% if not queue_pagination.has_next %}disabled{% endif %}">
+                        <a class="page-link" aria-label="Next page" href="{{ url_for('main.automation_panel', tab='queue', page=queue_pagination.next_num, status=status_filter or '', trigger=trigger_filter or '', search=search_term) if queue_pagination.has_next else '#' }}">Next</a>
+                    </li>
+                </ul>
+            </nav>
+            {% endif %}
+        </div>
+</div>
+</section>
 </div>
 {% endblock %}

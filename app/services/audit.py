@@ -40,14 +40,16 @@ _MODEL_LABEL_ATTRS = (
 def _audited_models():
     """Imported lazily to avoid a circular import at module load."""
     from app.models import (
-        AdminUser, AttendanceModel, ClassModel, FeeRecordModel, FeeTransaction,
+        AdminUser, AttendanceModel, ClassModel, Expense, ExpenseCategory,
+        FeeRecordModel, FeeTransaction, StaffPayroll, TermExam,
         SchoolSettings, SectionModel, StudentMarkModel, StudentModel,
         SubjectModel, TeacherModel, TestModel, TestTypeModel,
     )
     from app.models.audit import AuditLog
 
     models = {
-        AdminUser, AttendanceModel, ClassModel, FeeRecordModel, FeeTransaction,
+        AdminUser, AttendanceModel, ClassModel, Expense, ExpenseCategory,
+        FeeRecordModel, FeeTransaction, StaffPayroll, TermExam,
         SchoolSettings, SectionModel, StudentMarkModel, StudentModel,
         SubjectModel, TeacherModel, TestModel, TestTypeModel,
     }

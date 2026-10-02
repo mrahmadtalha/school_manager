@@ -11,16 +11,30 @@ from app.bootstrap import (
     migrate_admin_schema,
     migrate_attendance_schema,
     migrate_automation_schema,
+    migrate_class_integrity_schema,
+    migrate_dashboard_schema,
+    migrate_test_schema,
+    migrate_term_exam_schema,
+    migrate_student_profile_schema,
+    migrate_expense_schema,
     migrate_guardian_links,
     migrate_school_settings_schema,
+    migrate_student_enrollments,
+    migrate_student_fee_schema,
     migrate_student_roll_schema,
+    migrate_student_status_schema,
+    migrate_teacher_profile_schema,
     migrate_teacher_schema,
+    migrate_timetable_schema,
+    migrate_user_teacher_link_schema,
     register_blueprints,
 )
 from app.config import get_config
 from app.database import db
+from app.license_guard import install_license_guard
 from app.security import PUBLIC_ENDPOINTS, install_role_guard
 from app.services.audit import format_local, install_audit_hooks
+from app.services.custom_fields import parse_custom_fields_json, parse_json_list
 
 login_manager = LoginManager()
 
@@ -44,10 +58,22 @@ def create_app(config_override=None):
     login_manager.login_message_category = app.config['LOGIN_MESSAGE_CATEGORY']
     login_manager.init_app(app)
 
+    # Must come before the other before_request handlers so the license is
+    # checked first (read-only lockout, see app/license_guard.py).
+    install_license_guard(app)
+
     with app.app_context():
         from app.models import AdminUser  # noqa: F401  (ensures models are imported)
 
         db.create_all()
+        migrate_dashboard_schema(app)
+        migrate_test_schema(app)
+        migrate_term_exam_schema(app)
+        migrate_student_profile_schema(app)
+        migrate_teacher_profile_schema(app)
+        migrate_class_integrity_schema(app)
+        migrate_timetable_schema(app)
+        migrate_user_teacher_link_schema(app)
         migrate_admin_schema(app)
         migrate_attendance_schema(app)
         migrate_student_roll_schema(app)
@@ -55,11 +81,17 @@ def create_app(config_override=None):
         migrate_automation_schema(app)
         migrate_teacher_schema(app)
         migrate_school_settings_schema(app)
+        migrate_student_fee_schema(app)
+        migrate_student_status_schema(app)
+        migrate_student_enrollments(app)
+        migrate_expense_schema(app)
         register_blueprints(app)
         create_default_admin()
         ensure_school_settings()
         inject_school_settings(app)
         app.jinja_env.filters['localtime'] = format_local
+        app.jinja_env.filters['fromjson'] = parse_custom_fields_json
+        app.jinja_env.filters['fromjsonlist'] = parse_json_list
         install_auto_backup(app)
 
     @login_manager.user_loader

@@ -10,11 +10,12 @@ from flask import (
     url_for,
 )
 
+from app.database import db
 from app.models import ClassModel, SchoolSettings, StudentModel, TeacherModel
 from app.routes import main
 from app.services.id_documents import (
-    academic_session,
     build_certificates_pdf,
+    default_academic_session,
     build_id_cards_pdf,
     school_branding,
     student_card_payload,
@@ -63,7 +64,7 @@ def documents_hub():
         students=students,
         teachers=teachers,
         certificate_types=CERTIFICATE_TYPES,
-        default_session=academic_session(),
+        default_session=default_academic_session(),
         today=date.today().strftime('%Y-%m-%d'),
         school=school,
         preselect_student_id=request.args.get('student_id', type=int),
@@ -77,7 +78,7 @@ def documents_hub():
 def export_student_id_cards():
     student_id = request.args.get('student_id', type=int)
     class_id = request.args.get('class_id', type=int)
-    session = request.args.get('session', '').strip() or academic_session()
+    session = request.args.get('session', '').strip() or default_academic_session()
     students = _active_students(class_id=class_id, student_id=student_id)
     if not students:
         flash('No active students match those filters.', 'warning')
@@ -98,7 +99,7 @@ def export_student_id_cards():
 @main.route('/documents/id-cards/teachers.pdf')
 def export_teacher_id_cards():
     teacher_id = request.args.get('teacher_id', type=int)
-    session = request.args.get('session', '').strip() or academic_session()
+    session = request.args.get('session', '').strip() or default_academic_session()
     query = TeacherModel.query.filter_by(is_active=True)
     if teacher_id:
         query = query.filter_by(id=teacher_id)
@@ -123,7 +124,7 @@ def export_certificates():
         cert_type = 'bonafide'
     student_id = request.args.get('student_id', type=int)
     class_id = request.args.get('class_id', type=int)
-    session = request.args.get('session', '').strip() or academic_session()
+    session = request.args.get('session', '').strip() or default_academic_session()
     remarks = request.args.get('remarks', '').strip()
     issue_date = _parse_issue_date(request.args.get('issue_date'))
 
@@ -131,9 +132,15 @@ def export_certificates():
         flash('Select a student or a class to export certificates.', 'warning')
         return redirect(url_for('main.documents_hub'))
 
-    students = _active_students(class_id=class_id, student_id=student_id)
+    if student_id:
+        # Ex-students keep their full record; certificates (SLC / character / etc.)
+        # must remain printable after the student leaves.
+        student = db.session.get(StudentModel, student_id)
+        students = [student] if student else []
+    else:
+        students = _active_students(class_id=class_id)
     if not students:
-        flash('Select a student or class with active students to export certificates.', 'warning')
+        flash('Select a student or a class with active students to export certificates.', 'warning')
         return redirect(url_for('main.documents_hub'))
 
     output = build_certificates_pdf(students, _school(), cert_type, session, issue_date, remarks)

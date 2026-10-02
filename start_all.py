@@ -1,6 +1,7 @@
 import argparse
 import os
 import shutil
+import secrets
 import signal
 import socket
 import subprocess
@@ -151,6 +152,14 @@ def main():
     parser.add_argument('--node-only', action='store_true', help='Start only WhatsApp service')
     parser.add_argument('--reset-whatsapp-session', action='store_true', help='Delete stale WhatsApp auth/session data before startup')
     args = parser.parse_args()
+
+    if not args.node_only and not args.flask_only:
+        bridge_token = (os.environ.get('WHATSAPP_BRIDGE_TOKEN') or '').strip()
+        if not bridge_token:
+            os.environ['WHATSAPP_BRIDGE_TOKEN'] = secrets.token_urlsafe(32)
+            print('Generated a temporary WhatsApp bridge token for the Flask and Node services.')
+    elif args.node_only and not (os.environ.get('WHATSAPP_BRIDGE_TOKEN') or '').strip():
+        print('Warning: Set WHATSAPP_BRIDGE_TOKEN when starting Node separately from Flask.')
 
     processes = []
     flask_proc = None

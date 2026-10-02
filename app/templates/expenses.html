@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- Header -->
+<div class="d-flex flex-wrap justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom gap-2">
+    <h1 class="h2 fw-bold text-dark mb-0"><i class="fas fa-file-invoice-dollar text-primary me-2"></i>Expense Tracker</h1>
+    <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addExpenseModal">
+            <i class="fas fa-plus me-1"></i> Add Expense
+        </button>
+        <a class="btn btn-outline-success btn-sm"
+           href="{{ url_for('main.expenses_export_csv', date_from=filters.date_from or None, date_to=filters.date_to or None, category_id=filters.category_id or None, q=filters.q or None) }}">
+            <i class="fas fa-file-csv me-1"></i> Export CSV
+        </a>
+        <a class="btn btn-outline-danger btn-sm"
+           href="{{ url_for('main.expenses_export_pdf', date_from=filters.date_from or None, date_to=filters.date_to or None, category_id=filters.category_id or None, q=filters.q or None) }}">
+            <i class="fas fa-file-pdf me-1"></i> Export PDF
+        </a>
+    </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show">
+      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endfor %}{% endif %}
+{% endwith %}
+
+<!-- Summary cards -->
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="text-muted small text-uppercase fw-bold">Total (filtered)</div>
+                <div class="h3 fw-bold mb-1">Rs. {{ '{:,.0f}'.format(summary.total) }}</div>
+                <div class="text-muted small">{{ summary.count }} entr{{ 'y' if summary.count == 1 else 'ies' }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="text-muted small text-uppercase fw-bold">Largest Category</div>
+                {% if summary.top %}
+                <div class="h3 fw-bold mb-1">Rs. {{ '{:,.0f}'.format(summary.top.total) }}</div>
+                <div class="text-muted small">{{ summary.top.name }}</div>
+                {% else %}
+                <div class="h3 fw-bold mb-1">—</div>
+                <div class="text-muted small">No entries in range</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="text-muted small text-uppercase fw-bold">Average per Entry</div>
+                <div class="h3 fw-bold mb-1">Rs. {{ '{:,.0f}'.format(summary.total / summary.count) if summary.count else '0' }}</div>
+                <div class="text-muted small">across filtered entries</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-3">
+        <form method="GET" action="{{ url_for('main.expenses_list') }}" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small fw-bold mb-1">From</label>
+                <input type="date" class="form-control form-control-sm" name="date_from" value="{{ filters.date_from }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-bold mb-1">To</label>
+                <input type="date" class="form-control form-control-sm" name="date_to" value="{{ filters.date_to }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold mb-1">Category</label>
+                <select class="form-select form-select-sm" name="category_id">
+                    <option value="">All categories</option>
+                    {% for c in filter_categories %}
+                    <option value="{{ c.id }}" {% if filters.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold mb-1">Search</label>
+                <input type="text" class="form-control form-control-sm" name="q" value="{{ filters.q }}" placeholder="Receipt / description">
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                <button class="btn btn-dark btn-sm flex-fill"><i class="fas fa-filter me-1"></i>Apply</button>
+                <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.expenses_list') }}">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Expenses table -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-dark text-white fw-bold border-0 d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-list me-2"></i>Expenses</span>
+        <span class="badge bg-light text-dark">{{ expenses|length }} shown</span>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle datatable" data-page-length="25">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Category</th>
+                        <th class="text-end">Amount (Rs.)</th>
+                        <th>Method</th>
+                        <th>Receipt No</th>
+                        <th>Description</th>
+                        <th>Logged By</th>
+                        <th class="no-sort text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in expenses %}
+                    <tr>
+                        <td data-order="{{ e.date.isoformat() if e.date else '' }}">{{ e.date.strftime('%d %b %Y') if e.date else '—' }}</td>
+                        <td><span class="badge border bg-secondary-subtle text-dark">{{ e.category.name if e.category else '—' }}</span></td>
+                        <td class="text-end fw-bold">{{ '{:,.0f}'.format(e.amount or 0) }}</td>
+                        <td>{{ e.payment_method }}</td>
+                        <td class="font-monospace small">{{ e.receipt_no or '—' }}</td>
+                        <td class="text-muted small">{{ e.description or '—' }}</td>
+                        <td class="small">{{ e.logged_by_name or '—' }}</td>
+                        <td class="text-center text-nowrap">
+                            <button class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editExpenseModal"
+                                    data-action="{{ url_for('main.expenses_edit', id=e.id) }}"
+                                    data-category-id="{{ e.category_id }}"
+                                    data-amount="{{ '%.2f'|format(e.amount or 0) }}"
+                                    data-date="{{ e.date.isoformat() if e.date else '' }}"
+                                    data-method="{{ e.payment_method }}"
+                                    data-receipt="{{ e.receipt_no or '' }}"
+                                    data-description="{{ e.description or '' }}"
+                                    title="Edit"><i class="fas fa-pen"></i></button>
+                            <form method="post" action="{{ url_for('main.expenses_delete', id=e.id) }}" class="d-inline"
+                                  onsubmit="return confirm('Delete this expense? This cannot be undone.');">
+                                <button class="btn btn-sm btn-outline-danger" title="Delete"><i class="fas fa-trash"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if not expenses %}
+        <p class="text-muted small mb-0">No expenses match the current filters.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Categories -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-secondary text-white fw-bold border-0">
+        <i class="fas fa-tags me-2"></i>Categories
+    </div>
+    <div class="card-body">
+        <form method="post" action="{{ url_for('main.expenses_categories_add') }}" class="row g-2 align-items-end mb-3">
+            <div class="col-md-4">
+                <label class="form-label small fw-bold mb-1">New Category</label>
+                <input type="text" class="form-control form-control-sm" name="name" placeholder="e.g. Transport Fuel" maxlength="100" required>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label small fw-bold mb-1">Description (optional)</label>
+                <input type="text" class="form-control form-control-sm" name="description" maxlength="200">
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-dark btn-sm w-100"><i class="fas fa-plus me-1"></i>Add Category</button>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th class="text-end">Entries</th>
+                        <th class="text-end">Total (Rs.)</th>
+                        <th>Status</th>
+                        <th class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in all_categories %}
+                    <tr class="{% if not row.category.is_active %}text-muted{% endif %}">
+                        <td class="fw-bold">{{ row.category.name }}</td>
+                        <td class="small">{{ row.category.description or '—' }}</td>
+                        <td class="text-end">{{ row.count }}</td>
+                        <td class="text-end">{{ '{:,.0f}'.format(row.total) }}</td>
+                        <td>
+                            {% if row.category.is_active %}<span class="badge bg-success">Active</span>
+                            {% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
+                        </td>
+                        <td class="text-center text-nowrap">
+                            <button class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editCategoryModal"
+                                    data-action="{{ url_for('main.expenses_categories_edit', id=row.category.id) }}"
+                                    data-name="{{ row.category.name }}"
+                                    data-description="{{ row.category.description or '' }}"
+                                    title="Edit"><i class="fas fa-pen"></i></button>
+                            <form method="post" action="{{ url_for('main.expenses_categories_toggle', id=row.category.id) }}" class="d-inline">
+                                <button class="btn btn-sm btn-outline-{{ 'warning' if row.category.is_active else 'success' }}"
+                                        title="{{ 'Deactivate' if row.category.is_active else 'Reactivate' }}">
+                                    <i class="fas fa-{{ 'ban' if row.category.is_active else 'rotate-left' }}"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="text-muted small mb-0 mt-2">Categories that are no longer used can be deactivated — they stay on historical expenses and exports.</p>
+    </div>
+</div>
+
+<!-- Add Expense modal -->
+<div class="modal fade" id="addExpenseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{{ url_for('main.expenses_add') }}">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title"><i class="fas fa-plus me-2"></i>Add Expense</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Category</label>
+                            <select class="form-select form-select-sm" name="category_id" required>
+                                {% for c in filter_categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Amount (Rs.)</label>
+                            <input type="number" class="form-control form-control-sm" name="amount" step="0.01" min="0.01" required>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Date</label>
+                            <input type="date" class="form-control form-control-sm" name="date" value="{{ today.strftime('%Y-%m-%d') }}" required>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Payment Method</label>
+                            <select class="form-select form-select-sm" name="payment_method" required>
+                                {% for m in payment_methods %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Receipt No (optional)</label>
+                            <input type="text" class="form-control form-control-sm" name="receipt_no" maxlength="80">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Description (optional)</label>
+                            <input type="text" class="form-control form-control-sm" name="description" maxlength="255">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>Save Expense</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Expense modal -->
+<div class="modal fade" id="editExpenseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fas fa-pen me-2"></i>Edit Expense</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Category</label>
+                            <select class="form-select form-select-sm" name="category_id" required>
+                                {% for c in all_categories if c.category.is_active %}<option value="{{ c.category.id }}">{{ c.category.name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Amount (Rs.)</label>
+                            <input type="number" class="form-control form-control-sm" name="amount" step="0.01" min="0.01" required>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Date</label>
+                            <input type="date" class="form-control form-control-sm" name="date" required>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Payment Method</label>
+                            <select class="form-select form-select-sm" name="payment_method" required>
+                                {% for m in payment_methods %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Receipt No (optional)</label>
+                            <input type="text" class="form-control form-control-sm" name="receipt_no" maxlength="80">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Description (optional)</label>
+                            <input type="text" class="form-control form-control-sm" name="description" maxlength="255">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Category modal -->
+<div class="modal fade" id="editCategoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form method="post" action="">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Edit Category</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Name</label>
+                        <input type="text" class="form-control form-control-sm" name="name" maxlength="100" required>
+                    </div>
+                    <div class="mb-1">
+                        <label class="form-label small fw-bold">Description (optional)</label>
+                        <input type="text" class="form-control form-control-sm" name="description" maxlength="200">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var editModal = document.getElementById('editExpenseModal');
+    if (editModal) {
+        editModal.addEventListener('show.bs.modal', function (event) {
+            var btn = event.relatedTarget;
+            if (!btn) return;
+            var form = editModal.querySelector('form');
+            form.action = btn.getAttribute('data-action');
+            form.querySelector('[name="category_id"]').value = btn.getAttribute('data-category-id');
+            form.querySelector('[name="amount"]').value = btn.getAttribute('data-amount');
+            form.querySelector('[name="date"]').value = btn.getAttribute('data-date');
+            form.querySelector('[name="payment_method"]').value = btn.getAttribute('data-method');
+            form.querySelector('[name="receipt_no"]').value = btn.getAttribute('data-receipt') || '';
+            form.querySelector('[name="description"]').value = btn.getAttribute('data-description') || '';
+        });
+    }
+    var editCatModal = document.getElementById('editCategoryModal');
+    if (editCatModal) {
+        editCatModal.addEventListener('show.bs.modal', function (event) {
+            var btn = event.relatedTarget;
+            if (!btn) return;
+            var form = editCatModal.querySelector('form');
+            form.action = btn.getAttribute('data-action');
+            form.querySelector('[name="name"]').value = btn.getAttribute('data-name');
+            form.querySelector('[name="description"]').value = btn.getAttribute('data-description') || '';
+        });
+    }
+});
+</script>
+
+{% endblock %}

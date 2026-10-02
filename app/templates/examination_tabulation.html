@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start pt-3 pb-2 mb-3 border-bottom gap-3">
+    <div>
+        <p class="text-muted small text-uppercase fw-bold mb-1">Term Examination — Tabulation</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-table-list text-primary me-2"></i>{{ exam.name }}</h1>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <span class="badge bg-{{ color }}">{{ exam.exam_type }}</span>
+            <span class="badge bg-{{ status_color }}">{{ exam.status }}</span>
+            <span class="text-muted small"><i class="fas fa-chalkboard me-1"></i>{{ exam.class_info.name if exam.class_info else 'N/A' }}</span>
+            <span class="text-muted small"><i class="fas fa-calendar-week me-1"></i>{{ exam.session_label or '—' }}</span>
+        </div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('main.examinations_tabulation_csv', id=exam.id) }}" class="btn btn-outline-success btn-sm">
+            <i class="fas fa-file-csv me-1"></i> Export CSV
+        </a>
+        <a href="{{ url_for('main.examinations_tabulation_xlsx', id=exam.id) }}" class="btn btn-outline-success btn-sm">
+            <i class="fas fa-file-excel me-1"></i> Export Excel
+        </a>
+        <a href="{{ url_for('main.examinations_detail', id=exam.id) }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left me-1"></i> Back to Exam
+        </a>
+    </div>
+</div>
+
+{% set exam_active = 'examinations' %}
+{% include '_exam_module_switch.html' %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show">
+      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endfor %}{% endif %}
+{% endwith %}
+
+{% if not summary.complete %}
+<div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span><i class="fas fa-triangle-exclamation me-2"></i>{{ summary.missing }} mark(s) still missing — positions are provisional until all marks are entered.</span>
+    <a class="btn btn-sm btn-warning" href="{{ url_for('main.enter_batch_marks', term_exam_id=exam.id) }}">
+        <i class="fas fa-edit me-1"></i> Enter Remaining Marks
+    </a>
+</div>
+{% endif %}
+
+<!-- Summary strip -->
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase fw-bold">Students</div>
+            <div class="h4 fw-bold mb-0">{{ summary.students }}</div>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase fw-bold">Class Average</div>
+            <div class="h4 fw-bold mb-0">{{ summary.average }}%</div>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase fw-bold">Pass Rate</div>
+            <div class="h4 fw-bold mb-0">{{ summary.pass_rate }}%</div>
+            <div class="small text-muted">{{ summary.pass_count }} / {{ summary.students }} passed</div>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase fw-bold">Marks Complete</div>
+            <div class="h4 fw-bold mb-0 {{ 'text-success' if summary.complete else 'text-warning' }}">{{ summary.filled }}/{{ summary.expected }}</div>
+            <div class="small {{ 'text-success' if summary.complete else 'text-warning' }}">{{ 'All marks entered' if summary.complete else 'Incomplete' }}</div>
+        </div></div>
+    </div>
+</div>
+
+<!-- Tabulation matrix -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-dark text-white fw-bold border-0 d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-table-list me-2"></i>Tabulation Sheet</span>
+        <span class="badge bg-light text-dark">{{ rows|length }} student(s) · {{ summary.total_max|int }} marks</span>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center" style="width:80px;">Position</th>
+                        <th>Roll</th>
+                        <th>Student</th>
+                        {% for test in tests %}
+                        <th class="text-end" title="{{ test.subject_info.name if test.subject_info else '' }}">
+                            {{ test.subject_info.name if test.subject_info else '—' }}<br>
+                            <small class="text-muted fw-normal">({{ '{:,.0f}'.format(test.total_marks or 0) }})</small>
+                        </th>
+                        {% endfor %}
+                        <th class="text-end">Total</th>
+                        <th class="text-end">%</th>
+                        <th class="text-center">Grade</th>
+                        <th class="text-center" style="width:60px;">Card</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr class="{{ 'table-warning' if row.rank == 1 }}">
+                        <td class="text-center">
+                            {% if row.rank == 1 %}
+                            <span class="badge" style="background:#d4af37;color:#fff;">🥇 {{ row.position }}</span>
+                            {% elif row.rank == 2 %}
+                            <span class="badge" style="background:#9ca3af;color:#fff;">🥈 {{ row.position }}</span>
+                            {% elif row.rank == 3 %}
+                            <span class="badge" style="background:#cd7f32;color:#fff;">🥉 {{ row.position }}</span>
+                            {% else %}
+                            <span class="text-muted">{{ row.position }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted">{{ row.student.roll_number }}</td>
+                        <td class="fw-bold">{{ row.student.student_name }}</td>
+                        {% for test in tests %}
+                        {% set score = row.scores.get(test.id) %}
+                        <td class="text-end">
+                            {% if score is none %}<span class="text-muted">—</span>
+                            {% else %}{{ '%g'|format(score) }}{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="text-end fw-bold">
+                            {{ '%g'|format(row.total_obt) }}/{{ summary.total_max|int }}
+                        </td>
+                        <td class="text-end">{{ '%s%%'|format(row.pct) }}</td>
+                        <td class="text-center">
+                            {% if row.grade == 'F' %}<span class="badge bg-danger">F</span>
+                            {% else %}<span class="badge bg-secondary">{{ row.grade }}</span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a class="btn btn-sm btn-outline-danger" title="Result card PDF"
+                               href="{{ url_for('main.examinations_result_card', id=exam.id, student_id=row.student.id) }}">
+                                <i class="fas fa-file-pdf"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if not rows %}
+        <p class="text-muted small mb-0">No active students in this class.</p>
+        {% endif %}
+        <p class="text-muted small mb-0 mt-3">
+            <i class="fas fa-circle-info me-1"></i>Positions use competition ranking — students with equal totals share the same position (e.g. 1st, 2nd, 2nd, 4th).
+        </p>
+    </div>
+</div>
+
+{% endblock %}

@@ -12,7 +12,7 @@ from flask import (
 
 from app.database import db
 from app.models import (
-    StudentModel, TeacherModel, ClassModel, AttendanceModel
+    StudentModel, TeacherModel, ClassModel, AttendanceModel, SchoolSettings
 )
 from app.routes import main
 from app.services import attendance_export as exporter
@@ -35,6 +35,7 @@ def teacher_attendance():
     selected_date_str = request.args.get('date', date.today().strftime('%Y-%m-%d'))
     attendance_date = datetime.strptime(selected_date_str, '%Y-%m-%d').date()
     teachers = TeacherModel.query.filter_by(is_active=True).all()
+    school_settings = SchoolSettings.query.first()
     
     if request.method == 'POST':
         selected_date_str = request.form.get('date')
@@ -45,10 +46,20 @@ def teacher_attendance():
         
     records = AttendanceModel.query.filter_by(date=attendance_date, target_type='teacher').all()
     attendance_map = {r.target_id: r.status for r in records}
+    late_time_map = {r.target_id: r.late_time for r in records if r.late_time}
+    late_minutes_map = {r.target_id: r.late_minutes for r in records if r.late_minutes is not None}
 
     return render_template('teacher_attendance.html', 
                            teachers=teachers, selected_date=selected_date_str,
-                           attendance_map=attendance_map)
+                           attendance_map=attendance_map,
+                           late_time_map=late_time_map,
+                           late_minutes_map=late_minutes_map,
+                           is_today=(attendance_date == date.today()),
+                           school_start_time=(getattr(school_settings, 'school_start_time', None) or '08:30'),
+                           school_end_time=(getattr(school_settings, 'school_end_time', None) or '15:00'),
+                           attendance_grace_minutes=(getattr(school_settings, 'attendance_grace_minutes', 0) or 0),
+                           current_checkin_time=(datetime.now().strftime('%H:%M')
+                                                 if attendance_date == date.today() else ''))
 
 
 @main.route('/attendance/teachers/summary', methods=['GET'])
@@ -87,6 +98,7 @@ def student_attendance():
         selected_class_id = classes[0].id
         
     students = StudentModel.query.filter_by(is_active=True, class_id=selected_class_id).all() if selected_class_id else []
+    school_settings = SchoolSettings.query.first()
     
     if request.method == 'POST':
         try:
@@ -122,6 +134,7 @@ def student_attendance():
     
     attendance_map = {r.target_id: r.status for r in existing_records}
     late_time_map  = {r.target_id: (r.late_time if hasattr(r, 'late_time') else '') for r in existing_records}
+    late_minutes_map = {r.target_id: r.late_minutes for r in existing_records if r.late_minutes is not None}
     is_locked      = any(getattr(r, 'is_locked', False) for r in existing_records)
     absent_students = [
         student for student in students
@@ -146,6 +159,12 @@ def student_attendance():
                            existing_attendance=attendance_map,
                            attendance_map=attendance_map,
                            late_time_map=late_time_map,
+                           late_minutes_map=late_minutes_map,
+                           school_start_time=(getattr(school_settings, 'school_start_time', None) or '08:30'),
+                           school_end_time=(getattr(school_settings, 'school_end_time', None) or '15:00'),
+                           attendance_grace_minutes=(getattr(school_settings, 'attendance_grace_minutes', 0) or 0),
+                           current_checkin_time=(datetime.now().strftime('%H:%M')
+                                                 if attendance_date == date.today() else ''),
                            is_locked=is_locked,
                            absent_students=absent_students_payload)
 

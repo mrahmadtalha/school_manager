@@ -121,13 +121,18 @@ def test_grade_entry_and_correction_are_traceable(admin_client, app, seed):
         test_id = test.id
 
     student_id = seed['student_id']
-    first = admin_client.post(f'/tests/marks/{test_id}', data={
-        f'marks_{student_id}': '70',
+    batch_query = {
+        'title': 'Audit Test',
+        'date': '2026-10-01',
+        'class_id': seed['class_id'],
+    }
+    first = admin_client.post('/tests/batch_marks', query_string=batch_query, data={
+        f'marks_{student_id}_{test_id}': '70',
     }, follow_redirects=False)
     assert first.status_code == 302
 
-    second = admin_client.post(f'/tests/marks/{test_id}', data={
-        f'marks_{student_id}': '55',
+    second = admin_client.post('/tests/batch_marks', query_string=batch_query, data={
+        f'marks_{student_id}_{test_id}': '55',
     }, follow_redirects=False)
     assert second.status_code == 302
 

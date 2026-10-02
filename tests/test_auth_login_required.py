@@ -147,7 +147,7 @@ def test_class_fee_bulk_update_and_individual_override(admin_client, app, seed):
         assert StudentModel.query.filter_by(roll_number=1001).first().monthly_fee == 3200.0
 
 
-def test_permanent_bulk_delete_removes_related_records(admin_client, app, seed):
+def test_permanent_delete_routes_are_removed(admin_client, app, seed):
     with app.app_context():
         student = StudentModel.query.get(seed['student_id'])
         student.is_active = False
@@ -158,16 +158,18 @@ def test_permanent_bulk_delete_removes_related_records(admin_client, app, seed):
         db.session.commit()
         archived_id = student.id
 
-    response = admin_client.post('/students/delete-all-permanent', follow_redirects=False)
-    assert response.status_code == 302
+    # Permanent deletion has been removed from the app entirely.
+    assert admin_client.post('/students/delete-all-permanent',
+                             follow_redirects=False).status_code == 404
+    assert admin_client.post('/students/permanent-delete/%d' % archived_id,
+                             follow_redirects=False).status_code == 404
 
     with app.app_context():
-        # Only archived students are purged; the active student must survive.
-        assert StudentModel.query.get(archived_id) is None
-        assert StudentModel.query.count() == 1
-        assert StudentModel.query.filter_by(roll_number=1002).first() is not None
-        assert FeeRecordModel.query.filter_by(student_id=archived_id).count() == 0
-        assert StudentMarkModel.query.filter_by(student_id=archived_id).count() == 0
+        # The archived student and every related record must survive.
+        assert StudentModel.query.get(archived_id) is not None
+        assert StudentModel.query.count() == 2
+        assert FeeRecordModel.query.filter_by(student_id=archived_id).count() == 1
+        assert StudentMarkModel.query.filter_by(student_id=archived_id).count() == 1
 
 
 def test_classes_page_shows_active_student_total(admin_client, app, seed):
@@ -178,7 +180,10 @@ def test_classes_page_shows_active_student_total(admin_client, app, seed):
 
     response = admin_client.get('/classes')
     assert response.status_code == 200
-    assert 'text-success">1</div>' in response.get_data(as_text=True)
+    html = response.get_data(as_text=True)
+    assert 'summary-card is-students' in html
+    num_block = html.split('summary-card is-students', 1)[1].split('summary-num">', 1)[1]
+    assert num_block.split('<', 1)[0] == '1'
 
 
 def test_reports_overview_dashboard_renders(admin_client, app, seed):
@@ -189,11 +194,11 @@ def test_reports_overview_dashboard_renders(admin_client, app, seed):
         ))
         db.session.commit()
 
-    response = admin_client.get('/reports/hub?module=overview')
+    response = admin_client.get('/reports/hub?module=overview', follow_redirects=True)
     assert response.status_code == 200
     body = response.get_data(as_text=True)
-    assert 'Total Students' in body
-    assert 'School Overview' in body
+    assert 'Total Outstanding Dues' in body
+    assert 'id="hubAttendanceChart"' in body
 
 
 def test_student_detailed_report_renders_attendance_and_marks(admin_client, app, seed):

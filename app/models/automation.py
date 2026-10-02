@@ -21,10 +21,18 @@ class AutomationSettings(db.Model):
     # Mode: 'auto' = send immediately | 'approval' = queue for review
     mode            = db.Column(db.String(20), default="approval")
 
+    # Delivery integration and Cloud API credentials.
+    integration_method = db.Column(db.String(20), default="qr_scan", nullable=False)
+    whatsapp_api_token = db.Column(db.Text, nullable=True)
+    whatsapp_phone_number_id = db.Column(db.String(100), nullable=True)
+    whatsapp_business_account_id = db.Column(db.String(100), nullable=True)
+
     # Which events trigger messages
     notify_absent   = db.Column(db.Boolean, default=True)
     notify_late     = db.Column(db.Boolean, default=True)
     notify_results  = db.Column(db.Boolean, default=False)
+    notify_fee_reminders = db.Column(db.Boolean, default=True)
+    notify_fee_receipts = db.Column(db.Boolean, default=False)
 
     # Message templates (editable)
     template_absent = db.Column(db.Text, default=(
@@ -72,8 +80,8 @@ class AutomationSettings(db.Model):
 class MessageQueue(db.Model):
     """
     Every outgoing WhatsApp message passes through this queue.
-    Auto mode:     status goes pending -> sent (or failed)
-    Approval mode: status goes pending -> approved -> sent (or failed)
+    Auto mode:     pending/approved -> sending_auto -> sent (or failed)
+    Approval mode: pending -> approved -> sending -> sent (or failed)
     """
     __tablename__ = "message_queue"
 
@@ -81,7 +89,7 @@ class MessageQueue(db.Model):
     phone       = db.Column(db.String(30),  nullable=False)   # international format
     message     = db.Column(db.Text,        nullable=False)
     status      = db.Column(db.String(20),  default="pending")
-    # pending | approved | rejected | sending | sent | failed
+    # pending | approved | rejected | sending | sending_auto | sent | failed
 
     # Context (for display)
     trigger     = db.Column(db.String(50),  nullable=True)
@@ -120,4 +128,4 @@ class DeliveryLog(db.Model):
     message = db.relationship("MessageQueue", back_populates="delivery_logs")
 
 
-MESSAGE_STATUSES = ["pending", "approved", "rejected", "sending", "sent", "failed"]
+MESSAGE_STATUSES = ["pending", "approved", "rejected", "sending", "sending_auto", "sent", "failed"]

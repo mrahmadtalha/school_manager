@@ -47,8 +47,12 @@ def _write_records(application, data):
     }, follow_redirects=False)
     assert attendance.status_code == 302
 
-    marks = client.post(f'/tests/marks/{test_id}', data={
-        f'marks_{student_id}': '88',
+    marks = client.post('/tests/batch_marks', query_string={
+        'title': 'Persistence Test',
+        'date': '2026-09-20',
+        'class_id': data['class_id'],
+    }, data={
+        f'marks_{student_id}_{test_id}': '88',
     }, follow_redirects=False)
     assert marks.status_code == 302
 

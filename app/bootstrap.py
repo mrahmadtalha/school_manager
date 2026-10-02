@@ -126,6 +126,9 @@ def migrate_attendance_schema(app):
         if 'late_time' not in columns:
             connection.execute('ALTER TABLE attendance ADD COLUMN late_time VARCHAR(10)')
             print('Migration: added late_time to attendance')
+        if 'late_minutes' not in columns:
+            connection.execute('ALTER TABLE attendance ADD COLUMN late_minutes INTEGER')
+            print('Migration: added late_minutes to attendance')
 
         connection.execute('CREATE INDEX IF NOT EXISTS idx_attendance_target_date ON attendance(target_type, target_id, date)')
         connection.execute('CREATE INDEX IF NOT EXISTS idx_attendance_class_date ON attendance(class_id, date)')
@@ -215,9 +218,21 @@ def migrate_automation_schema(app):
             print('Migration: added retry_count to message_queue')
 
         automation_columns = _table_columns(connection, 'automation_settings')
-        if 'last_successful_send_at' not in automation_columns and automation_columns:
-            connection.execute('ALTER TABLE automation_settings ADD COLUMN last_successful_send_at DATETIME')
-            print('Migration: added last_successful_send_at to automation_settings')
+        if automation_columns:
+            additions = (
+                ('last_successful_send_at', 'DATETIME'),
+                ('integration_method', "VARCHAR(20) NOT NULL DEFAULT 'qr_scan'"),
+                ('whatsapp_api_token', 'TEXT'),
+                ('whatsapp_phone_number_id', 'VARCHAR(100)'),
+                ('whatsapp_business_account_id', 'VARCHAR(100)'),
+                ('notify_fee_reminders', 'BOOLEAN DEFAULT 1'),
+                ('notify_fee_receipts', 'BOOLEAN DEFAULT 0'),
+            )
+            for name, ddl in additions:
+                if name not in automation_columns:
+                    connection.execute(
+                        f'ALTER TABLE automation_settings ADD COLUMN {name} {ddl}')
+                    print(f'Migration: added {name} to automation_settings')
 
         delivery_table = connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='delivery_logs'"
@@ -258,6 +273,124 @@ def migrate_teacher_schema(app):
             connection.execute('ALTER TABLE teachers ADD COLUMN hourly_rate FLOAT DEFAULT 0')
             print('Migration: added hourly_rate to teachers')
 
+        for column, ddl in (
+            ('cnic', 'VARCHAR(30)'),
+            ('address', 'TEXT'),
+            ('contact_number', 'VARCHAR(30)'),
+            ('emergency_contact_number', 'VARCHAR(30)'),
+            ('previous_experience_years', 'FLOAT'),
+            ('previous_salary', 'FLOAT'),
+            ('assigned_classes', 'TEXT'),
+            ('assigned_subjects', 'TEXT'),
+        ):
+            if column not in teacher_columns:
+                connection.execute(f'ALTER TABLE teachers ADD COLUMN {column} {ddl}')
+                print(f'Migration: added {column} to teachers')
+
+        connection.commit()
+
+
+def migrate_teacher_profile_schema(app):
+    """Teacher profile extras: designation/gender columns + salary normalization."""
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        columns = _table_columns(connection, 'teachers')
+        if not columns:
+            return
+        if 'designation' not in columns:
+            connection.execute('ALTER TABLE teachers ADD COLUMN designation VARCHAR(80)')
+            print('Migration: added designation to teachers')
+        if 'gender' not in columns:
+            connection.execute('ALTER TABLE teachers ADD COLUMN gender VARCHAR(20)')
+            print('Migration: added gender to teachers')
+
+        # Salary normalization: monthly_salary is the single source of truth;
+        # backfill it once from the legacy salary column where it is still empty.
+        cursor = connection.execute(
+            'UPDATE teachers SET monthly_salary = salary '
+            'WHERE (monthly_salary IS NULL OR monthly_salary = 0) '
+            "AND salary > 0 AND COALESCE(salary_type, 'monthly') != 'hourly'")
+        if cursor.rowcount:
+            print('Migration: backfilled monthly_salary from salary for %d teacher(s)'
+                  % cursor.rowcount)
+
+        if not connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+                ('idx_teachers_is_active',)).fetchone():
+            connection.execute(
+                'CREATE INDEX IF NOT EXISTS idx_teachers_is_active ON teachers(is_active)')
+            print('Migration: created index idx_teachers_is_active')
+
+        connection.commit()
+
+
+def migrate_class_integrity_schema(app):
+    """Class integrity: subject archiving column, indexes and unique name guards."""
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        subject_columns = _table_columns(connection, 'subjects')
+        if subject_columns:
+            if 'is_active' not in subject_columns:
+                connection.execute('ALTER TABLE subjects ADD COLUMN is_active BOOLEAN DEFAULT 1')
+                print('Migration: added is_active to subjects')
+            connection.execute('UPDATE subjects SET is_active = 1 WHERE is_active IS NULL')
+
+        def _has_index(name):
+            return connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name=?", (name,)
+            ).fetchone()
+
+        for index_name, statement in (
+            ('idx_sections_class', 'CREATE INDEX IF NOT EXISTS idx_sections_class ON sections(class_id)'),
+            ('idx_subjects_class', 'CREATE INDEX IF NOT EXISTS idx_subjects_class ON subjects(class_id)'),
+            ('uq_sections_class_name',
+             'CREATE UNIQUE INDEX IF NOT EXISTS uq_sections_class_name ON sections(class_id, name)'),
+            ('uq_subjects_class_name',
+             'CREATE UNIQUE INDEX IF NOT EXISTS uq_subjects_class_name ON subjects(class_id, name)'),
+        ):
+            if _has_index(index_name):
+                continue
+            try:
+                connection.execute(statement)
+                print('Migration: created index %s' % index_name)
+            except Exception as exc:  # duplicate data present — skip, app layer still guards
+                print('Migration: skipped %s (%s)' % (index_name, exc))
+
+        connection.commit()
+
+
+def migrate_timetable_schema(app):
+    """Optional subject-teacher mapping: subjects.teacher_id column (timetable_slots
+    table is created automatically by db.create_all())."""
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        subject_columns = _table_columns(connection, 'subjects')
+        if subject_columns and 'teacher_id' not in subject_columns:
+            connection.execute('ALTER TABLE subjects ADD COLUMN teacher_id INTEGER')
+            print('Migration: added teacher_id to subjects')
+        connection.commit()
+
+
+def migrate_user_teacher_link_schema(app):
+    """Optional link between login accounts and teacher records (admin_users.teacher_id)."""
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        columns = _table_columns(connection, 'admin_users')
+        if columns and 'teacher_id' not in columns:
+            connection.execute('ALTER TABLE admin_users ADD COLUMN teacher_id INTEGER')
+            print('Migration: added teacher_id to admin_users')
         connection.commit()
 
 
@@ -273,6 +406,9 @@ def migrate_school_settings_schema(app):
         if 'school_start_time' not in settings_columns:
             connection.execute("ALTER TABLE school_settings ADD COLUMN school_start_time VARCHAR(10) DEFAULT '08:30'")
             print('Migration: added school_start_time to school_settings')
+        if 'attendance_grace_minutes' not in settings_columns:
+            connection.execute('ALTER TABLE school_settings ADD COLUMN attendance_grace_minutes INTEGER DEFAULT 0')
+            print('Migration: added attendance_grace_minutes to school_settings')
         if 'school_end_time' not in settings_columns:
             connection.execute("ALTER TABLE school_settings ADD COLUMN school_end_time VARCHAR(10) DEFAULT '15:00'")
             print('Migration: added school_end_time to school_settings')
@@ -282,8 +418,243 @@ def migrate_school_settings_schema(app):
         if 'custom_off_days' not in settings_columns:
             connection.execute("ALTER TABLE school_settings ADD COLUMN custom_off_days VARCHAR(200) DEFAULT ''")
             print('Migration: added custom_off_days to school_settings')
+        if 'academic_session' not in settings_columns:
+            connection.execute("ALTER TABLE school_settings ADD COLUMN academic_session VARCHAR(50) DEFAULT ''")
+            print('Migration: added academic_session to school_settings')
+        if 'result_announcement_date' not in settings_columns:
+            connection.execute("ALTER TABLE school_settings ADD COLUMN result_announcement_date VARCHAR(20) DEFAULT ''")
+            print('Migration: added result_announcement_date to school_settings')
 
         connection.commit()
+
+
+def migrate_student_fee_schema(app):
+    """Add class-fee / discount columns (classes.monthly_fee, students.class_fee, ...)."""
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        class_columns = _table_columns(connection, 'classes')
+        if class_columns and 'monthly_fee' not in class_columns:
+            connection.execute('ALTER TABLE classes ADD COLUMN monthly_fee FLOAT')
+            print('Migration: added monthly_fee to classes')
+
+        student_columns = _table_columns(connection, 'students')
+        if student_columns:
+            if 'class_fee' not in student_columns:
+                connection.execute('ALTER TABLE students ADD COLUMN class_fee FLOAT')
+                print('Migration: added class_fee to students')
+            if 'discount_type' not in student_columns:
+                connection.execute('ALTER TABLE students ADD COLUMN discount_type VARCHAR(20)')
+                print('Migration: added discount_type to students')
+            if 'discount_value' not in student_columns:
+                connection.execute('ALTER TABLE students ADD COLUMN discount_value FLOAT')
+                print('Migration: added discount_value to students')
+
+        connection.commit()
+
+
+def migrate_student_status_schema(app):
+    """Add the student status lifecycle columns and backfill archived students.
+
+    Older databases only had the ``is_active`` flag; students archived before
+    the status lifecycle existed are backfilled to ``slc_issued`` so the
+    archive always carries an explicit status.
+    """
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        student_columns = _table_columns(connection, 'students')
+        if not student_columns:
+            return
+        if 'status' not in student_columns:
+            connection.execute("ALTER TABLE students ADD COLUMN status VARCHAR(20) DEFAULT 'enrolled'")
+            print('Migration: added status to students')
+            cursor = connection.execute("UPDATE students SET status = 'slc_issued' WHERE is_active = 0")
+            if cursor.rowcount:
+                print(f'Migration: backfilled slc_issued for {cursor.rowcount} archived student(s)')
+        if 'leaving_reason' not in student_columns:
+            connection.execute('ALTER TABLE students ADD COLUMN leaving_reason VARCHAR(200)')
+            print('Migration: added leaving_reason to students')
+        if 'leaving_date' not in student_columns:
+            connection.execute('ALTER TABLE students ADD COLUMN leaving_date DATE')
+            print('Migration: added leaving_date to students')
+
+        connection.commit()
+
+
+def migrate_student_enrollments(app):
+    """Backfill a class-enrollment snapshot for students that have none."""
+    from app.models import StudentEnrollment, StudentModel
+    from app.services.enrollments import close_open_enrollment, start_enrollment
+
+    with app.app_context():
+        existing_ids = {row[0] for row in
+                        db.session.query(StudentEnrollment.student_id).distinct().all()}
+        query = StudentModel.query
+        if existing_ids:
+            query = query.filter(StudentModel.id.notin_(existing_ids))
+        missing = query.all()
+        if not missing:
+            return
+        for student in missing:
+            start_enrollment(student, reason='backfill', start_date=None, end_previous=False)
+            if not student.is_active:
+                close_open_enrollment(student, end_date=student.leaving_date)
+        db.session.commit()
+        print(f'Migration: backfilled enrollment history for {len(missing)} student(s)')
+
+
+def migrate_student_profile_schema(app):
+    """Student profile extras: gender, admission fields, status index."""
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        columns = _table_columns(connection, 'students')
+        if columns:
+            if 'gender' not in columns:
+                connection.execute('ALTER TABLE students ADD COLUMN gender VARCHAR(10)')
+                print('Migration: added gender to students')
+            if 'admission_number' not in columns:
+                connection.execute('ALTER TABLE students ADD COLUMN admission_number VARCHAR(40)')
+                print('Migration: added admission_number to students')
+            if 'admission_date' not in columns:
+                connection.execute('ALTER TABLE students ADD COLUMN admission_date DATE')
+                print('Migration: added admission_date to students')
+            if 'sponsor_type' not in columns:
+                connection.execute("ALTER TABLE students ADD COLUMN sponsor_type VARCHAR(20) NOT NULL DEFAULT 'Father'")
+                print('Migration: added sponsor_type to students')
+            if 'sponsor_cnic' not in columns:
+                connection.execute('ALTER TABLE students ADD COLUMN sponsor_cnic VARCHAR(20)')
+                print('Migration: added sponsor_cnic to students')
+            index_row = connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' "
+                "AND name='idx_students_status'").fetchone()
+            if not index_row:
+                connection.execute(
+                    'CREATE INDEX IF NOT EXISTS idx_students_status ON students(status)')
+                print('Migration: created index idx_students_status')
+        connection.commit()
+
+
+def migrate_term_exam_schema(app):
+    """Split evaluation: term-exam columns, scope seeds and indexes."""
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        test_columns = _table_columns(connection, 'tests')
+        if test_columns:
+            if 'term_exam_id' not in test_columns:
+                connection.execute('ALTER TABLE tests ADD COLUMN term_exam_id INTEGER')
+                print('Migration: added term_exam_id to tests')
+            if 'start_time' not in test_columns:
+                connection.execute('ALTER TABLE tests ADD COLUMN start_time VARCHAR(10)')
+                print('Migration: added start_time to tests')
+            if 'room' not in test_columns:
+                connection.execute('ALTER TABLE tests ADD COLUMN room VARCHAR(60)')
+                print('Migration: added room to tests')
+
+        type_columns = _table_columns(connection, 'test_types')
+        if type_columns and 'scope' not in type_columns:
+            connection.execute('ALTER TABLE test_types ADD COLUMN scope VARCHAR(20)')
+            print('Migration: added scope to test_types')
+
+        # Seed scopes for well-known categories (idempotent).
+        connection.execute(
+            "UPDATE test_types SET scope='class_test' WHERE scope IS NULL "
+            "AND lower(name) IN ('daily','weekly','monthly')")
+        connection.execute(
+            "UPDATE test_types SET scope='term_exam' WHERE scope IS NULL "
+            "AND lower(name) IN ('mid-term','midterm','mid term','final','annual',"
+            "'pre-board','preboard','pre board')")
+
+        if type_columns:
+            exists = connection.execute(
+                "SELECT id FROM test_types WHERE lower(name) = 'pre-board'").fetchone()
+            if not exists:
+                connection.execute(
+                    "INSERT INTO test_types (name, scope) VALUES ('Pre-Board', 'term_exam')")
+                print('Migration: added Pre-Board test category')
+
+        if test_columns:
+            index_row = connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' "
+                "AND name='idx_tests_term_exam'").fetchone()
+            if not index_row:
+                connection.execute(
+                    'CREATE INDEX IF NOT EXISTS idx_tests_term_exam ON tests(term_exam_id)')
+                print('Migration: created index idx_tests_term_exam')
+
+        connection.commit()
+
+
+def migrate_test_schema(app):
+    """Add per-category default marks to test types."""
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        columns = _table_columns(connection, 'test_types')
+        if columns and 'default_marks' not in columns:
+            connection.execute('ALTER TABLE test_types ADD COLUMN default_marks FLOAT')
+            print('Migration: added default_marks to test_types')
+        connection.commit()
+
+
+def migrate_dashboard_schema(app):
+    """Add date_of_birth columns and dashboard performance indexes."""
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        for table in ('students', 'teachers'):
+            columns = _table_columns(connection, table)
+            if columns and 'date_of_birth' not in columns:
+                connection.execute('ALTER TABLE %s ADD COLUMN date_of_birth DATE' % table)
+                print('Migration: added date_of_birth to %s' % table)
+
+        index_specs = (
+            ('students', 'idx_students_dob', 'students(date_of_birth)'),
+            ('teachers', 'idx_teachers_dob', 'teachers(date_of_birth)'),
+            ('expenses', 'idx_expenses_date', 'expenses(date)'),
+            ('fee_records', 'idx_fee_records_month', 'fee_records(month_year)'),
+            ('staff_payroll', 'idx_staff_payroll_month', 'staff_payroll(month_year)'),
+        )
+        for table, index_name, target in index_specs:
+            if not _table_columns(connection, table):
+                continue
+            exists = connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+                (index_name,)).fetchone()
+            if exists:
+                continue
+            connection.execute('CREATE INDEX IF NOT EXISTS %s ON %s' % (index_name, target))
+            print('Migration: created index %s' % index_name)
+
+        connection.commit()
+
+
+def migrate_expense_schema(app):
+    """Seed default expense categories when none exist yet."""
+    from app.models import DEFAULT_EXPENSE_CATEGORIES, ExpenseCategory
+
+    with app.app_context():
+        if ExpenseCategory.query.count() > 0:
+            return
+        for name in DEFAULT_EXPENSE_CATEGORIES:
+            db.session.add(ExpenseCategory(name=name))
+        db.session.commit()
+        print('Migration: seeded %d default expense categories'
+              % len(DEFAULT_EXPENSE_CATEGORIES))
 
 
 _auto_backup_started = False

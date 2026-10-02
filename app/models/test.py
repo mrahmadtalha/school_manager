@@ -13,10 +13,14 @@ class TestModel(db.Model):
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False)
     subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=False)
     total_marks = db.Column(db.Float, nullable=False)
+    term_exam_id = db.Column(db.Integer, db.ForeignKey('term_exams.id'), nullable=True)
+    start_time = db.Column(db.String(10), nullable=True)   # '09:00' (date-sheet slot)
+    room = db.Column(db.String(60), nullable=True)         # date-sheet room/venue
 
     # Relationships
     marks = db.relationship('StudentMarkModel', backref='test_info', cascade='all, delete-orphan')
     subject_info = db.relationship('SubjectModel', backref='tests', lazy=True)
+    term_exam = db.relationship('TermExam', backref=db.backref('tests', lazy='dynamic'))
 
 
 class StudentMarkModel(db.Model):
@@ -39,3 +43,5 @@ class TestTypeModel(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)
+    default_marks = db.Column(db.Float, nullable=True)  # Optional default total marks
+    scope = db.Column(db.String(20), nullable=True)     # 'class_test' | 'term_exam' | None = both

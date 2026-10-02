@@ -6,8 +6,8 @@
         <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-edit text-primary me-2"></i>Enter Marks: {{ batch_title }}</h1>
         <p class="text-muted small mb-0">{{ batch_type }} | Class: {{ class_info.name }} | {{ batch_date.strftime('%d %b %Y') if batch_date else 'No date' }}</p>
     </div>
-    <a href="{{ url_for('main.tests_list') }}" class="btn btn-secondary btn-sm">
-        <i class="fas fa-arrow-left me-1"></i> Back to Tests
+    <a href="{{ back_url or url_for('main.tests_list') }}" class="btn btn-secondary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i> Back
     </a>
 </div>
 
@@ -23,8 +23,54 @@
   {% endif %}
 {% endwith %}
 
+{% if students %}
+<!-- Fast entry toolbar -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label small fw-bold mb-1">Fill value</label>
+                <input type="number" step="0.5" min="0" id="fillValue" class="form-control form-control-sm" style="width: 110px;" placeholder="e.g. 80">
+            </div>
+            <div class="col-auto">
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="fillEmpty()" title="Set the fill value in every empty cell">
+                    <i class="fas fa-fill-drip me-1"></i>Fill empty cells
+                </button>
+            </div>
+            <div class="col-auto">
+                <label class="form-label small fw-bold mb-1">Column</label>
+                <select id="fillColumnSelect" class="form-select form-select-sm" style="min-width: 150px;">
+                    {% for test in tests %}
+                    <option value="{{ test.id }}">{{ test.subject_info.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="fillColumn()" title="Set the fill value in every empty cell of this subject column">
+                    <i class="fas fa-arrow-down me-1"></i>Fill column
+                </button>
+            </div>
+            <div class="col-auto ms-auto text-end">
+                <span class="small text-muted me-1">Progress</span>
+                <span class="badge bg-secondary" id="progressBadge">0/0</span>
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
+            <span class="small text-muted">Quick fill focused cell:</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="quickFill(100)">100%</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="quickFill(75)">75%</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="quickFill(50)">50%</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="quickFill(25)">25%</button>
+            <button type="button" class="btn btn-sm btn-outline-dark" onclick="quickClear()">Clear</button>
+            <span class="text-muted small ms-2">Blank cells are skipped when saving — use them for absentees.</span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Marks Input Form -->
 <form method="POST">
+    {% if term_exam_id %}<input type="hidden" name="term_exam_id" value="{{ term_exam_id }}">{% endif %}
     <div class="card shadow-sm">
         <div class="card-body table-responsive p-0">
             {% if students %}
@@ -39,6 +85,7 @@
                             <small class="text-muted fw-normal">(Max: {{ test.total_marks }})</small>
                         </th>
                         {% endfor %}
+                        <th class="text-center" style="width: 70px;" title="Fill this row's empty cells with the toolbar value">Row</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -48,16 +95,22 @@
                         <td>{{ student.student_name }}</td>
                         {% for test in tests %}
                         <td>
-                            <input type="number" step="0.5" min="0" max="{{ test.total_marks }}" 
-                                   class="form-control form-control-sm mx-auto" style="max-width: 100px;" 
-                                   name="marks_{{ student.id }}_{{ test.id }}" 
-                                   id="marks_{{ student.id }}_{{ test.id }}" 
-                                   value="{{ existing_marks.get(student.id, {}).get(test.id, '') }}" 
-                                   placeholder="0 – {{ test.total_marks }}" 
+                            <input type="number" step="0.5" min="0" max="{{ test.total_marks }}"
+                                   class="form-control form-control-sm mx-auto" style="max-width: 100px;"
+                                   name="marks_{{ student.id }}_{{ test.id }}"
+                                   id="marks_{{ student.id }}_{{ test.id }}"
+                                   value="{{ existing_marks.get(student.id, {}).get(test.id, '') }}"
+                                   placeholder="0 – {{ test.total_marks }}"
                                    oninput="validateMark(this, {{ test.total_marks }})">
                             <div class="invalid-feedback text-center small" id="err_{{ student.id }}_{{ test.id }}"></div>
                         </td>
                         {% endfor %}
+                        <td class="text-center">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" title="Fill empty cells in this row with the toolbar value"
+                                    onclick="fillRow(this)">
+                                <i class="fas fa-arrow-right"></i>
+                            </button>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -70,8 +123,11 @@
         </div>
         {% if students %}
         <div class="card-footer bg-white text-end py-3">
-            <button type="submit" class="btn btn-success btn-lg px-5">
+            <button type="submit" class="btn btn-success btn-lg px-4">
                 <i class="fas fa-save me-2"></i> Save All Marks
+            </button>
+            <button type="submit" name="stay" value="1" class="btn btn-outline-success btn-lg px-4 ms-2">
+                <i class="fas fa-rotate-right me-2"></i> Save &amp; Keep Editing
             </button>
         </div>
         {% endif %}
@@ -124,6 +180,85 @@ document.querySelector('form').addEventListener('submit', function (e) {
             document.querySelector('form').prepend(alert);
         }
     }
+});
+
+// ================= Fast entry tools =================
+var lastFocusedCell = null;
+
+function allMarkInputs() {
+    return document.querySelectorAll('input[name^="marks_"]');
+}
+
+function updateProgress() {
+    var badge = document.getElementById('progressBadge');
+    if (!badge) return;
+    var inputs = allMarkInputs();
+    var total = inputs.length, filled = 0;
+    inputs.forEach(function (inp) {
+        if (inp.value.trim() !== '' || inp.disabled) filled++;
+    });
+    badge.textContent = filled + '/' + total;
+    badge.className = 'badge ' +
+        (filled === 0 ? 'bg-secondary' : (filled >= total ? 'bg-success' : 'bg-warning text-dark'));
+}
+
+function setCell(input, value) {
+    input.value = value;
+    validateMark(input, parseFloat(input.getAttribute('max')));
+    updateProgress();
+}
+
+function toolbarValue() {
+    var raw = document.getElementById('fillValue').value;
+    if (raw === '') { alert('Enter a fill value first (top-left of the toolbar).'); return null; }
+    return raw;
+}
+
+function fillEmpty() {
+    var value = toolbarValue();
+    if (value === null) return;
+    allMarkInputs().forEach(function (inp) {
+        if (!inp.disabled && inp.value.trim() === '') setCell(inp, value);
+    });
+}
+
+function fillColumn() {
+    var value = toolbarValue();
+    if (value === null) return;
+    var select = document.getElementById('fillColumnSelect');
+    var testId = select.value;
+    allMarkInputs().forEach(function (inp) {
+        var parts = inp.name.split('_');      // marks_<student>_<test>
+        if (!inp.disabled && parts[2] === testId && inp.value.trim() === '') setCell(inp, value);
+    });
+}
+
+function fillRow(button) {
+    var value = toolbarValue();
+    if (value === null) return;
+    var row = button.closest('tr');
+    row.querySelectorAll('input[name^="marks_"]').forEach(function (inp) {
+        if (!inp.disabled && inp.value.trim() === '') setCell(inp, value);
+    });
+}
+
+function quickFill(percent) {
+    if (!lastFocusedCell || lastFocusedCell.disabled) { alert('Click a marks cell first, then use the quick fill.'); return; }
+    var max = parseFloat(lastFocusedCell.getAttribute('max')) || 0;
+    var value = Math.round(max * percent / 100 * 2) / 2;   // nearest 0.5
+    setCell(lastFocusedCell, value);
+}
+
+function quickClear() {
+    if (!lastFocusedCell || lastFocusedCell.disabled) { alert('Click a marks cell first.'); return; }
+    setCell(lastFocusedCell, '');
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    allMarkInputs().forEach(function (inp) {
+        inp.addEventListener('focus', function () { lastFocusedCell = this; });
+    });
+    updateProgress();
 });
 </script>
 {% endblock %}

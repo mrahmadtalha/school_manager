@@ -1,0 +1,28 @@
+{# Shown at the top of every page for staff when the license needs attention.
+   Administrators see details and a link to renew; teachers only see the
+   read-only notice; parents and anonymous visitors see nothing. #}
+{% set _banner_role = current_user.role if current_user and current_user.is_authenticated else 'anonymous' %}
+{% if license_status and license_status.needs_attention and _banner_role in ('admin', 'teacher') %}
+    {% if _banner_role == 'admin' %}
+    <div class="alert alert-{{ license_status.level }} d-flex flex-wrap align-items-center gap-2" role="alert">
+        <i class="fas fa-id-card"></i>
+        <div class="flex-grow-1">
+            <strong>{{ license_status.title }}.</strong> {{ license_status.message }}
+        </div>
+        <a class="btn btn-sm btn-dark" href="{{ url_for('main.license_page') }}">Manage license</a>
+    </div>
+    {% elif license_status.read_only %}
+    <div class="alert alert-danger" role="alert">
+        <i class="fas fa-lock me-1"></i>
+        <strong>Read-only mode.</strong> Changes are disabled because the software license is not active.
+        Please contact the school administrator.
+    </div>
+    {% endif %}
+    {% if license_status.clock_rollback and _banner_role == 'admin' %}
+    <div class="alert alert-warning" role="alert">
+        <i class="fas fa-clock me-1"></i>
+        This computer's date looks earlier than expected. Please correct the Windows date and time,
+        otherwise the license may show the wrong expiry.
+    </div>
+    {% endif %}
+{% endif %}

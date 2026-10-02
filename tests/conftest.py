@@ -19,6 +19,9 @@ os.environ.setdefault('INITIAL_ADMIN_PASSWORD', 'adminpass123')
 os.environ.setdefault('DEFAULT_DEMO_PASSWORD', 'School@2026')
 os.environ['DATABASE_URL'] = 'sqlite:///' + (_TMP_DIR / 'test.db').as_posix()
 os.environ.setdefault('APP_ENV', 'development')
+# The existing suite exercises the app itself, not licensing; tests/test_licensing.py
+# switches enforcement back on explicitly through create_app() config.
+os.environ.setdefault('LICENSE_ENFORCEMENT', '0')
 
 from app import create_app  # noqa: E402
 from app.database import db  # noqa: E402

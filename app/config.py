@@ -15,6 +15,7 @@ Secret key resolution order:
 
 import os
 import secrets
+import sys
 from datetime import timedelta
 from pathlib import Path
 
@@ -24,6 +25,11 @@ DEV_SECRET_FILE = INSTANCE_DIR / '.secret_key'
 
 DEFAULT_DEV_PORT = 5000
 DEFAULT_PROD_PORT = 8000
+
+
+def _is_frozen():
+    """True inside a PyInstaller build (the product customers receive)."""
+    return bool(getattr(sys, 'frozen', False))
 
 
 def _flag(name, default=False):
@@ -106,6 +112,12 @@ def get_config():
         # Login throttling (in-process; see README known limitations)
         'LOGIN_MAX_ATTEMPTS': _int('LOGIN_MAX_ATTEMPTS', 5),
         'LOGIN_LOCKOUT_SECONDS': _int('LOGIN_LOCKOUT_SECONDS', 300),
+        # Offline licensing (see app/services/licensing.py).
+        # Environment overrides are honoured ONLY when running from source, so a
+        # customer running the packaged .exe cannot switch enforcement off or
+        # redirect the license/state files with an environment variable.
+        'LICENSE_ENFORCEMENT': True if _is_frozen() else _flag('LICENSE_ENFORCEMENT', True),
+        'LICENSE_DIR': None if _is_frozen() else (os.environ.get('LICENSE_DIR') or None),
         # Demo/seed convenience
         'DEFAULT_DEMO_PASSWORD': os.environ.get('DEFAULT_DEMO_PASSWORD') or 'School@2026',
     }

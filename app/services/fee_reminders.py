@@ -10,7 +10,7 @@ sending, delivery logs) from the /automation page.
 from datetime import datetime
 
 from app.database import db
-from app.models import MessageQueue
+from app.models import AutomationSettings, MessageQueue
 from app.services.audit import log_action
 from app.services.fee_ledger import reconcile
 from app.services.whatsapp_automation import (
@@ -97,6 +97,8 @@ def queue_fee_reminders(month_year, class_id=None):
     start = month_start(month_year)
     if start is None:
         raise ValueError(f'Unknown month "{month_year}" (expected e.g. "September 2026").')
+    if not AutomationSettings.get().notify_fee_reminders:
+        raise ValueError('Fee reminders are turned off in WhatsApp Automation settings.')
 
     awaiting, already = fee_reminder_status(month_year, class_id=class_id)
     summary = {

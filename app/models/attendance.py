@@ -13,3 +13,4 @@ class AttendanceModel(db.Model):
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)
     is_locked = db.Column(db.Boolean, default=False)
     late_time = db.Column(db.String(10), nullable=True)
+    late_minutes = db.Column(db.Integer, nullable=True)

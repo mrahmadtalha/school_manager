@@ -1,7 +1,7 @@
 """The fee ledger must be append-only and reconcile exactly."""
 
 from app.database import db
-from app.models import FeeRecordModel, FeeTransaction, StudentModel
+from app.models import AutomationSettings, FeeRecordModel, FeeTransaction, MessageQueue, StudentModel
 from app.services.fee_ledger import ledger_totals, reconcile, recompute_fee_record
 
 MONTH = 'September 2026'
@@ -139,6 +139,81 @@ def test_fee_receipt_shows_transaction_history(admin_client, app, seed):
     assert 'Ledger Transactions' in body
     assert 'Payment received' in body
     assert 'ONLINE-1' in body
+
+
+def test_partial_payment_rejects_overpayment_and_autogenerates_reference(admin_client, app, seed):
+    student_id = seed['student_id']
+    admin_client.get(f'/fees?class_id={seed["class_id"]}&month_year={MONTH}')
+
+    response = admin_client.post(f'/fees/pay/{student_id}', data={
+        'month_year': MONTH,
+        'amount_paid': '1000',
+        'method': 'cash',
+        'reference': '',
+    }, follow_redirects=False)
+    assert response.status_code == 302
+
+    with app.app_context():
+        payments = FeeTransaction.query.filter_by(student_id=student_id, month_year=MONTH,
+                                                  txn_type='payment').all()
+        assert len(payments) == 1
+        assert payments[0].reference is not None
+        assert payments[0].reference.startswith('SLIP-')
+        assert payments[0].amount == 1000.0
+
+    blocked = admin_client.post(f'/fees/pay/{student_id}', data={
+        'month_year': MONTH,
+        'amount_paid': '2000',
+        'method': 'bank',
+    }, follow_redirects=False)
+    assert blocked.status_code == 302
+
+    with app.app_context():
+        payments = FeeTransaction.query.filter_by(student_id=student_id, month_year=MONTH,
+                                                  txn_type='payment').all()
+        assert len(payments) == 1
+
+    allowed = admin_client.post(f'/fees/pay/{student_id}', data={
+        'month_year': MONTH,
+        'amount_paid': '1500',
+        'method': 'online',
+    }, follow_redirects=False)
+    assert allowed.status_code == 302
+
+    with app.app_context():
+        payments = FeeTransaction.query.filter_by(student_id=student_id, month_year=MONTH,
+                                                  txn_type='payment').all()
+        assert len(payments) == 2
+        assert sum(p.amount for p in payments) == 2500.0
+
+    search = admin_client.get(f'/fees?month_year={MONTH}&ref_query={payments[0].reference}')
+    assert search.status_code == 200
+    assert 'Fee Ledger' in search.get_data(as_text=True)
+
+
+def test_enabled_payment_slip_is_queued_with_reference(admin_client, app, seed):
+    student_id = seed['student_id']
+    with app.app_context():
+        settings = AutomationSettings.get()
+        settings.enabled = True
+        settings.notify_fee_receipts = True
+        settings.mode = 'approval'
+        db.session.commit()
+
+    admin_client.get(f'/fees?class_id={seed["class_id"]}&month_year={MONTH}')
+    response = admin_client.post(f'/fees/pay/{student_id}', data={
+        'month_year': MONTH, 'amount_paid': '500', 'method': 'cash',
+    }, follow_redirects=False)
+
+    assert response.status_code == 302
+    with app.app_context():
+        payment = FeeTransaction.query.filter_by(
+            student_id=student_id, month_year=MONTH, txn_type='payment').one()
+        slip = MessageQueue.query.filter_by(trigger='fee_receipt', student_id=student_id).one()
+        assert slip.status == 'pending'
+        assert payment.reference in slip.message
+        assert '500.00 PKR received' in slip.message
+        assert '2,000.00 PKR' in slip.message
 
 
 def test_void_transactions_are_excluded_from_totals(app, seed):

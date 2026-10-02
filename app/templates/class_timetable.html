@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .tt-shell { background: linear-gradient(135deg, #f8fafc 0%, #eef6ff 100%); border-radius: 22px; padding: 24px; box-shadow: 0 16px 40px rgba(15, 23, 42, .08); }
+    .tt-hero { background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%); border-radius: 20px; padding: 22px 26px; color: #fff; margin-bottom: 22px; }
+    .tt-table { border-radius: 16px; overflow: hidden; }
+    .tt-table thead th { background: #0f172a; color: #fff; font-size: .78rem; letter-spacing: .05em; text-transform: uppercase; border: none; }
+    .tt-table td, .tt-table th { border-color: #e2e8f0; vertical-align: middle; }
+    .tt-table td { min-width: 128px; }
+    .tt-period { background: #f1f5f9; font-weight: 700; text-align: center; width: 72px; }
+    .tt-badge { border-radius: 999px; }
+    @media print {
+        .sidebar, .mobile-topbar, .tt-noprint, nav, footer, #licenseBannerWrap { display: none !important; }
+        .tt-shell { box-shadow: none; border-radius: 0; padding: 0; background: #fff; }
+        .tt-hero { border-radius: 0; }
+        body, .content-wrapper, .main-content { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+    }
+</style>
+
+<div class="tt-shell">
+    <div class="tt-hero d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div>
+            <p class="mb-1 text-white-50 text-uppercase small fw-semibold">Class Timetable</p>
+            <h1 class="h4 fw-bold text-white mb-0"><i class="fas fa-calendar-days me-2"></i>{{ class_obj.name }}</h1>
+            <div class="small text-white-50 mt-1">Mon &ndash; Sat &middot; {{ periods | length }} periods &middot; optional &mdash; leaving it empty does not affect anything</div>
+        </div>
+        <div class="d-flex gap-2 tt-noprint">
+            <button type="button" class="btn btn-outline-light btn-sm" onclick="window.print()"><i class="fas fa-print me-1"></i>Print</button>
+            <a class="btn btn-light btn-sm" href="{{ url_for('main.classes_list') }}"><i class="fas fa-arrow-left me-1"></i>Back to Classes</a>
+        </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('main.class_timetable', id=class_obj.id) }}">
+        <div class="table-responsive">
+            <table class="table tt-table bg-white align-middle mb-3">
+                <thead>
+                    <tr>
+                        <th class="tt-period text-center">Period</th>
+                        {% for d in days %}<th class="text-center">{{ d }}</th>{% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set active_ids = subjects | map(attribute='id') | list %}
+                    {% for p in periods %}
+                    <tr>
+                        <td class="tt-period">{{ p }}</td>
+                        {% for d in days %}
+                        {% set day_idx = loop.index0 %}
+                        {% set cur = grid.get((day_idx, p)) %}
+                        {% set cur_sub = subject_lookup.get(cur) if cur else None %}
+                        <td>
+                            {% if current_user.is_admin %}
+                            <select class="form-select form-select-sm" name="slot_{{ day_idx }}_{{ p }}">
+                                <option value="">&mdash;</option>
+                                {% for s in subjects %}
+                                <option value="{{ s.id }}" {% if cur == s.id %}selected{% endif %}>{{ s.name }}{% if s.teacher %} &mdash; {{ s.teacher.teacher_name }}{% endif %}</option>
+                                {% endfor %}
+                                {% if cur and cur not in active_ids and cur_sub %}
+                                <option value="{{ cur }}" selected>{{ cur_sub.name }} (archived)</option>
+                                {% endif %}
+                            </select>
+                            {% else %}
+                            <span class="small">
+                                {%- if cur_sub -%}
+                                    {{ cur_sub.name }}{% if cur_sub.teacher %} <span class="text-muted">&mdash; {{ cur_sub.teacher.teacher_name }}</span>{% endif %}
+                                {%- else -%}
+                                    &mdash;
+                                {%- endif -%}
+                            </span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if current_user.is_admin %}
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 tt-noprint">
+            <span class="text-muted small"><i class="fas fa-circle-info me-1"></i>Pick a subject per cell; leave cells empty to clear them. {{ subjects | length }} active subject(s) available.</span>
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>Save Timetable</button>
+        </div>
+        {% endif %}
+    </form>
+
+    {% if subjects %}
+    <div class="mt-3 tt-noprint">
+        <div class="small fw-bold text-secondary text-uppercase mb-2" style="font-size:.72rem;letter-spacing:.06em;">Subject Teachers</div>
+        <div class="d-flex flex-wrap gap-2">
+            {% for s in subjects %}
+            <span class="badge bg-light text-dark border tt-badge">
+                {{ s.name }}
+                {% if s.teacher %}<span class="text-muted fw-normal ms-1">&mdash; {{ s.teacher.teacher_name }}</span>
+                {% else %}<span class="text-muted fw-normal ms-1">&mdash; no teacher</span>{% endif %}
+            </span>
+            {% endfor %}
+        </div>
+        {% if current_user.is_admin %}
+        <p class="text-muted small mt-2 mb-0">Assign teachers per subject from the <a href="{{ url_for('main.classes_list') }}">Classes page</a> (edit a subject chip).</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

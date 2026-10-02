@@ -20,8 +20,11 @@ class SchoolSettings(db.Model):
     address       = db.Column(db.String(300), default='')
     phone         = db.Column(db.String(50),  default='')
     email         = db.Column(db.String(100), default='')
+    academic_session = db.Column(db.String(50), default='')
+    result_announcement_date = db.Column(db.String(20), default='')
     school_start_time = db.Column(db.String(10), default='08:30')
     school_end_time   = db.Column(db.String(10), default='15:00')
+    attendance_grace_minutes = db.Column(db.Integer, default=0)
     weekend_off = db.Column(db.Boolean, default=True)
     custom_off_days = db.Column(db.String(200), default='')
     primary_color = db.Column(db.String(20), default='#0d6efd')
@@ -80,4 +83,22 @@ def set_custom_fields(entity_type, fields_list):
         db.session.add(setting)
     
     setting.value = json.dumps(fields_list)
+    db.session.commit()
+
+
+def get_system_value(key, default=''):
+    """Value of a raw system setting, or ``default`` when unset."""
+    setting = SystemSettingModel.query.filter_by(key=key).first()
+    if setting and setting.value is not None:
+        return setting.value
+    return default
+
+
+def set_system_value(key, value):
+    """Store a raw system setting value (creating the row when needed)."""
+    setting = SystemSettingModel.query.filter_by(key=key).first()
+    if not setting:
+        setting = SystemSettingModel(key=key)
+        db.session.add(setting)
+    setting.value = '' if value is None else str(value)
     db.session.commit()

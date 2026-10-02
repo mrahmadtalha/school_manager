@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Configuration</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-id-card text-primary me-2"></i>Software License</h1>
+        <p class="text-muted small mb-0">
+            {% if fresh_install %}Activate your license to begin setting up the school.
+            {% else %}Check your license status, or enter a new key to activate or renew.{% endif %}
+        </p>
+    </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category }} alert-dismissible fade show">
+        {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <h2 class="h5 fw-bold mb-3">Status</h2>
+                <div class="alert alert-{{ license_status.level }} mb-3">
+                    <strong>{{ license_status.title }}.</strong> {{ license_status.message }}
+                </div>
+
+                {% if license_status.licensee %}
+                <dl class="row mb-0 small">
+                    <dt class="col-sm-4">Licensed to</dt>
+                    <dd class="col-sm-8">{{ license_status.licensee }}</dd>
+                    <dt class="col-sm-4">License ID</dt>
+                    <dd class="col-sm-8"><code>{{ license_status.license_id }}</code></dd>
+                    <dt class="col-sm-4">Issued</dt>
+                    <dd class="col-sm-8">{{ license_status.issued.strftime('%d %b %Y') }}</dd>
+                    <dt class="col-sm-4">Expires</dt>
+                    <dd class="col-sm-8">{{ license_status.expires.strftime('%d %b %Y') }}
+                        {% if license_status.days_left is not none and license_status.days_left >= 0 %}
+                        <span class="text-muted">({{ license_status.days_left }} day{{ '' if license_status.days_left == 1 else 's' }} left)</span>
+                        {% endif %}
+                    </dd>
+                    <dt class="col-sm-4">Read-only after</dt>
+                    <dd class="col-sm-8">{{ license_status.grace_ends.strftime('%d %b %Y') }}</dd>
+                </dl>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-body">
+                <h2 class="h5 fw-bold mb-2">This computer's machine code</h2>
+                <p class="text-muted small">Send this code to your vendor to receive a license key for this computer.</p>
+                <div class="input-group">
+                    <input type="text" id="machineCode" class="form-control font-monospace fw-bold"
+                           value="{{ license_status.machine_code }}" readonly>
+                    <button type="button" class="btn btn-outline-secondary" id="copyMachineCode">
+                        <i class="fas fa-copy me-1"></i> Copy
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0">
+            <div class="card-body">
+                <h2 class="h5 fw-bold mb-3">{{ 'Activate license' if fresh_install or license_status.read_only else 'Enter a new license key' }}</h2>
+                <form method="post" enctype="multipart/form-data" autocomplete="off">
+                    <div class="mb-3">
+                        <label for="license_key" class="form-label">License key</label>
+                        <textarea class="form-control font-monospace small" id="license_key" name="license_key"
+                                  rows="4" placeholder="SM1.…"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="license_file" class="form-label">…or upload the key file</label>
+                        <input class="form-control" type="file" id="license_file" name="license_file" accept=".key,.txt">
+                    </div>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-key me-1"></i> Activate</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var btn = document.getElementById('copyMachineCode');
+    var input = document.getElementById('machineCode');
+    if (!btn || !input) { return; }
+    btn.addEventListener('click', function () {
+        input.select();
+        var done = function () { btn.innerHTML = '<i class="fas fa-check me-1"></i> Copied'; };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(input.value).then(done, function () { document.execCommand('copy'); done(); });
+        } else {
+            document.execCommand('copy'); done();
+        }
+    });
+})();
+</script>
+{% endblock %}

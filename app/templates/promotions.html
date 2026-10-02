@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">End of session</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-arrow-up-right-dots text-primary me-2"></i>Student Promotion</h1>
+        <p class="text-muted small mb-0">Move a class forward, record the new session, and keep the full class history for every student.</p>
+    </div>
+    <a href="{{ url_for('main.students_list') }}" class="btn btn-secondary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i> Back to Students
+    </a>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show">{{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endfor %}{% endif %}
+{% endwith %}
+
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+        <h6 class="fw-bold mb-3"><i class="fas fa-sliders me-1"></i>Step 1 — Choose classes &amp; session</h6>
+        <form method="GET" action="{{ url_for('main.promotions_page') }}" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label fw-bold small text-muted mb-1">From class (current)</label>
+                <select class="form-select" name="source_class_id" required>
+                    <option value="">— Select class —</option>
+                    {% for c in classes %}
+                    <option value="{{ c.id }}" {% if source_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label fw-bold small text-muted mb-1">To class (next)</label>
+                <select class="form-select" name="target_class_id" required>
+                    <option value="">— Select class —</option>
+                    {% for c in classes %}
+                    <option value="{{ c.id }}" {% if target_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-bold small text-muted mb-1">New session</label>
+                <input type="text" class="form-control" name="session" value="{{ session_value }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-bold small text-muted mb-1">Promotion date</label>
+                <input type="date" class="form-control" name="promotion_date" value="{{ promo_date }}">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-dark w-100"><i class="fas fa-eye me-1"></i> Preview</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if source_id %}
+<div class="card shadow-sm border-0">
+    <div class="card-body">
+        <h6 class="fw-bold mb-3"><i class="fas fa-list-check me-1"></i>Step 2 — Review &amp; promote</h6>
+        {% if preview %}
+        <form method="POST" action="{{ url_for('main.promotions_apply') }}">
+            <input type="hidden" name="source_class_id" value="{{ source_id }}">
+            <input type="hidden" name="target_class_id" value="{{ target_id }}">
+            <input type="hidden" name="session" value="{{ session_value }}">
+            <input type="hidden" name="promotion_date" value="{{ promo_date }}">
+            <div class="table-responsive">
+                <table class="table table-striped align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th style="width:70px;" class="ps-3">Include</th>
+                            <th>Student</th>
+                            <th>Current Roll</th>
+                            <th style="width:130px;">New Roll</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in preview %}
+                        <tr>
+                            <td class="ps-3">
+                                <input class="form-check-input" type="checkbox" name="include_{{ row.student.id }}" checked>
+                            </td>
+                            <td class="fw-bold">{{ row.student.student_name }}</td>
+                            <td class="text-muted">{{ row.student.roll_number }}</td>
+                            <td>
+                                <input type="number" class="form-control form-control-sm" name="new_roll_{{ row.student.id }}"
+                                       value="{{ row.new_roll }}" min="1">
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="alert alert-info small mb-3">
+                <i class="fas fa-circle-info me-1"></i>
+                Un-ticked students stay in their current class (retained). Fees are not changed by promotion — use the fee tools afterwards.
+                Class history and audit records are written automatically.
+            </div>
+            <button type="submit" class="btn btn-primary px-4">
+                <i class="fas fa-arrow-up-right-dots me-1"></i> Promote Selected Students
+            </button>
+        </form>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-user-slash fa-2x mb-3"></i>
+            <p class="mb-0">No active students in this class.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

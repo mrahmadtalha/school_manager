@@ -80,6 +80,7 @@
 <table class="table table-sm table-borderless mb-0 small">
                     <tr><td class="text-muted ps-0">Month</td><td class="fw-bold">{{ month_year }}</td></tr>
                     <tr><td class="text-muted ps-0">Date</td><td class="fw-bold">{{ record.payment_date.strftime('%d %b %Y') if record.payment_date else '—' }}</td></tr>
+                    <tr><td class="text-muted ps-0">Reference / Slip No</td><td class="fw-bold">{{ transactions[-1].reference if transactions and transactions[-1].reference else '—' }}</td></tr>
                     <tr><td class="text-muted ps-0">Monthly Due</td><td class="fw-bold">Rs. {{ "%.0f"|format(record.amount_due) }}</td></tr>
                     <tr><td class="text-muted ps-0">Amount Paid</td><td class="fw-bold text-success fs-6">Rs. {{ "%.0f"|format(record.amount_paid) }}</td></tr>
                     {% set balance = record.amount_due - record.amount_paid %}

@@ -1,0 +1,643 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .hub-shell { background: linear-gradient(135deg, #f8fafc 0%, #eef6ff 100%); border-radius: 22px; padding: 24px; box-shadow: 0 16px 40px rgba(15, 23, 42, .08); }
+    .hub-hero { background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%); border-radius: 20px; padding: 22px 26px; color: #fff; margin-bottom: 22px; }
+    .hub-tabs .nav-link { font-weight: 700; color: #475569; border-radius: 999px; padding: .45rem 1.1rem; }
+    .hub-tabs .nav-link.active { background: #0f172a; color: #fff; }
+    .hub-kpi { border-radius: 16px; padding: 14px 16px; }
+    .hub-kpi .kpi-num { font-size: 1.6rem; font-weight: 800; line-height: 1.15; }
+    .hub-kpi .kpi-label { font-size: .72rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+    .hub-kpi.k-blue  { background: #e7efff; border: 1px solid #c9dbff; }
+    .hub-kpi.k-blue .kpi-num, .hub-kpi.k-blue .kpi-label { color: #0b3a8f; }
+    .hub-kpi.k-green { background: #e7f6ee; border: 1px solid #c6e9d8; }
+    .hub-kpi.k-green .kpi-num, .hub-kpi.k-green .kpi-label { color: #0a5c3a; }
+    .hub-kpi.k-amber { background: #fdf3e2; border: 1px solid #f5e2bf; }
+    .hub-kpi.k-amber .kpi-num, .hub-kpi.k-amber .kpi-label { color: #7a4a06; }
+    .hub-kpi.k-teal  { background: #e8f4fb; border: 1px solid #c9e6f6; }
+    .hub-kpi.k-teal .kpi-num, .hub-kpi.k-teal .kpi-label { color: #0b5478; }
+    .hub-chart-card { border-radius: 16px; }
+    .hub-chart-wrap { position: relative; height: 260px; }
+    .hub-export-card { border-radius: 16px; transition: transform .15s ease, box-shadow .15s ease; }
+    .hub-export-card:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(15, 23, 42, .10) !important; }
+    .hub-export-icon { width: 38px; height: 38px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: #eef6ff; color: #1d4ed8; font-size: 1rem; }
+    .hub-filter-card { border-radius: 16px; }
+</style>
+
+<div class="hub-shell">
+    {%- macro export_url(endpoint, fmt) -%}
+    {{- url_for(endpoint, fmt=fmt, month=('all' if all_months else month), year=year, class_id=selected_class_id) -}}
+    {%- endmacro -%}
+    <div class="hub-hero d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div>
+            <p class="mb-1 text-white-50 text-uppercase small fw-semibold">Analytics hub</p>
+            <h1 class="h4 fw-bold text-white mb-0"><i class="fas fa-chart-bar me-2"></i>Analytics &amp; Exports</h1>
+            <div class="small text-white-50 mt-1">{{ month_label }}{% if selected_class_id %} &middot; {{ classes | selectattr('id', 'equalto', selected_class_id) | map(attribute='name') | first }}{% else %} &middot; All classes{% endif %}</div>
+        </div>
+        <span class="badge bg-light text-dark align-self-start"><i class="fas fa-graduation-cap me-1 text-primary"></i>Session: {{ session_label }}</span>
+    </div>
+
+    <div class="card border-0 shadow-sm hub-filter-card mb-4">
+        <div class="card-body py-3">
+            <form method="GET" action="{{ url_for('main.reports_hub') }}" class="row g-2 align-items-end">
+                <input type="hidden" name="tab" value="{{ tab }}">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold small text-muted mb-1">Academic Session</label>
+                    <div class="form-control bg-light text-muted" style="pointer-events:none;">{{ session_label }}</div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label fw-bold small text-muted mb-1">Month</label>
+                    <select class="form-select" name="month" onchange="this.form.submit()">
+                        <option value="all" {% if all_months %}selected{% endif %}>All months</option>
+                        {% for m in months %}
+                        <option value="{{ loop.index }}" {% if not all_months and month == loop.index %}selected{% endif %}>{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label fw-bold small text-muted mb-1">Year</label>
+                    <select class="form-select" name="year" onchange="this.form.submit()">
+                        {% for y in [year - 2, year - 1, year, year + 1] %}
+                        <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label fw-bold small text-muted mb-1">Class</label>
+                    <select class="form-select" name="class_id" onchange="this.form.submit()">
+                        <option value="">All classes</option>
+                        {% for c in classes %}
+                        <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-2 d-flex gap-2 flex-wrap">
+                    <button type="submit" class="btn btn-dark flex-fill">Apply</button>
+                    <a class="btn btn-outline-secondary flex-shrink-0" href="{{ url_for('main.reports_hub') }}" title="Reset filters">Reset</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <ul class="nav nav-pills hub-tabs gap-2 mb-4">
+        {% if not is_accountant %}
+        <li class="nav-item">
+            <a class="nav-link {% if tab == 'analytics' %}active{% endif %}" href="{{ url_for('main.reports_hub', tab='analytics', month=('all' if all_months else month), year=year, class_id=selected_class_id) }}">
+                <i class="fas fa-chart-pie me-1"></i>Analytics
+            </a>
+        </li>
+        {% endif %}
+        {% if finance_access %}
+        <li class="nav-item">
+            <a class="nav-link {% if tab == 'finance' %}active{% endif %}" href="{{ url_for('main.reports_hub', tab='finance', month=('all' if all_months else month), year=year, class_id=selected_class_id) }}">
+                <i class="fas fa-wallet me-1"></i>Finance &amp; Fees
+            </a>
+        </li>
+        {% endif %}
+        {% if not is_accountant %}
+        <li class="nav-item">
+            <a class="nav-link {% if tab == 'academic' %}active{% endif %}" href="{{ url_for('main.reports_hub', tab='academic', month=('all' if all_months else month), year=year, class_id=selected_class_id) }}">
+                <i class="fas fa-award me-1"></i>Academic &amp; Examinations
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if tab == 'operations' %}active{% endif %}" href="{{ url_for('main.reports_hub', tab='operations', month=('all' if all_months else month), year=year, class_id=selected_class_id) }}">
+                <i class="fas fa-folder-open me-1"></i>Students, Staff &amp; Operations
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+
+    {% if tab == 'analytics' %}
+    <div class="row g-3 mb-4">
+        {% if finance_access %}
+        <div class="col-6 col-md-3">
+            <div class="hub-kpi k-amber">
+                <div class="kpi-num">{% if kpis.dues is not none %}Rs. {{ "{:,.0f}".format(kpis.dues) }}{% else %}&mdash;{% endif %}</div>
+                <div class="kpi-label">Total Outstanding Dues{% if not all_months %} ({{ month_label }}){% endif %}</div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-6 col-md-3">
+            <div class="hub-kpi k-blue">
+                <div class="kpi-num">{{ kpis.active_students }}</div>
+                <div class="kpi-label">Active Students</div>
+            </div>
+        </div>
+        {% endif %}
+        <div class="col-6 col-md-3">
+            <div class="hub-kpi k-blue">
+                <div class="kpi-num">{% if kpis.attendance_pct is not none %}{{ kpis.attendance_pct }}%{% else %}&mdash;{% endif %}</div>
+                <div class="kpi-label">Attendance Rate</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="hub-kpi k-green">
+                <div class="kpi-num">{% if kpis.exam_pass_pct is not none %}{{ kpis.exam_pass_pct }}%{% else %}&mdash;{% endif %}</div>
+                <div class="kpi-label">Exam Pass Rate</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="hub-kpi k-teal">
+                <div class="kpi-num">{{ kpis.active_staff }}</div>
+                <div class="kpi-label">Active Teachers</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        {% if finance_access %}
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm hub-chart-card h-100">
+                <div class="card-body">
+                    <h6 class="fw-bold text-dark mb-3"><i class="fas fa-hand-holding-dollar text-success me-1"></i>Fee Recovery vs Outstanding</h6>
+                    <div class="hub-chart-wrap"><canvas id="hubFeeChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm hub-chart-card h-100">
+                <div class="card-body">
+                    <h6 class="fw-bold text-dark mb-3"><i class="fas fa-calendar-check text-primary me-1"></i>Attendance Trend (Present %)</h6>
+                    <div class="hub-chart-wrap"><canvas id="hubAttendanceChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm hub-chart-card h-100">
+                <div class="card-body">
+                    <h6 class="fw-bold text-dark mb-3"><i class="fas fa-award text-success me-1"></i>Academic Performance (Average %)</h6>
+                    <div class="hub-chart-wrap"><canvas id="hubAcademicChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if tab == 'finance' and finance_access %}
+    <div class="d-flex align-items-center mb-3">
+        <h6 class="fw-bold text-dark mb-0"><i class="fas fa-wallet text-primary me-2"></i>Universal Financial &amp; Fee Exports</h6>
+        <span class="text-muted small ms-2">current filters: {{ month_label }}{% if selected_class_id %} &middot; selected class{% endif %}</span>
+    </div>
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-file-invoice-dollar"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Monthly Fee Ledgers</h6>
+                    <p class="text-muted small mb-2">Per-student ledger (charges, payments, balance) for the selected month.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    <a class="btn btn-sm btn-outline-danger" href="{{ export_url('main.hub_export_fee_ledger', 'pdf') }}">PDF</a>
+                    <a class="btn btn-sm btn-outline-success" href="{{ export_url('main.hub_export_fee_ledger', 'xlsx') }}">XLSX</a>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ export_url('main.hub_export_fee_ledger', 'csv') }}">CSV</a>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-user-clock"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Defaulter Lists</h6>
+                    <p class="text-muted small mb-2">Students with pending balances, with parent contact details.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    <a class="btn btn-sm btn-outline-danger" href="{{ export_url('main.hub_export_defaulters', 'pdf') }}">PDF</a>
+                    <a class="btn btn-sm btn-outline-success" href="{{ export_url('main.hub_export_defaulters', 'xlsx') }}">XLSX</a>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ export_url('main.hub_export_defaulters', 'csv') }}">CSV</a>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-coins"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Collection Summaries</h6>
+                    <p class="text-muted small mb-2">Expected vs collected vs outstanding by class for the period.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    <a class="btn btn-sm btn-outline-danger" href="{{ export_url('main.hub_export_collections', 'pdf') }}">PDF</a>
+                    <a class="btn btn-sm btn-outline-success" href="{{ export_url('main.hub_export_collections', 'xlsx') }}">XLSX</a>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ export_url('main.hub_export_collections', 'csv') }}">CSV</a>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-percent"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Discount Summaries</h6>
+                    <p class="text-muted small mb-2">Students receiving fee discounts, by type and total value.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    <a class="btn btn-sm btn-outline-danger" href="{{ export_url('main.hub_export_discounts', 'pdf') }}">PDF</a>
+                    <a class="btn btn-sm btn-outline-success" href="{{ export_url('main.hub_export_discounts', 'xlsx') }}">XLSX</a>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ export_url('main.hub_export_discounts', 'csv') }}">CSV</a>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-money-check-dollar"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Staff Salary Register</h6>
+                    <p class="text-muted small mb-2">Monthly payroll register with base, deductions and net pay.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    <a class="btn btn-sm btn-outline-danger" href="{{ export_url('main.hub_export_salary_register', 'pdf') }}">PDF</a>
+                    <a class="btn btn-sm btn-outline-success" href="{{ export_url('main.hub_export_salary_register', 'xlsx') }}">XLSX</a>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ export_url('main.hub_export_salary_register', 'csv') }}">CSV</a>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-chart-line"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Financial Summary</h6>
+                    <p class="text-muted small mb-2">Collections, expenses and payroll snapshot for the month.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    <a class="btn btn-sm btn-outline-danger" href="{{ url_for('main.financials_export_pdf') }}">PDF</a>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.financials_export_csv') }}">CSV</a>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-file-invoice-dollar"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Expense Reports</h6>
+                    <p class="text-muted small mb-2">All recorded expenses with categories and payment methods.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    <a class="btn btn-sm btn-outline-danger" href="{{ url_for('main.expenses_export_pdf') }}">PDF</a>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.expenses_export_csv') }}">CSV</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if tab == 'academic' %}
+    <div class="d-flex align-items-center mb-3">
+        <h6 class="fw-bold text-dark mb-0"><i class="fas fa-award text-primary me-2"></i>Academic &amp; Examination Exports</h6>
+        {% if not selected_class_id %}<span class="badge bg-warning text-dark ms-2">Select a class to enable class exports</span>{% endif %}
+    </div>
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-table"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Consolidated Class Result</h6>
+                    <p class="text-muted small mb-2">Official single-page matrix: subjects, totals, %, positions.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    {% if selected_class_id %}
+                    <a class="btn btn-sm btn-outline-danger" href="{{ url_for('main.export_class_tabulation_pdf', class_id=selected_class_id, session=(session_label if session_label != 'N/A' else '')) }}">PDF</a>
+                    {% else %}
+                    <button class="btn btn-sm btn-outline-danger" disabled title="Select a class first">PDF</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-file-excel"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Whole Class Result Matrix</h6>
+                    <p class="text-muted small mb-2">Every test column with marks, totals and grades.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    {% if selected_class_id %}
+                    <a class="btn btn-sm btn-outline-success" href="{{ url_for('main.export_class_results_excel', class_id=selected_class_id) }}">XLSX</a>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.export_class_results_csv', class_id=selected_class_id) }}">CSV</a>
+                    {% else %}
+                    <button class="btn btn-sm btn-outline-success" disabled title="Select a class first">XLSX</button>
+                    <button class="btn btn-sm btn-outline-primary" disabled title="Select a class first">CSV</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-id-card-clip"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">All Report Cards</h6>
+                    <p class="text-muted small mb-2">Bulk individual report cards for every student in the class.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    {% if selected_class_id %}
+                    <a class="btn btn-sm btn-outline-danger" href="{{ url_for('main.export_all_report_cards_pdf', class_id=selected_class_id, session=(session_label if session_label != 'N/A' else '')) }}">PDF</a>
+                    {% else %}
+                    <button class="btn btn-sm btn-outline-danger" disabled title="Select a class first">PDF</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-file-signature"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Term Examination Documents</h6>
+                    <p class="text-muted small mb-2">Pick an exam, then download its tabulation sheet or open the exam hub.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3">
+                    {% if term_exams %}
+                    <select class="form-select form-select-sm mb-2" id="hubExamPick" aria-label="Select term examination">
+                        {% for exam in term_exams %}
+                        <option value="{{ exam.id }}">{{ exam.name }}{% if exam.class_info %} — {{ exam.class_info.name }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <a class="btn btn-sm btn-outline-dark" id="hubExamOpen" href="/examinations">Open</a>
+                        <a class="btn btn-sm btn-outline-danger" id="hubExamPdf" href="#">PDF</a>
+                        <a class="btn btn-sm btn-outline-success" id="hubExamXlsx" href="#">XLSX</a>
+                        <a class="btn btn-sm btn-outline-primary" id="hubExamCsv" href="#">CSV</a>
+                    </div>
+                    {% else %}
+                    <p class="text-muted small mb-2">No term examinations yet — create one from the Examinations page.</p>
+                    <a class="btn btn-sm btn-outline-dark" href="/examinations">Open Examinations</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-ranking-star"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Merit / Position List</h6>
+                    <p class="text-muted small mb-2">Ranked list of students by total marks for the class.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    {% if selected_class_id %}
+                    <a class="btn btn-sm btn-outline-danger" href="{{ export_url('main.hub_export_positions', 'pdf') }}">PDF</a>
+                    <a class="btn btn-sm btn-outline-success" href="{{ export_url('main.hub_export_positions', 'xlsx') }}">XLSX</a>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ export_url('main.hub_export_positions', 'csv') }}">CSV</a>
+                    {% else %}
+                    <button class="btn btn-sm btn-outline-danger" disabled title="Select a class first">PDF</button>
+                    <button class="btn btn-sm btn-outline-success" disabled title="Select a class first">XLSX</button>
+                    <button class="btn btn-sm btn-outline-primary" disabled title="Select a class first">CSV</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-file-lines"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Broad Sheets</h6>
+                    <p class="text-muted small mb-2">Class-wide grades sheet with remarks column for printing.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    {% if selected_class_id %}
+                    <a class="btn btn-sm btn-outline-danger" href="{{ export_url('main.hub_export_broad_sheet', 'pdf') }}">PDF</a>
+                    <a class="btn btn-sm btn-outline-success" href="{{ export_url('main.hub_export_broad_sheet', 'xlsx') }}">XLSX</a>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ export_url('main.hub_export_broad_sheet', 'csv') }}">CSV</a>
+                    {% else %}
+                    <button class="btn btn-sm btn-outline-danger" disabled title="Select a class first">PDF</button>
+                    <button class="btn btn-sm btn-outline-success" disabled title="Select a class first">XLSX</button>
+                    <button class="btn btn-sm btn-outline-primary" disabled title="Select a class first">CSV</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function () {
+        var pick = document.getElementById('hubExamPick');
+        if (!pick) { return; }
+        function sync() {
+            var id = pick.value;
+            var urls = {
+                hubExamOpen: '/examinations/' + id + '/tabulation',
+                hubExamPdf: '/examinations/' + id + '/tabulation/export.pdf',
+                hubExamXlsx: '/examinations/' + id + '/tabulation/export.xlsx',
+                hubExamCsv: '/examinations/' + id + '/tabulation/export.csv'
+            };
+            for (var key in urls) {
+                var node = document.getElementById(key);
+                if (node) { node.href = urls[key]; }
+            }
+        }
+        pick.addEventListener('change', sync);
+        sync();
+    })();
+    </script>
+    {% endif %}
+
+    {% if tab == 'operations' %}
+    {% set cls_q = ('?class_id=' ~ selected_class_id) if selected_class_id else '' %}
+    <div class="d-flex align-items-center mb-3">
+        <h6 class="fw-bold text-dark mb-0"><i class="fas fa-folder-open text-primary me-2"></i>Student, Staff &amp; Operational Exports</h6>
+        {% if not selected_class_id %}<span class="badge bg-warning text-dark ms-2">Select a class to enable class-specific exports</span>{% endif %}
+    </div>
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-user-graduate"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Student Enrolment Roster</h6>
+                    <p class="text-muted small mb-2">Active students with roll numbers, class, section and contacts.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    <a class="btn btn-sm btn-outline-success" href="/students/export/excel{{ cls_q }}">XLSX</a>
+                    <a class="btn btn-sm btn-outline-primary" href="/students/export/csv{{ cls_q }}">CSV</a>
+                    <a class="btn btn-sm btn-outline-danger" href="/students/export/pdf{{ cls_q }}">PDF</a>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-chalkboard-teacher"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Staff Directory</h6>
+                    <p class="text-muted small mb-2">Active staff with designations, contacts and joining dates.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    <a class="btn btn-sm btn-outline-success" href="/teachers/export/excel">XLSX</a>
+                    <a class="btn btn-sm btn-outline-primary" href="/teachers/export/csv">CSV</a>
+                    <a class="btn btn-sm btn-outline-danger" href="/teachers/export/pdf">PDF</a>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-clipboard-check"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Class Attendance (Daily)</h6>
+                    <p class="text-muted small mb-2">Attendance sheet for the selected class (today's register).</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    {% if selected_class_id %}
+                    <a class="btn btn-sm btn-outline-danger" href="/attendance/export/pdf/{{ selected_class_id }}">PDF</a>
+                    <a class="btn btn-sm btn-outline-success" href="/attendance/export/excel/{{ selected_class_id }}">XLSX</a>
+                    <a class="btn btn-sm btn-outline-primary" href="/attendance/export/csv/{{ selected_class_id }}">CSV</a>
+                    {% else %}
+                    <button class="btn btn-sm btn-outline-danger" disabled title="Select a class first">PDF</button>
+                    <button class="btn btn-sm btn-outline-success" disabled title="Select a class first">XLSX</button>
+                    <button class="btn btn-sm btn-outline-primary" disabled title="Select a class first">CSV</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-user-check"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Staff Attendance</h6>
+                    <p class="text-muted small mb-2">Daily staff attendance register across all teachers.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    <a class="btn btn-sm btn-outline-danger" href="/attendance/teachers/export/pdf">PDF</a>
+                    <a class="btn btn-sm btn-outline-success" href="/attendance/teachers/export/excel">XLSX</a>
+                    <a class="btn btn-sm btn-outline-primary" href="/attendance/teachers/export/csv">CSV</a>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-calendar-alt"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Attendance Summary</h6>
+                    <p class="text-muted small mb-2">Monthly present/absent matrix for the selected class &amp; period.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    {% if selected_class_id %}
+                    <a class="btn btn-sm btn-outline-danger" href="/attendance/summary/export/pdf?class_id={{ selected_class_id }}&start_date={{ start_date_str }}&end_date={{ end_date_str }}">PDF</a>
+                    <a class="btn btn-sm btn-outline-success" href="/attendance/summary/export/excel?class_id={{ selected_class_id }}&start_date={{ start_date_str }}&end_date={{ end_date_str }}">XLSX</a>
+                    <a class="btn btn-sm btn-outline-primary" href="/attendance/summary/export/csv?class_id={{ selected_class_id }}&start_date={{ start_date_str }}&end_date={{ end_date_str }}">CSV</a>
+                    {% else %}
+                    <button class="btn btn-sm btn-outline-danger" disabled title="Select a class first">PDF</button>
+                    <button class="btn btn-sm btn-outline-success" disabled title="Select a class first">XLSX</button>
+                    <button class="btn btn-sm btn-outline-primary" disabled title="Select a class first">CSV</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-people-arrows"></i></span>
+                        <span class="badge bg-success">Available</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Subject-Teacher Allocation</h6>
+                    <p class="text-muted small mb-2">Matrix of every class &times; subject with its assigned teacher.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    <a class="btn btn-sm btn-outline-danger" href="{{ export_url('main.hub_export_allocation_matrix', 'pdf') }}">PDF</a>
+                    <a class="btn btn-sm btn-outline-success" href="{{ export_url('main.hub_export_allocation_matrix', 'xlsx') }}">XLSX</a>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ export_url('main.hub_export_allocation_matrix', 'csv') }}">CSV</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% if tab == 'analytics' %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+window.addEventListener('load', function () {
+    function chartOptions() {
+        return { responsive: true, maintainAspectRatio: false, animation: false,
+                 plugins: { legend: { position: 'bottom' } },
+                 scales: { y: { beginAtZero: true } } };
+    }
+
+    function makeChart(canvasId, config) {
+        var cv = document.getElementById(canvasId);
+        if (!cv) return null;
+        var chart = new Chart(cv, config);
+        // Force a synchronous full paint so the first frame never depends on
+        // ResizeObserver / rAF scheduling.
+        try { chart.update('none'); } catch (e) {}
+        return chart;
+    }
+
+    var att = {{ charts.attendance | tojson }};
+    var aca = {{ charts.academic | tojson }};
+
+    makeChart('hubAttendanceChart', {
+        type: 'line',
+        data: { labels: att.labels, datasets: [{ label: 'Present %', data: att.values,
+                borderColor: '#1d4ed8', backgroundColor: 'rgba(29, 78, 216, .12)', fill: true, tension: .3 }] },
+        options: chartOptions()
+    });
+
+    makeChart('hubAcademicChart', {
+        type: 'bar',
+        data: { labels: aca.labels, datasets: [{ label: 'Average %', data: aca.values, backgroundColor: '#0f7b4f' }] },
+        options: chartOptions()
+    });
+
+    {% if finance_access and charts.fee %}
+    var fee = {{ charts.fee | tojson }};
+    makeChart('hubFeeChart', {
+        type: 'bar',
+        data: { labels: fee.labels, datasets: [
+            { label: 'Collected', data: fee.collected, backgroundColor: '#0f7b4f' },
+            { label: 'Outstanding', data: fee.outstanding, backgroundColor: '#dc3545' }] },
+        options: chartOptions()
+    });
+    {% endif %}
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- Toolbar (hidden when printing) -->
+<div class="d-flex flex-wrap justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom no-print gap-2">
+    <h1 class="h2 fw-bold mb-0"><i class="fas fa-calendar-alt text-primary me-2"></i>Date Sheet</h1>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('main.examinations_date_sheet_pdf', id=exam.id) }}" class="btn btn-outline-danger btn-sm">
+            <i class="fas fa-file-pdf me-1"></i> Download PDF
+        </a>
+        <a href="{{ url_for('main.examinations_detail', id=exam.id) }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left me-1"></i> Back to Exam
+        </a>
+        <button onclick="window.print()" class="btn btn-dark btn-sm px-4">
+            <i class="fas fa-print me-1"></i> Print
+        </button>
+    </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show no-print">
+      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endfor %}{% endif %}
+{% endwith %}
+
+<!-- Date sheet card -->
+<div class="row justify-content-center">
+<div class="col-md-10">
+<div class="card border shadow" id="dateSheetCard">
+
+    <!-- School Header -->
+    <div class="card-header bg-dark text-white text-center py-4">
+        {% if school and school.logo_filename %}
+        <img src="{{ url_for('static', filename=school.logo_filename) }}"
+             alt="Logo" style="max-height:55px;" class="mb-2 d-block mx-auto">
+        {% else %}
+        <i class="fas fa-school fa-2x text-warning mb-2 d-block"></i>
+        {% endif %}
+        <h4 class="fw-bold mb-0">{{ school.school_name if school else 'School Manager' }}</h4>
+        {% if school and school.tagline %}
+        <small class="text-secondary">{{ school.tagline }}</small>
+        {% endif %}
+        {% if school and school.address %}
+        <div class="small text-secondary mt-1"><i class="fas fa-map-marker-alt me-1"></i>{{ school.address }}</div>
+        {% endif %}
+        {% if school and school.phone %}
+        <div class="small text-secondary"><i class="fas fa-phone me-1"></i>{{ school.phone }}</div>
+        {% endif %}
+    </div>
+
+    <div class="card-body px-4 py-4">
+        <div class="text-center mb-4">
+            <h5 class="fw-bold text-uppercase text-dark mb-1">Date Sheet</h5>
+            <div class="text-muted">{{ exam.name }}</div>
+        </div>
+
+        <!-- Meta -->
+        <div class="row text-center g-2 mb-4 small">
+            <div class="col-3">
+                <div class="text-muted text-uppercase fw-bold" style="font-size:.7rem;">Exam Type</div>
+                <div class="fw-bold">{{ exam.exam_type }}</div>
+            </div>
+            <div class="col-3">
+                <div class="text-muted text-uppercase fw-bold" style="font-size:.7rem;">Class</div>
+                <div class="fw-bold">{{ exam.class_info.name if exam.class_info else '—' }}</div>
+            </div>
+            <div class="col-3">
+                <div class="text-muted text-uppercase fw-bold" style="font-size:.7rem;">Session</div>
+                <div class="fw-bold">{{ exam.session_label or '—' }}</div>
+            </div>
+            <div class="col-3">
+                <div class="text-muted text-uppercase fw-bold" style="font-size:.7rem;">Exam Dates</div>
+                <div class="fw-bold">
+                    {% if exam.start_date %}{{ exam.start_date.strftime('%d %b') }}{% else %}—{% endif %}
+                    {% if exam.end_date %} – {{ exam.end_date.strftime('%d %b %Y') }}{% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Schedule -->
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle mb-3">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:44px;" class="text-center">#</th>
+                        <th>Subject</th>
+                        <th>Day</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Room</th>
+                        <th class="text-end">Max Marks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for test in tests %}
+                    <tr>
+                        <td class="text-center text-muted">{{ loop.index }}</td>
+                        <td class="fw-bold">{{ test.subject_info.name if test.subject_info else '—' }}</td>
+                        <td>{{ test.test_date.strftime('%A') if test.test_date else '—' }}</td>
+                        <td>{{ test.test_date.strftime('%d %b %Y') if test.test_date else '—' }}</td>
+                        <td>{{ test.start_time or '—' }}</td>
+                        <td>{{ test.room or '—' }}</td>
+                        <td class="text-end">{{ '{:,.0f}'.format(test.total_marks or 0) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-light">
+                        <td colspan="6" class="fw-bold">Total Marks</td>
+                        <td class="text-end fw-bold">{{ '{:,.0f}'.format(total_max) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <!-- Instructions -->
+        <div class="small text-muted mb-4">
+            <b class="text-dark">Instructions:</b>
+            Candidates must reach the examination hall at least 15 minutes before the start time.
+            Bring your own stationery; mobile phones and smart devices are not allowed in the hall.
+        </div>
+
+        <!-- Signatures -->
+        <div class="row text-center small mt-5">
+            <div class="col-6">
+                <div class="border-top pt-2 mx-4">Controller of Examinations</div>
+            </div>
+            <div class="col-6">
+                <div class="border-top pt-2 mx-4">Principal</div>
+            </div>
+        </div>
+
+        <div class="text-muted small mt-4">Generated on {{ generated_on.strftime('%d %b %Y') }}</div>
+    </div>
+</div>
+</div>
+</div>
+
+{% endblock %}

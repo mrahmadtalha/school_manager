@@ -7,6 +7,7 @@ class ClassModel(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)
+    monthly_fee = db.Column(db.Float, nullable=True)   # Standard monthly fee for this class
 
     sections = db.relationship('SectionModel', backref='class_info', cascade='all, delete-orphan')
     students = db.relationship('StudentModel', backref='class_info', lazy=True)
@@ -31,3 +32,24 @@ class SubjectModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False)
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)  # archived subjects stay for history
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True)  # optional
+    teacher = db.relationship('TeacherModel', lazy=True)  # optional subject-teacher mapping
+
+
+class TimetableSlot(db.Model):
+    """Optional Mon-Sat period grid per class; empty cells are simply absent."""
+    __tablename__ = 'timetable_slots'
+    __table_args__ = (
+        db.UniqueConstraint('class_id', 'day_of_week', 'period_no',
+                            name='uq_timetable_slot'),
+        {'extend_existing': True},
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False)
+    day_of_week = db.Column(db.Integer, nullable=False)   # 0=Mon .. 5=Sat
+    period_no = db.Column(db.Integer, nullable=False)     # 1-based period number
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=True)
+
+    subject = db.relationship('SubjectModel', lazy=True)

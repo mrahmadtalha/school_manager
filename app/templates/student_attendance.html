@@ -253,6 +253,10 @@ window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
     </div>
 </div>
 
+<div class="alert alert-info py-2 small mb-3">
+    <i class="fas fa-clock me-1"></i>School hours: {{ school_start_time }}–{{ school_end_time }}. Late is automatic after start + {{ attendance_grace_minutes }} minute(s) grace. Enter each student’s actual check-in time.
+</div>
+
 <!-- Quick Actions & Live Attendance Counter -->
 {% if not is_locked %}
 <div class="card bg-light border-0 mb-3 shadow-sm">
@@ -295,14 +299,16 @@ window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
                         <th class="py-3">Student Name</th>
                         <th class="py-3">Father Name</th>
                         <th class="py-3 text-center">Status</th>
-                        <th class="py-3 text-center">Late Time</th>
+                        <th class="py-3 text-center">Check-in / Late</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for student in students %}
                     {% set current_status = attendance_map.get(student.id, 'Present') %}
                     {% set current_late = late_time_map.get(student.id, '') %}
+                    {% set checkin_default = current_late or (current_checkin_time if current_status in ['Present', 'Late'] else '') %}
                     <tr id="row_{{ student.id }}"
+                        data-checkin="{{ checkin_default }}"
                         class="{% if current_status == 'Absent' %}table-danger{% elif current_status == 'Late' %}table-warning{% elif current_status == 'Leave' %}table-secondary{% endif %}">
                         <td class="ps-3 text-muted small">{{ loop.index }}</td>
                         <td class="font-monospace fw-bold text-primary">{{ student.roll_number }}</td>
@@ -346,24 +352,26 @@ window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
                             {% endif %}
                         </td>
 
-                        <!-- Late Time column -->
+                        <!-- Check-in / late arrival column -->
                         <td class="text-center" id="latecell_{{ student.id }}">
-                            {% if current_status == 'Late' %}
-                                {% if is_locked %}
-                                    <span class="badge bg-warning text-dark">{{ current_late or 'No time' }}</span>
-                                {% else %}
+                            {% if is_locked %}
+                                {% if current_late %}<span class="badge bg-light text-dark border">{{ current_late }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                                {% if current_status == 'Late' %}
+                                    <span class="badge bg-warning text-dark ms-1">Late{% if late_minutes_map.get(student.id) is not none %} · {{ late_minutes_map.get(student.id) }} min{% endif %}</span>
+                                {% endif %}
+                            {% elif current_status in ['Present', 'Late'] %}
                                 <div class="d-flex gap-1 justify-content-center align-items-center">
                                     <input type="time" class="form-control form-control-sm"
-                                           name="late_time_{{ student.id }}"
-                                           id="latetime_{{ student.id }}"
-                                           value="{{ current_late }}"
-                                           style="width:110px; max-width:100%;">
-                                    <button type="button" class="btn btn-warning btn-sm px-1"
-                                            onclick="setNow({{ student.id }})" title="Set current time">
+                                           name="checkin_time_{{ student.id }}"
+                                           id="checkintime_{{ student.id }}"
+                                           value="{{ checkin_default }}"
+                                           oninput="this.closest('tr').dataset.checkin=this.value"
+                                           style="width:125px; max-width:100%;">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm px-2"
+                                            onclick="setNow({{ student.id }})" title="Use current time" data-bs-toggle="tooltip">
                                         <i class="fas fa-clock"></i>
                                     </button>
                                 </div>
-                                {% endif %}
                             {% else %}
                             <span class="text-muted small" id="lateshow_{{ student.id }}">—</span>
                             {% endif %}
@@ -443,15 +451,17 @@ function updateRow(id, status) {
     else if (status === 'Late') row.classList.add('table-warning');
     else if (status === 'Leave') row.classList.add('table-secondary');
 
-    // Show / hide late time input
+    // Keep a check-in time for Present and Late marks so the server can apply school timing.
     var cell = document.getElementById('latecell_' + id);
     if (cell) {
-        if (status === 'Late') {
+        if (status === 'Present' || status === 'Late') {
+            var row = document.getElementById('row_' + id);
+            var previousValue = row?.dataset.checkin || '';
             cell.innerHTML = '<div class="d-flex gap-1 justify-content-center align-items-center">' +
-                '<input type="time" class="form-control form-control-sm" name="late_time_' + id + '" id="latetime_' + id + '" style="width:110px; max-width:100%;">' +
-                '<button type="button" class="btn btn-warning btn-sm px-1" onclick="setNow(' + id + ')" title="Set current time"><i class="fas fa-clock"></i></button>' +
+                '<input type="time" class="form-control form-control-sm" name="checkin_time_' + id + '" id="checkintime_' + id + '" value="' + previousValue + '" oninput="this.closest(\'tr\').dataset.checkin=this.value" style="width:125px; max-width:100%;">' +
+                '<button type="button" class="btn btn-outline-secondary btn-sm px-2" onclick="setNow(' + id + ')" title="Use current time"><i class="fas fa-clock"></i></button>' +
                 '</div>';
-            setNow(id); // auto-fill current time
+                            if (!previousValue && {{ 'true' if is_today else 'false' }}) setNow(id);
         } else {
             cell.innerHTML = '<span class="text-muted small">—</span>';
         }
@@ -459,14 +469,16 @@ function updateRow(id, status) {
     updateLiveCounters();
 }
 
-// Set current time into the late_time field
+// Set current time into the check-in field
 function setNow(id) {
-    var el = document.getElementById('latetime_' + id);
+    var el = document.getElementById('checkintime_' + id);
     if (!el) return;
     var now = new Date();
     var hh = String(now.getHours()).padStart(2, '0');
     var mm = String(now.getMinutes()).padStart(2, '0');
     el.value = hh + ':' + mm;
+    var row = document.getElementById('row_' + id);
+    if (row) row.dataset.checkin = el.value;
 }
 
 // Mark all students with a single status

@@ -18,6 +18,27 @@ from app.services.automation_events import (
     render_event_message,
 )
 
+INTEGRATION_QR_SCAN = 'qr_scan'
+INTEGRATION_CLOUD_API = 'cloud_api'
+
+
+def integration_configuration(settings=None):
+    """Return the active WhatsApp transport configuration for the bridge."""
+    from app.models import AutomationSettings
+
+    settings = settings or AutomationSettings.get()
+    method = getattr(settings, 'integration_method', INTEGRATION_QR_SCAN)
+    if method != INTEGRATION_CLOUD_API:
+        return {'integration_method': INTEGRATION_QR_SCAN}
+    return {
+        'integration_method': INTEGRATION_CLOUD_API,
+        'cloud_api': {
+            'access_token': settings.whatsapp_api_token or '',
+            'phone_number_id': settings.whatsapp_phone_number_id or '',
+            'business_account_id': settings.whatsapp_business_account_id or '',
+        },
+    }
+
 
 def normalize_whatsapp_number(phone: str) -> str:
     """Normalize a local or international phone number to WhatsApp format."""

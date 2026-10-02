@@ -293,8 +293,9 @@ docs/                AUDIT_REPORT.md, BACKLOG.md, screenshots/
   student; there is no multi-child or multi-guardian account model.
 * **Audit rows for create are keyed by primary key**, which is assigned after the
   ORM flush; this is handled, but a raw `INSERT` outside the ORM is not audited.
-* **Bulk ORM deletes** (`Query.delete()`) bypass the per-object audit hook. The
-  permanent student delete path logs an explicit audit entry instead.
+* **Bulk ORM deletes** (`Query.delete()`) bypass the per-object audit hook; audit
+  entries are written explicitly where those paths matter. Permanent deletion has
+  been removed from the app — archived records can only be restored.
 * **The WhatsApp bridge is optional and best-effort.** No delivery guarantees,
   retries are manual, and the QR session is stored unencrypted in
   `whatsapp-service/session/`.

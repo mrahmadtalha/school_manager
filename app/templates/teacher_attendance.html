@@ -64,6 +64,7 @@
     </div>
 
     {% if teachers %}
+    <div class="alert alert-info py-2 small"><i class="fas fa-clock me-1"></i>School hours: {{ school_start_time }}–{{ school_end_time }}. Late is automatic after start + {{ attendance_grace_minutes }} minute(s) grace. Enter the actual check-in time for each teacher.</div>
     <!-- Quick Actions & Live Counter -->
     <div class="card bg-light border-0 mb-3 shadow-sm">
         <div class="card-body py-2 d-flex justify-content-between align-items-center flex-wrap gap-3">
@@ -95,11 +96,13 @@
                         <th>Teacher Name</th>
                         <th>Qualification</th>
                         <th class="text-center">Attendance Status</th>
+                        <th class="text-center">Check-in / Late</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for teacher in teachers %}
                     {% set current_status = attendance_map.get(teacher.id, 'Present') %}
+                    {% set current_checkin = late_time_map.get(teacher.id, '') or (current_checkin_time if current_status in ['Present', 'Late'] else '') %}
                     <tr>
                         <td><strong>{{ teacher.teacher_id_str }}</strong></td>
                         <td>{{ teacher.teacher_name }}</td>
@@ -117,6 +120,22 @@
 
                                 <input type="radio" class="btn-check" name="status_{{ teacher.id }}" id="tlv_{{ teacher.id }}" value="Leave" {% if current_status == 'Leave' %}checked{% endif %} onchange="updateTeacherCounters()">
                                 <label class="btn btn-outline-secondary btn-sm px-3" for="tlv_{{ teacher.id }}">Leave</label>
+                            </div>
+                            {% if current_status == 'Late' %}
+                            <div class="mt-1"><span class="badge bg-warning text-dark">Late{% if late_minutes_map.get(teacher.id) is not none %} · {{ late_minutes_map.get(teacher.id) }} min{% endif %}</span></div>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <div class="d-flex gap-1 justify-content-center align-items-center">
+                                <input type="time" class="form-control form-control-sm"
+                                       name="checkin_time_{{ teacher.id }}"
+                                       id="teacher-checkin-{{ teacher.id }}"
+                                       value="{{ current_checkin }}" style="width:125px; max-width:100%;">
+                                <button type="button" class="btn btn-outline-secondary btn-sm px-2"
+                                        onclick="setTeacherCheckinNow({{ teacher.id }})"
+                                        title="Use current time" data-bs-toggle="tooltip">
+                                    <i class="fas fa-clock"></i>
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -169,6 +188,13 @@ function markAllTeachers(status) {
         }
     });
     updateTeacherCounters();
+}
+
+function setTeacherCheckinNow(id) {
+    var input = document.getElementById('teacher-checkin-' + id);
+    if (!input) return;
+    var now = new Date();
+    input.value = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
 }
 </script>
 {% endblock %}

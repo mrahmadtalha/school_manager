@@ -1,10 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+.settings-tabs { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; }
+.settings-tabs .nav-link { white-space: nowrap; }
+.settings-card { height: 100%; border-radius: .5rem; }
+.settings-card .card-header { min-height: 3.25rem; display: flex; align-items: center; }
+@media (max-width: 575.98px) {
+    .settings-tabs .nav-link { padding: .55rem .7rem; font-size: .875rem; }
+}
+</style>
 <div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
     <div>
         <p class="eyebrow mb-2">Configuration</p>
         <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-cog text-primary me-2"></i>School Settings</h1>
-        <p class="text-muted small mb-0">Customize your school identity and branding.</p>
+        <p class="text-muted small mb-0">Manage school details, schedules, custom fields, and connected services.</p>
     </div>
 </div>
 
@@ -18,14 +27,40 @@
   {% endif %}
 {% endwith %}
 
+<ul class="nav nav-tabs settings-tabs mb-3" id="settings-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if active_tab == 'general' %}active{% endif %}" id="general-tab" data-bs-toggle="tab" data-bs-target="#general-panel" type="button" role="tab" aria-controls="general-panel" aria-selected="{{ 'true' if active_tab == 'general' else 'false' }}">
+            <i class="fas fa-school me-1"></i> General School Info
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if active_tab == 'academic' %}active{% endif %}" id="academic-tab" data-bs-toggle="tab" data-bs-target="#academic-panel" type="button" role="tab" aria-controls="academic-panel" aria-selected="{{ 'true' if active_tab == 'academic' else 'false' }}">
+            <i class="fas fa-clock me-1"></i> Academic Timings
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if active_tab == 'custom-fields' %}active{% endif %}" id="custom-fields-tab" data-bs-toggle="tab" data-bs-target="#custom-fields-panel" type="button" role="tab" aria-controls="custom-fields-panel" aria-selected="{{ 'true' if active_tab == 'custom-fields' else 'false' }}">
+            <i class="fas fa-list-check me-1"></i> Custom Fields Manager
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if active_tab == 'integrations' %}active{% endif %}" id="integrations-tab" data-bs-toggle="tab" data-bs-target="#integrations-panel" type="button" role="tab" aria-controls="integrations-panel" aria-selected="{{ 'true' if active_tab == 'integrations' else 'false' }}">
+            <i class="fas fa-plug me-1"></i> System Integrations
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="settings-tabs-content">
+<section class="tab-pane fade {% if active_tab == 'general' %}show active{% endif %}" id="general-panel" role="tabpanel" aria-labelledby="general-tab" tabindex="0">
 <div class="row g-4">
     <div class="col-md-6">
-        <div class="card shadow-sm border-0 analytics-panel">
-            <div class="card-header bg-dark text-white fw-bold border-0">
+        <div class="card shadow-sm border-0 analytics-panel settings-card">
+            <div class="card-header bg-primary-subtle text-primary fw-bold border-0">
                 <i class="fas fa-school me-2"></i>School Identity
             </div>
             <div class="card-body">
                 <form method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="action" value="save_general_info">
 
                     <div class="mb-3">
                         <label class="form-label fw-bold">School Name</label>
@@ -93,32 +128,8 @@
                                value="{{ settings.email }}" placeholder="e.g. info@school.pk">
                     </div>
 
-                    <hr>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">School Start Time</label>
-                        <input type="time" class="form-control" name="school_start_time" value="{{ settings.school_start_time or '08:30' }}">
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">School End Time</label>
-                        <input type="time" class="form-control" name="school_end_time" value="{{ settings.school_end_time or '15:00' }}">
-                    </div>
-
-                    <div class="mb-3 form-check form-switch">
-                        <input class="form-check-input" type="checkbox" role="switch" id="weekend_off" name="weekend_off" {% if settings.weekend_off is not false %}checked{% endif %}>
-                        <label class="form-check-label fw-bold" for="weekend_off">Weekend off (Saturday & Sunday)</label>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Custom Off Days <span class="text-muted small">(optional)</span></label>
-                        <input type="text" class="form-control" name="custom_off_days"
-                               value="{{ settings.custom_off_days or '' }}" placeholder="e.g. Friday, Sunday">
-                        <div class="form-text">Use day names separated by commas, such as Friday, Sunday.</div>
-                    </div>
-
                     <button type="submit" class="btn btn-success px-4">
-                        <i class="fas fa-save me-1"></i> Save Settings
+                        <i class="fas fa-save me-1"></i> Save School Info
                     </button>
                 </form>
             </div>
@@ -127,8 +138,8 @@
 
     <!-- Live Preview -->
     <div class="col-md-6">
-        <div class="card shadow-sm border-0 analytics-panel">
-            <div class="card-header bg-secondary text-white fw-bold border-0">
+        <div class="card shadow-sm border-0 analytics-panel settings-card">
+            <div class="card-header bg-dark text-white fw-bold border-0">
                 <i class="fas fa-eye me-2"></i>Sidebar Preview
             </div>
             <div class="card-body bg-dark rounded" style="min-height:160px;">
@@ -156,10 +167,70 @@
     </div>
 </div>
 
+</section>
+
+<section class="tab-pane fade {% if active_tab == 'academic' %}show active{% endif %}" id="academic-panel" role="tabpanel" aria-labelledby="academic-tab" tabindex="0">
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 analytics-panel settings-card">
+            <div class="card-header bg-info-subtle text-info-emphasis fw-bold">
+                <i class="fas fa-clock me-2"></i>School Schedule
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="action" value="save_academic_settings">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Current Academic Session</label>
+                        <input type="text" class="form-control" name="academic_session"
+                               value="{{ settings.academic_session or '' }}" placeholder="e.g. 2025-2026">
+                        <div class="form-text">Used to pre-fill report and document filters.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Result Announcement Date <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="date" class="form-control" name="result_announcement_date"
+                               value="{{ settings.result_announcement_date or '' }}">
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-sm-6">
+                            <label class="form-label fw-semibold">School Start Time</label>
+                            <input type="time" class="form-control" name="school_start_time" value="{{ settings.school_start_time or '08:30' }}">
+                        </div>
+                        <div class="col-sm-6">
+                            <label class="form-label fw-semibold">School End Time</label>
+                            <input type="time" class="form-control" name="school_end_time" value="{{ settings.school_end_time or '15:00' }}">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Late arrival grace period</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" name="attendance_grace_minutes"
+                                   min="0" max="180" step="1"
+                                   value="{{ settings.attendance_grace_minutes or 0 }}">
+                            <span class="input-group-text">minutes</span>
+                        </div>
+                        <div class="form-text">Check-ins after school start plus this time are marked Late.</div>
+                    </div>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" role="switch" id="weekend_off" name="weekend_off" {% if settings.weekend_off is not false %}checked{% endif %}>
+                        <label class="form-check-label fw-semibold" for="weekend_off">Weekend off (Saturday &amp; Sunday)</label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Other Days Off <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="text" class="form-control" name="custom_off_days"
+                               value="{{ settings.custom_off_days or '' }}" placeholder="e.g. Friday">
+                        <div class="form-text">Separate multiple days with commas.</div>
+                    </div>
+                    <button type="submit" class="btn btn-success"><i class="fas fa-save me-1"></i> Save Academic Settings</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row g-4 mt-1">
     <div class="col-12">
-        <div class="card shadow-sm border-0 analytics-panel">
-            <div class="card-header bg-dark text-white fw-bold border-0">
+        <div class="card shadow-sm border-0 analytics-panel settings-card">
+            <div class="card-header bg-warning-subtle text-dark fw-bold border-0">
                 <i class="fas fa-chart-line me-2"></i>Grading Scale
             </div>
             <div class="card-body">
@@ -197,11 +268,13 @@
         </div>
     </div>
 </div>
+</section>
 
+<section class="tab-pane fade {% if active_tab == 'custom-fields' %}show active{% endif %}" id="custom-fields-panel" role="tabpanel" aria-labelledby="custom-fields-tab" tabindex="0">
 <div class="row g-4 mt-1">
     <div class="col-md-6">
-        <div class="card shadow-sm border-0 analytics-panel">
-            <div class="card-header bg-dark text-white fw-bold border-0">
+        <div class="card shadow-sm border-0 analytics-panel settings-card">
+            <div class="card-header bg-primary-subtle text-primary fw-bold border-0">
                 <i class="fas fa-user-graduate me-2"></i>Student Custom Fields
             </div>
             <div class="card-body">
@@ -211,16 +284,17 @@
                         <table class="table table-sm align-middle mb-3">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Field Name (internal)</th>
-                                    <th>Display Label</th>
+                                    <th>Field Name (internal) <span class="required-asterisk" aria-hidden="true">*</span></th>
+                                    <th>Display Label <span class="required-asterisk" aria-hidden="true">*</span></th>
                                     <th>Type</th>
+                                    <th class="text-center">Required</th>
                                     <th class="text-center">Remove</th>
                                 </tr>
                             </thead>
                             <tbody id="student-custom-fields-body">
                                 {% for field in student_custom_fields %}
                                 <tr>
-                                    <td><input type="text" class="form-control form-control-sm" name="field_name[]" value="{{ field.name }}" required></td>
+                                    <td><input type="text" class="form-control form-control-sm custom-field-name" name="field_name[]" value="{{ field.name }}" required></td>
                                     <td><input type="text" class="form-control form-control-sm" name="field_label[]" value="{{ field.label }}" required></td>
                                     <td>
                                         <select class="form-select form-select-sm" name="field_type[]">
@@ -229,6 +303,7 @@
                                             <option value="date" {% if field.type == 'date' %}selected{% endif %}>Date</option>
                                         </select>
                                     </td>
+                                    <td class="text-center"><input type="checkbox" class="form-check-input custom-field-required" name="field_required[]" value="{{ field.name }}" {% if field.get('is_mandatory') %}checked{% endif %} aria-label="Require {{ field.label }}"></td>
                                     <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()"><i class="fas fa-times"></i></button></td>
                                 </tr>
                                 {% endfor %}
@@ -248,8 +323,8 @@
     </div>
     
     <div class="col-md-6">
-        <div class="card shadow-sm border-0 analytics-panel">
-            <div class="card-header bg-dark text-white fw-bold border-0">
+        <div class="card shadow-sm border-0 analytics-panel settings-card">
+            <div class="card-header bg-success-subtle text-success fw-bold border-0">
                 <i class="fas fa-chalkboard-teacher me-2"></i>Teacher Custom Fields
             </div>
             <div class="card-body">
@@ -259,16 +334,17 @@
                         <table class="table table-sm align-middle mb-3">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Field Name (internal)</th>
-                                    <th>Display Label</th>
+                                    <th>Field Name (internal) <span class="required-asterisk" aria-hidden="true">*</span></th>
+                                    <th>Display Label <span class="required-asterisk" aria-hidden="true">*</span></th>
                                     <th>Type</th>
+                                    <th class="text-center">Required</th>
                                     <th class="text-center">Remove</th>
                                 </tr>
                             </thead>
                             <tbody id="teacher-custom-fields-body">
                                 {% for field in teacher_custom_fields %}
                                 <tr>
-                                    <td><input type="text" class="form-control form-control-sm" name="field_name[]" value="{{ field.name }}" required></td>
+                                    <td><input type="text" class="form-control form-control-sm custom-field-name" name="field_name[]" value="{{ field.name }}" required></td>
                                     <td><input type="text" class="form-control form-control-sm" name="field_label[]" value="{{ field.label }}" required></td>
                                     <td>
                                         <select class="form-select form-select-sm" name="field_type[]">
@@ -277,6 +353,7 @@
                                             <option value="date" {% if field.type == 'date' %}selected{% endif %}>Date</option>
                                         </select>
                                     </td>
+                                    <td class="text-center"><input type="checkbox" class="form-check-input custom-field-required" name="field_required[]" value="{{ field.name }}" {% if field.get('is_mandatory') %}checked{% endif %} aria-label="Require {{ field.label }}"></td>
                                     <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()"><i class="fas fa-times"></i></button></td>
                                 </tr>
                                 {% endfor %}
@@ -295,10 +372,35 @@
         </div>
     </div>
 </div>
+</section>
 
+<section class="tab-pane fade {% if active_tab == 'integrations' %}show active{% endif %}" id="integrations-panel" role="tabpanel" aria-labelledby="integrations-tab" tabindex="0">
+<div class="row g-4 mt-1 mb-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 settings-card">
+            <div class="card-header bg-success text-white fw-bold"><i class="fab fa-whatsapp me-2"></i>WhatsApp Messaging</div>
+            <div class="card-body d-flex flex-column">
+                <p class="text-muted">Manage QR Scan and official WhatsApp Cloud API connections, notification delivery, and message approvals.</p>
+                <div class="mt-auto">
+                    <a class="btn btn-outline-success" href="{{ url_for('main.automation_panel') }}"><i class="fas fa-arrow-up-right-from-square me-1"></i> Open WhatsApp Center</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 settings-card">
+            <div class="card-header bg-secondary text-white fw-bold"><i class="fas fa-database me-2"></i>Database Protection</div>
+            <div class="card-body">
+                <p class="text-muted">Create and download database backups. Automatic backups run {{ 'daily' if backup_state.enabled else 'when enabled' }}.</p>
+                <span class="badge {% if backup_state.enabled %}bg-success{% else %}bg-secondary{% endif %}">Automatic backups {{ 'on' if backup_state.enabled else 'off' }}</span>
+                {% if backup_state.latest %}<span class="badge bg-light text-dark border ms-1">Latest: {{ backup_state.latest.name }}</span>{% endif %}
+            </div>
+        </div>
+    </div>
+</div>
 <div class="row g-4 mt-1">
     <div class="col-12">
-        <div class="card shadow-sm border-0">
+        <div class="card shadow-sm border-0 settings-card">
             <div class="card-header bg-dark text-white fw-bold border-0 d-flex justify-content-between align-items-center">
                 <span><i class="fas fa-database me-2"></i>Backups</span>
                 <form method="POST" action="{{ url_for('main.run_backup_now') }}" class="m-0">
@@ -357,6 +459,8 @@
         </div>
     </div>
 </div>
+</section>
+</div>
 
 <script>
 // Live preview as you type
@@ -390,7 +494,7 @@ function addGradeRow() {
 function addCustomFieldRow(tbodyId) {
     var tbody = document.getElementById(tbodyId);
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td><input type="text" class="form-control form-control-sm" name="field_name[]" placeholder="e.g. blood_group" required></td>' + 
+    tr.innerHTML = '<td><input type="text" class="form-control form-control-sm custom-field-name" name="field_name[]" placeholder="e.g. blood_group" required></td>' +
                    '<td><input type="text" class="form-control form-control-sm" name="field_label[]" placeholder="e.g. Blood Group" required></td>' +
                    '<td>' +
                        '<select class="form-select form-select-sm" name="field_type[]">' +
@@ -399,25 +503,22 @@ function addCustomFieldRow(tbodyId) {
                            '<option value="date">Date</option>' +
                        '</select>' +
                    '</td>' +
+                   '<td class="text-center"><input type="checkbox" class="form-check-input custom-field-required" name="field_required[]" value="" aria-label="Make field required"></td>' +
                    '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest(\'tr\').remove()"><i class="fas fa-times"></i></button></td>';
     tbody.appendChild(tr);
+    bindCustomFieldRequiredRow(tr);
 }
 
-function addCustomFieldRow(tbodyId) {
-    var tbody = document.getElementById(tbodyId);
-    var tr = document.createElement('tr');
-    tr.innerHTML = '<td><input type="text" class="form-control form-control-sm" name="field_name[]" placeholder="e.g. blood_group" required></td>' + 
-                   '<td><input type="text" class="form-control form-control-sm" name="field_label[]" placeholder="e.g. Blood Group" required></td>' +
-                   '<td>' +
-                       '<select class="form-select form-select-sm" name="field_type[]">' +
-                           '<option value="text">Text</option>' +
-                           '<option value="number">Number</option>' +
-                           '<option value="date">Date</option>' +
-                       '</select>' +
-                   '</td>' +
-                   '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest(\'tr\').remove()"><i class="fas fa-times"></i></button></td>';
-    tbody.appendChild(tr);
+function bindCustomFieldRequiredRow(row) {
+    var nameInput = row.querySelector('.custom-field-name');
+    var requiredInput = row.querySelector('.custom-field-required');
+    if (!nameInput || !requiredInput) return;
+    var updateValue = function () { requiredInput.value = nameInput.value; };
+    nameInput.addEventListener('input', updateValue);
+    updateValue();
 }
+
+document.querySelectorAll('tr').forEach(bindCustomFieldRequiredRow);
 
 function resetColors() {
     document.getElementById('primaryColorInput').value = '#0d6efd';

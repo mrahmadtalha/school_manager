@@ -29,6 +29,13 @@ def academic_session(today=None):
     return f'{today.year - 1}-{today.year}'
 
 
+def default_academic_session():
+    """Preferred session default: the configured session, else the month rule."""
+    school = SchoolSettings.query.first()
+    value = (school.academic_session or '').strip() if school else ''
+    return value or academic_session()
+
+
 def school_branding(app_root=None):
     school = SchoolSettings.query.first()
     name = school.school_name if school and school.school_name else 'School Manager'

@@ -17,6 +17,9 @@
     </div>
 </div>
 
+{% set exam_active = 'tests' %}
+{% include '_exam_module_switch.html' %}
+
 {% with messages = get_flashed_messages(with_categories=true) %}
   {% if messages %}{% for category, message in messages %}
     <div class="alert alert-{{ category }} alert-dismissible fade show">
@@ -24,6 +27,13 @@
     </div>
   {% endfor %}{% endif %}
 {% endwith %}
+
+{% if term_exams_count %}
+<div class="alert alert-light border d-flex flex-wrap justify-content-between align-items-center gap-2 small py-2 mb-3">
+    <span><i class="fas fa-circle-info text-primary me-1"></i>Term exam batches are managed in <b>Term Examinations</b> — this page shows Class Tests only.</span>
+    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.examinations_page') }}">Open Term Examinations →</a>
+</div>
+{% endif %}
 
 <!-- Filter bar -->
 <div class="card border-0 bg-light shadow-sm mb-4">
@@ -59,24 +69,14 @@
 {% if exams %}
 <div class="row g-3" id="testsGrid">
     {% for exam in exams %}
-    {% set type_colors = {
-        'Weekly':    'primary',
-        'Monthly':   'success',
-        '15 Days':   'info',
-        'Mid Term':  'warning',
-        'Final':     'danger',
-        'Annual':    'danger'
-    } %}
-    {% set color = type_colors.get(exam.test_type, 'secondary') %}
-
     <div class="col-md-6 col-lg-4 test-card"
          data-class="{{ exam.class_id }}"
          data-type="{{ exam.test_type }}">
         <div class="card h-100 border-0 shadow-sm">
             <!-- Card top colour strip -->
-            <div class="card-header bg-{{ color }} bg-opacity-10 border-0 pb-0 pt-3 px-3">
+            <div class="card-header bg-{{ exam.color }} bg-opacity-10 border-0 pb-0 pt-3 px-3">
                 <div class="d-flex justify-content-between align-items-start">
-                    <span class="badge bg-{{ color }} mb-2">{{ exam.test_type }}</span>
+                    <span class="badge bg-{{ exam.color }} mb-2">{{ exam.test_type }}</span>
                     <small class="text-muted">
                         <i class="fas fa-calendar-alt me-1"></i>
                         {{ exam.date.strftime('%d %b %Y') if exam.date else 'No date' }}
@@ -86,7 +86,7 @@
             </div>
 
             <div class="card-body pt-2 pb-3">
-                <div class="row g-2 mb-3">
+                <div class="row g-2 mb-2">
                     <div class="col-6">
                         <div class="small text-muted">Class</div>
                         <div class="fw-bold text-dark">
@@ -103,23 +103,46 @@
                     </div>
                     <div class="col-6">
                         <div class="small text-muted">Total Marks</div>
-                        <div class="fw-bold text-{{ color }}">
-                            <i class="fas fa-star me-1"></i>{{ exam.total_marks_sum }}
+                        <div class="fw-bold text-{{ exam.color }}">
+                            <i class="fas fa-star me-1"></i>{{ '{:,.0f}'.format(exam.total_marks_sum) }}
                         </div>
                     </div>
                     <div class="col-6">
                         <div class="small text-muted">Students</div>
                         <div class="fw-bold text-dark">
                             <i class="fas fa-users text-secondary me-1"></i>
-                            {{ exam.class_info.students | selectattr('is_active') | list | length if exam.class_info else '—' }}
+                            {{ exam.students_count }}
                         </div>
                     </div>
                 </div>
 
-                <a href="{{ url_for('main.enter_batch_marks', title=exam.title, date=exam.date, class_id=exam.class_id) }}"
-                   class="btn btn-{{ color }} btn-sm w-100">
-                    <i class="fas fa-edit me-1"></i> Enter / Edit Marks
-                </a>
+                <div class="mb-3">
+                    {% if exam.progress_state == 'done' %}
+                    <span class="badge bg-success-subtle text-success-emphasis border"><i class="fas fa-circle-check me-1"></i>{{ exam.progress_label }}</span>
+                    {% elif exam.progress_state == 'partial' %}
+                    <span class="badge bg-warning-subtle text-warning-emphasis border"><i class="fas fa-hourglass-half me-1"></i>{{ exam.progress_label }}</span>
+                    {% elif exam.progress_state == 'none' %}
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis border">{{ exam.progress_label }}</span>
+                    {% else %}
+                    <span class="badge bg-light text-muted border">{{ exam.progress_label }}</span>
+                    {% endif %}
+                </div>
+
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('main.enter_batch_marks', title=exam.title, date=exam.date, class_id=exam.class_id) }}"
+                       class="btn btn-{{ exam.color }} btn-sm flex-fill">
+                        <i class="fas fa-edit me-1"></i> Enter / Edit Marks
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                            data-bs-toggle="modal" data-bs-target="#deleteBatchModal"
+                            data-title="{{ exam.title }}"
+                            data-date="{{ exam.date.isoformat() if exam.date else '' }}"
+                            data-class-id="{{ exam.class_id }}"
+                            data-class-name="{{ exam.class_info.name if exam.class_info else '' }}"
+                            title="Delete this test batch">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -144,7 +167,7 @@
 <div class="modal fade" id="addTestModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg overflow-hidden">
-            <form action="{{ url_for('main.add_test') }}" method="POST">
+            <form action="{{ url_for('main.add_test') }}" method="POST" id="addTestForm">
                 <div class="modal-header px-4 py-3 text-white" style="background: linear-gradient(135deg, #0f172a 0%, #4338ca 100%); border: none;">
                     <div>
                         <p class="mb-1 small text-uppercase text-white-50 fw-bold" style="letter-spacing: 0.08em;">Assessment</p>
@@ -155,18 +178,22 @@
                 <div class="modal-body p-4 bg-light">
                     <div class="row g-3">
                         <div class="col-md-12">
-                            <label class="form-label fw-bold small text-muted">Test Title</label>
-                            <input type="text" class="form-control" name="test_title" placeholder="e.g. Chapter 3 Math Quiz" required>
+                            <label class="form-label fw-bold small text-muted">Test Title <span class="text-muted fw-normal">(leave blank for auto: “Type Test — Mon YYYY”)</span></label>
+                            <input type="text" class="form-control" name="test_title" list="recentTitles" maxlength="100"
+                                   placeholder="e.g. Chapter 3 Math Quiz — or leave blank to auto-name">
+                            <datalist id="recentTitles">
+                                {% for title in recent_titles %}<option value="{{ title }}"></option>{% endfor %}
+                            </datalist>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-bold small text-muted">Type</label>
-                            <select class="form-select" name="test_type" required>
-                                {% for tt in test_types %}
-                                <option value="{{ tt.name }}">{{ tt.name }}</option>
+                            <select class="form-select" id="testTypeSelect" name="test_type" required>
+                                {% for tt in create_types %}
+                                <option value="{{ tt.name }}">{{ tt.name }}{% if tt.default_marks %} (out of {{ '{:,.0f}'.format(tt.default_marks) }}){% endif %}</option>
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-bold small text-muted">Class</label>
                             <select class="form-select" id="testClassSelect" name="class_id" required>
                                 {% for c in classes %}
@@ -174,10 +201,24 @@
                                 {% endfor %}
                             </select>
                         </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small text-muted">Test Date</label>
+                            <input type="date" class="form-control" name="test_date" id="testDateInput" value="{{ today.isoformat() }}" required>
+                            <div class="d-flex gap-1 mt-1">
+                                <button type="button" class="btn btn-outline-secondary btn-sm px-2 py-0" style="font-size:.72rem;" onclick="setTestDate(0)">Today</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm px-2 py-0" style="font-size:.72rem;" onclick="setTestDate(-1)">Yesterday</button>
+                            </div>
+                        </div>
                         <div class="col-12 mt-3" id="subjectsContainer">
-                            <label class="form-label fw-bold small text-muted">Subjects & Total Marks</label>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label fw-bold small text-muted mb-0">Subjects &amp; Total Marks — <span id="subjectCounter">0 of 0 selected</span></label>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="font-size:.75rem;" onclick="selectAllSubjects(true)">Select all</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="font-size:.75rem;" onclick="selectAllSubjects(false)">Select none</button>
+                                </div>
+                            </div>
                             <div class="table-responsive">
-                                <table class="table table-sm table-bordered mb-0">
+                                <table class="table table-sm table-bordered mb-2">
                                     <thead class="table-light">
                                         <tr>
                                             <th width="50px" class="text-center">Inc</th>
@@ -193,26 +234,61 @@
                                             </td>
                                             <td class="align-middle">{{ s.name }}</td>
                                             <td>
-                                                <input type="number" step="0.5" class="form-control form-control-sm" name="total_marks_{{ s.id }}" value="100">
+                                                <input type="number" step="0.5" min="0.5" class="form-control form-control-sm subject-marks"
+                                                       name="total_marks_{{ s.id }}" value="100" data-edited="0">
                                             </td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>
                                 </table>
                             </div>
-                            <small class="text-muted">Uncheck subjects you don't want to include in this exam batch.</small>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold small text-muted">Test Date</label>
-                            <input type="date" class="form-control" name="test_date" required>
+                            <div class="d-flex flex-wrap gap-2 align-items-center">
+                                <span class="small text-muted">Quick presets:</span>
+                                <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="font-size:.75rem;" onclick="applyMarksPreset(10)">10</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="font-size:.75rem;" onclick="applyMarksPreset(20)">20</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="font-size:.75rem;" onclick="applyMarksPreset(50)">50</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="font-size:.75rem;" onclick="applyMarksPreset(100)">100</button>
+                                <span class="small text-muted ms-2">Set marks:</span>
+                                <input type="number" step="0.5" min="0.5" id="bulkMarksValue" class="form-control form-control-sm" style="width:110px" placeholder="e.g. 50">
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="applyMarksToAll()">Apply to selected class</button>
+                                <span class="text-muted small">Uncheck subjects you don't want to include in this exam batch.</span>
+                            </div>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer px-4 py-3 border-0 bg-white">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary px-4">
+                    <button type="submit" class="btn btn-primary px-4" id="createTestBtn">
                         <i class="fas fa-save me-1"></i> Create Test
                     </button>
+                    <button type="submit" name="redirect_to_marks" value="1" class="btn btn-dark px-4">
+                        <i class="fas fa-arrow-right me-1"></i> Create &amp; Enter Marks
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Batch Modal -->
+<div class="modal fade" id="deleteBatchModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+            <form action="{{ url_for('main.delete_test_batch') }}" method="POST" id="deleteBatchForm">
+                <input type="hidden" name="test_title" id="delBatchTitle">
+                <input type="hidden" name="test_date" id="delBatchDate">
+                <input type="hidden" name="class_id" id="delBatchClass">
+                <div class="modal-header bg-danger text-white py-2">
+                    <h6 class="modal-title"><i class="fas fa-trash me-2"></i>Delete Test Batch</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body small">
+                    Delete <strong id="delBatchLabel"></strong>?<br>
+                    <span class="text-danger">All subjects and entered student marks in this batch will be removed.</span>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger btn-sm">Delete Batch</button>
                 </div>
             </form>
         </div>
@@ -229,20 +305,40 @@
             </div>
             <div class="modal-body">
                 <!-- Add new -->
-                <form action="{{ url_for('main.add_test_type') }}" method="POST" class="d-flex gap-2 mb-4">
-                    <input type="text" class="form-control" name="name" placeholder="New category name e.g. Fortnightly" required>
-                    <button type="submit" class="btn btn-dark px-3">Add</button>
+                <form action="{{ url_for('main.add_test_type') }}" method="POST" class="row g-2 mb-4">
+                    <div class="col-5">
+                        <input type="text" class="form-control" name="name" placeholder="New category e.g. Fortnightly" required>
+                    </div>
+                    <div class="col-2">
+                        <input type="number" step="0.5" min="0.5" class="form-control" name="default_marks" placeholder="Default marks">
+                    </div>
+                    <div class="col-3">
+                        <select class="form-select" name="scope" title="Where this category is offered">
+                            <option value="">Both areas</option>
+                            <option value="class_test">Class Tests</option>
+                            <option value="term_exam">Term Exams</option>
+                        </select>
+                    </div>
+                    <div class="col-2">
+                        <button type="submit" class="btn btn-dark w-100">Add</button>
+                    </div>
                 </form>
                 <!-- Existing list -->
                 {% if test_types %}
                 <div class="table-responsive">
 <table class="table table-sm table-hover align-middle mb-0">
-                    <thead class="table-light"><tr><th>#</th><th>Category</th><th class="text-end">Actions</th></tr></thead>
+                    <thead class="table-light"><tr><th>#</th><th>Category</th><th>Area</th><th class="text-end">Default Marks</th><th class="text-end">Actions</th></tr></thead>
                     <tbody>
                         {% for t in test_types %}
                         <tr>
                             <td class="text-muted">{{ loop.index }}</td>
                             <td><strong>{{ t.name }}</strong></td>
+                            <td>
+                                {% if t.scope == 'class_test' %}<span class="badge bg-secondary-subtle text-secondary-emphasis border">Class Tests</span>
+                                {% elif t.scope == 'term_exam' %}<span class="badge bg-info-subtle text-info-emphasis border">Term Exams</span>
+                                {% else %}<span class="badge bg-light text-muted border">Both</span>{% endif %}
+                            </td>
+                            <td class="text-end">{{ '{:,.0f}'.format(t.default_marks) if t.default_marks else '100 (default)' }}</td>
                             <td class="text-end">
                                 <button class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#editTT{{ t.id }}">
                                     <i class="fas fa-edit"></i>
@@ -274,7 +370,25 @@
                     <h6 class="modal-title">Edit Category</h6>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body"><input type="text" class="form-control" name="name" value="{{ t.name }}" required></div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold mb-1">Name</label>
+                        <input type="text" class="form-control" name="name" value="{{ t.name }}" required>
+                    </div>
+                    <div>
+                        <label class="form-label small fw-bold mb-1">Default marks <span class="text-muted fw-normal">(blank = 100)</span></label>
+                        <input type="number" step="0.5" min="0.5" class="form-control" name="default_marks"
+                               value="{{ '{:g}'.format(t.default_marks) if t.default_marks else '' }}">
+                    </div>
+                    <div class="mt-2">
+                        <label class="form-label small fw-bold mb-1">Area</label>
+                        <select class="form-select" name="scope">
+                            <option value="" {% if not t.scope %}selected{% endif %}>Both areas</option>
+                            <option value="class_test" {% if t.scope == 'class_test' %}selected{% endif %}>Class Tests</option>
+                            <option value="term_exam" {% if t.scope == 'term_exam' %}selected{% endif %}>Term Exams</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="modal-footer py-2">
                     <button type="submit" class="btn btn-primary btn-sm">Update</button>
                 </div>
@@ -301,22 +415,131 @@
 {% endfor %}
 
 <script>
-// Dynamic subject filtering by class
+var TYPE_DEFAULTS = {{ type_defaults|tojson }};
+
+// ---- Date quick chips ----
+function setTestDate(offsetDays) {
+    var input = document.getElementById('testDateInput');
+    if (!input) return;
+    var d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    input.value = d.toISOString().slice(0, 10);
+}
+
+// ---- Dynamic subject filtering by class + counter ----
 document.addEventListener('DOMContentLoaded', function () {
     var classSelect = document.getElementById('testClassSelect');
+    var typeSelect = document.getElementById('testTypeSelect');
+
+    function visibleRows() {
+        return Array.prototype.filter.call(
+            document.querySelectorAll('.subject-row'),
+            function (row) { return row.style.display !== 'none'; });
+    }
+
+    function updateCounter() {
+        var rows = visibleRows();
+        var checked = rows.filter(function (row) {
+            var box = row.querySelector('input[type="checkbox"]');
+            return box && box.checked;
+        }).length;
+        var el = document.getElementById('subjectCounter');
+        if (el) el.textContent = checked + ' of ' + rows.length + ' selected';
+    }
+
     function filterSubjects() {
         if (!classSelect) return;
         var cid = classSelect.value;
-        document.querySelectorAll('.subject-row').forEach(function(row) {
-            if (row.getAttribute('data-class-id') === cid) {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
+        document.querySelectorAll('.subject-row').forEach(function (row) {
+            row.style.display = (row.getAttribute('data-class-id') === cid) ? '' : 'none';
+        });
+        updateCounter();
+    }
+
+    function applyTypeDefaults() {
+        if (!typeSelect) return;
+        var def = TYPE_DEFAULTS[typeSelect.value];
+        if (def === undefined || def === null) return;
+        document.querySelectorAll('.subject-row .subject-marks').forEach(function (input) {
+            if (input.getAttribute('data-edited') !== '1') {
+                input.value = def;
             }
         });
     }
+
+    // Mark marks inputs as user-edited when typed into.
+    document.querySelectorAll('.subject-row .subject-marks').forEach(function (input) {
+        input.addEventListener('input', function () {
+            this.setAttribute('data-edited', '1');
+        });
+    });
+    document.querySelectorAll('.subject-row input[type="checkbox"]').forEach(function (box) {
+        box.addEventListener('change', updateCounter);
+    });
+
     if (classSelect) { classSelect.addEventListener('change', filterSubjects); filterSubjects(); }
+    if (typeSelect) { typeSelect.addEventListener('change', applyTypeDefaults); applyTypeDefaults(); }
+    updateCounter();
+
+    // ---- Delete batch modal fill ----
+    var delModal = document.getElementById('deleteBatchModal');
+    if (delModal) {
+        delModal.addEventListener('show.bs.modal', function (event) {
+            var btn = event.relatedTarget;
+            if (!btn) return;
+            document.getElementById('delBatchTitle').value = btn.getAttribute('data-title') || '';
+            document.getElementById('delBatchDate').value = btn.getAttribute('data-date') || '';
+            document.getElementById('delBatchClass').value = btn.getAttribute('data-class-id') || '';
+            document.getElementById('delBatchLabel').textContent =
+                '“' + (btn.getAttribute('data-title') || '') + '” — ' +
+                (btn.getAttribute('data-class-name') || '') + ' (' +
+                (btn.getAttribute('data-date') || '') + ')';
+        });
+    }
+
+    // ---- Double-submit guard ----
+    var addForm = document.getElementById('addTestForm');
+    if (addForm) {
+        addForm.addEventListener('submit', function () {
+            var btn = document.getElementById('createTestBtn');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Creating…'; }
+            setTimeout(function () {
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save me-1"></i> Create Test'; }
+            }, 4000);
+        });
+    }
 });
+
+// ---- Subject selection helpers ----
+function selectAllSubjects(checked) {
+    document.querySelectorAll('.subject-row').forEach(function (row) {
+        if (row.style.display === 'none') return;
+        var box = row.querySelector('input[type="checkbox"]');
+        if (box) box.checked = checked;
+    });
+    var el = document.getElementById('subjectCounter');
+    if (el) {
+        var rows = Array.prototype.filter.call(document.querySelectorAll('.subject-row'),
+            function (row) { return row.style.display !== 'none'; });
+        el.textContent = (checked ? rows.length : 0) + ' of ' + rows.length + ' selected';
+    }
+}
+
+function applyMarksToAll() {
+    var value = document.getElementById('bulkMarksValue').value;
+    if (value === '') { alert('Enter a marks value first.'); return; }
+    document.querySelectorAll('.subject-row').forEach(function (row) {
+        if (row.style.display === 'none') return;
+        var input = row.querySelector('.subject-marks');
+        if (input) { input.value = value; input.setAttribute('data-edited', '1'); }
+    });
+}
+
+function applyMarksPreset(value) {
+    var box = document.getElementById('bulkMarksValue');
+    if (box) box.value = value;
+    applyMarksToAll();
+}
 
 // Filter cards by class / type
 function filterTests() {

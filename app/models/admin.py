@@ -8,13 +8,17 @@ from app.database import db
 ROLE_ADMIN = 'admin'
 ROLE_TEACHER = 'teacher'
 ROLE_PARENT = 'parent'
+ROLE_OWNER = 'owner'
+ROLE_ACCOUNTANT = 'accountant'
 
-ROLES = (ROLE_ADMIN, ROLE_TEACHER, ROLE_PARENT)
+ROLES = (ROLE_ADMIN, ROLE_TEACHER, ROLE_PARENT, ROLE_OWNER, ROLE_ACCOUNTANT)
 
 ROLE_LABELS = {
     ROLE_ADMIN: 'Administrator',
     ROLE_TEACHER: 'Teacher',
     ROLE_PARENT: 'Parent / Guardian',
+    ROLE_OWNER: 'Principal / Owner',
+    ROLE_ACCOUNTANT: 'Accountant',
 }
 
 
@@ -50,11 +54,13 @@ class AdminUser(UserMixin, db.Model):
     full_name = db.Column(db.String(120), nullable=True)
     role = db.Column(db.String(20), nullable=False, default=ROLE_ADMIN)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login_at = db.Column(db.DateTime, nullable=True)
 
     student = db.relationship('StudentModel', foreign_keys=[student_id], lazy='joined')
+    teacher = db.relationship('TeacherModel', foreign_keys=[teacher_id], lazy=True)
     linked_students = db.relationship(
         'StudentModel',
         secondary='guardian_students',
@@ -85,6 +91,19 @@ class AdminUser(UserMixin, db.Model):
     @property
     def is_parent(self):
         return self.role == ROLE_PARENT
+
+    @property
+    def is_owner(self):
+        return self.role == ROLE_OWNER
+
+    @property
+    def is_accountant(self):
+        return self.role == ROLE_ACCOUNTANT
+
+    @property
+    def finance_access(self):
+        """True when the account may see financial data (admins + accountants)."""
+        return self.is_admin or self.is_accountant
 
     def __repr__(self):
         return f'<AdminUser {self.username} role={self.role}>'

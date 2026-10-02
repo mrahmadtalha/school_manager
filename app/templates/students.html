@@ -1,5 +1,11 @@
 {% extends "base.html" %}
+{% from "_custom_fields_macro.html" import render_custom_fields %}
 {% block content %}
+<style>
+    .student-name-link { transition: color 0.15s ease-in-out; }
+    .student-name-link:hover { color: #1d4ed8 !important; text-decoration: underline !important; }
+</style>
+
 <div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
     <div>
         <p class="eyebrow mb-2">Student directory</p>
@@ -12,9 +18,9 @@
                 <i class="fas fa-download me-1"></i> Export Data
             </button>
             <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="{{ url_for('main.export_students_pdf') }}"><i class="fas fa-file-pdf text-danger me-2"></i>Download PDF</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('main.export_students_excel') }}"><i class="fas fa-file-excel text-success me-2"></i>Download Excel</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('main.export_students_csv') }}"><i class="fas fa-file-csv text-primary me-2"></i>Download CSV</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_students_pdf', search=search or None, class_id=selected_class or None, section_id=selected_section or None, gender=selected_gender or None, status=selected_status or None, has_dues='1' if has_dues else None) }}"><i class="fas fa-file-pdf text-danger me-2"></i>Download PDF (current view)</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_students_excel', search=search or None, class_id=selected_class or None, section_id=selected_section or None, gender=selected_gender or None, status=selected_status or None, has_dues='1' if has_dues else None) }}"><i class="fas fa-file-excel text-success me-2"></i>Download Excel (current view)</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_students_csv', search=search or None, class_id=selected_class or None, section_id=selected_section or None, gender=selected_gender or None, status=selected_status or None, has_dues='1' if has_dues else None) }}"><i class="fas fa-file-csv text-primary me-2"></i>Download CSV (current view)</a></li>
             </ul>
         </div>
         <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#importModal">
@@ -23,6 +29,11 @@
         <a href="{{ url_for('main.archived_students_list') }}" class="btn btn-outline-warning btn-sm">
             <i class="fas fa-archive me-1"></i> Archive Bin
         </a>
+        {% if current_user.is_admin %}
+        <a href="{{ url_for('main.promotions_page') }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-arrow-up-right-dots me-1"></i> Promote Students
+        </a>
+        {% endif %}
         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addStudentModal">
             <i class="fas fa-plus me-1"></i> Add New Student
         </button>
@@ -79,12 +90,43 @@
             {% endif %}
 
             <div class="col-md-2">
+                <label class="form-label fw-bold small text-muted mb-1"><i class="fas fa-venus-mars me-1"></i>Gender</label>
+                <select class="form-select" name="gender" onchange="this.form.submit()">
+                    <option value="">All Genders</option>
+                    {% for g in ('Male', 'Female', 'Other') %}
+                    <option value="{{ g }}" {% if selected_gender == g %}selected{% endif %}>{{ g }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label fw-bold small text-muted mb-1"><i class="fas fa-circle-half-stroke me-1"></i>Status</label>
+                <select class="form-select" name="status" onchange="this.form.submit()">
+                    <option value="">Active students</option>
+                    <option value="all" {% if selected_status == 'all' %}selected{% endif %}>All students</option>
+                    <option value="enrolled" {% if selected_status == 'enrolled' %}selected{% endif %}>Enrolled</option>
+                    <option value="slc_issued" {% if selected_status == 'slc_issued' %}selected{% endif %}>SLC Issued</option>
+                    <option value="graduated" {% if selected_status == 'graduated' %}selected{% endif %}>Graduated</option>
+                    <option value="struck_off" {% if selected_status == 'struck_off' %}selected{% endif %}>Struck Off</option>
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label fw-bold small text-muted mb-1"><i class="fas fa-coins me-1"></i>Dues</label>
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" name="has_dues" value="1" id="hasDuesToggle"
+                           {% if has_dues %}checked{% endif %} onchange="this.form.submit()">
+                    <label class="form-check-label small" for="hasDuesToggle">Has dues</label>
+                </div>
+            </div>
+
+            <div class="col-md-2">
                 <button type="submit" class="btn btn-dark w-100">
                     <i class="fas fa-filter me-1"></i> Filter
                 </button>
             </div>
 
-            {% if search or selected_class or selected_section %}
+            {% if search or selected_class or selected_section or selected_gender or selected_status or has_dues %}
             <div class="col-md-1">
                 <a href="{{ url_for('main.students_list') }}" class="btn btn-outline-secondary w-100" title="Clear filters">
                     <i class="fas fa-times"></i>
@@ -121,6 +163,7 @@
                     <th class="py-3">Father Name</th>
                     <th class="py-3">Class</th>
                     <th class="py-3">Monthly Fee</th>
+                    <th class="py-3">Dues</th>
                     <th class="py-3">Phone</th>
                     <th class="text-end py-3 pe-3">Actions</th>
                 </tr>
@@ -133,7 +176,11 @@
                     data-father="{{ student.father_name | lower }}"
                     data-phone="{{ student.guardian_phone | lower }}">
                     <td class="ps-3 font-monospace fw-bold text-primary">{{ student.roll_number }}</td>
-                    <td class="fw-bold">{{ student.student_name }}</td>
+                    <td class="fw-bold">
+                        <a href="{{ url_for('main.student_detailed_report', id=student.id) }}"
+                           class="text-decoration-none text-dark student-name-link">{{ student.student_name }}</a>
+                        {% if not student.is_active %}<span class="badge bg-secondary ms-1">Archived</span>{% endif %}
+                    </td>
                     <td class="text-muted">{{ student.father_name }}</td>
                     <td><span class="badge bg-secondary">{{ student.class_info.name if student.class_info else 'N/A' }}</span></td>
                     <td>
@@ -141,6 +188,14 @@
                             <span class="text-success fw-bold">Rs. {{ "{:,.0f}".format(student.monthly_fee) }}</span>
                         {% else %}
                             <span class="text-danger small">Not Set</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% set dues = (dues_map or {}).get(student.id, 0) %}
+                        {% if dues and dues > 0 %}
+                        <span class="badge bg-danger-subtle text-danger-emphasis border" title="Pending dues (live from fee ledger)">Dues: Rs {{ '{:,.0f}'.format(dues) }}</span>
+                        {% else %}
+                        <span class="text-muted small">—</span>
                         {% endif %}
                     </td>
                     <td class="text-muted small">{{ student.guardian_phone }}</td>
@@ -159,26 +214,31 @@
                                 data-bs-target="#editStudentModal{{ student.id }}" title="Edit">
                             <i class="fas fa-edit"></i>
                         </button>
+                        {% if student.is_active %}
                         <button class="btn btn-sm btn-outline-danger"
                                 data-bs-toggle="modal"
-                                data-bs-target="#deleteStudentModal{{ student.id }}" title="Archive">
+                                data-bs-target="#deleteStudentModal{{ student.id }}" title="Archive / Status Change">
                             <i class="fas fa-trash"></i>
                         </button>
+                        {% endif %}
                     </td>
                 </tr>
 
                 <!-- Edit Modal -->
                 <div class="modal fade" id="editStudentModal{{ student.id }}" tabindex="-1" aria-hidden="true">
-                    <div class="modal-dialog">
+                    <div class="modal-dialog modal-lg modal-dialog-centered">
                         <div class="modal-content">
-                            <form action="{{ url_for('main.edit_student', id=student.id) }}" method="POST"
+                                <form action="{{ url_for('main.edit_student', id=student.id) }}" method="POST"
+                                    data-student-sponsor-form
                                   class="roll-assist-form" data-autofill="0">
                                 <div class="modal-header bg-primary text-white">
                                     <h5 class="modal-title">Edit Student: {{ student.student_name }}</h5>
                                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                                 </div>
                                 <div class="modal-body text-start">
-                                    <div class="mb-3">
+                                    <div class="row g-3">
+                                    <div class="col-12"><h6 class="border-bottom pb-2 mb-0"><i class="fas fa-user-graduate me-2 text-primary"></i>Personal &amp; Guardian Information</h6></div>
+                                    <div class="col-md-6">
                                         <label class="form-label">Class</label>
                                         <select class="form-select" name="class_id" data-roll-assist="class" required>
                                             {% for c in classes %}
@@ -186,41 +246,107 @@
                                             {% endfor %}
                                         </select>
                                     </div>
-                                    <div class="mb-3">
+                                    <div class="col-md-6">
                                         <label class="form-label">Roll Number</label>
                                         <input type="text" class="form-control" name="roll_number" data-roll-assist="roll"
                                                value="{{ student.roll_number }}" inputmode="numeric" required>
                                         <div class="form-text" data-roll-assist="hint"></div>
                                     </div>
-                                    <div class="mb-3">
+                                    <div class="col-md-6">
                                         <label class="form-label">Student Name</label>
                                         <input type="text" class="form-control" name="student_name" value="{{ student.student_name }}" required>
                                     </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Father Name</label>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Sponsor Type</label>
+                                        <select class="form-select" name="sponsor_type" data-sponsor-type required>
+                                            <option value="Father" {% if (student.sponsor_type or 'Father') == 'Father' %}selected{% endif %}>Father</option>
+                                            <option value="Guardian" {% if student.sponsor_type == 'Guardian' %}selected{% endif %}>Guardian</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label"><span data-sponsor-name-label>{{ 'Guardian' if student.sponsor_type == 'Guardian' else 'Father' }} Name</span></label>
                                         <input type="text" class="form-control" name="father_name" value="{{ student.father_name }}" required>
                                     </div>
-                                    <div class="mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label"><span data-sponsor-cnic-label>{{ 'Guardian' if student.sponsor_type == 'Guardian' else 'Father' }} CNIC Number</span> <span class="text-muted small">(optional)</span></label>
+                                        <input type="text" class="form-control" name="sponsor_cnic" value="{{ student.sponsor_cnic or '' }}"
+                                               data-cnic-input inputmode="numeric" autocomplete="off" maxlength="15"
+                                               pattern="\d{5}-\d{7}-\d" placeholder="12345-1234567-1">
+                                    </div>
+                                    <div class="col-12"><h6 class="border-bottom pb-2 mb-0 mt-2"><i class="fas fa-graduation-cap me-2 text-primary"></i>Academic &amp; Fees</h6></div>
+                                    <div class="col-md-6">
                                         <label class="form-label">Monthly Fee (PKR)</label>
                                         <input type="number" step="0.01" class="form-control" name="monthly_fee"
-                                               value="{{ student.monthly_fee if student.monthly_fee else '' }}" placeholder="e.g. 3500">
+                                               data-fee-assist="fee"
+                                               value="{{ student.class_fee if student.class_fee is not none else (student.monthly_fee if student.monthly_fee else '') }}" placeholder="e.g. 3500">
                                     </div>
-                                    <div class="mb-3">
+                                    <div class="col-12"><h6 class="border-bottom pb-2 mb-0 mt-2"><i class="fas fa-wallet me-2 text-success"></i>Fees &amp; Enrollment</h6></div>
+                                    <div class="col-md-6">
                                         <label class="form-label">Guardian Phone</label>
                                         <input type="text" class="form-control" name="guardian_phone" value="{{ student.guardian_phone }}" required>
                                     </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Section (Optional)</label>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Section <span class="text-muted">(optional)</span></label>
                                         <select class="form-select" name="section_id">
-                                            <option value="">No section selected (optional)</option>
+                                            <option value="">No section selected</option>
                                             {% for sec in sections_by_class.get(student.class_id|string, []) %}
                                             <option value="{{ sec.id }}" {% if sec.id == student.section_id %}selected{% endif %}>{{ sec.name }}</option>
                                             {% endfor %}
                                         </select>
                                     </div>
-                                    <div class="mb-3">
+                                    <div class="col-12">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Discount Type</label>
+                                            <select class="form-select" name="discount_type" data-fee-assist="discount-type">
+                                                <option value="percentage" {% if (student.discount_type or 'percentage') == 'percentage' %}selected{% endif %}>Percentage (%)</option>
+                                                <option value="fixed" {% if student.discount_type == 'fixed' %}selected{% endif %}>Fixed Amount (PKR)</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Discount Value</label>
+                                            <input type="number" step="0.01" min="0" class="form-control"
+                                                   name="discount_value" data-fee-assist="discount-value"
+                                                   value="{{ student.discount_value if student.discount_value is not none else 0 }}" placeholder="0">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Net Fee (PKR)</label>
+                                            <input type="text" class="form-control bg-white" data-fee-assist="net-fee"
+                                                   value="{{ student.monthly_fee if student.monthly_fee else '' }}" readonly>
+                                            <div class="form-text" data-fee-assist="fee-hint">Final amount after discount.</div>
+                                        </div>
+                                    </div>
+                                    </div>
+                                    <div class="col-12">
                                         <label class="form-label">Address</label>
                                         <textarea class="form-control" name="address" rows="2" required>{{ student.address }}</textarea>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Date of Birth <span class="text-muted small">(optional)</span></label>
+                                        <input type="date" class="form-control" name="date_of_birth" value="{{ student.date_of_birth.isoformat() if student.date_of_birth else '' }}">
+                                    </div>
+                                    <div class="col-12"><h6 class="border-bottom pb-2 mb-0 mt-2"><i class="fas fa-id-card me-2 text-secondary"></i>Profile Details</h6></div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">Gender</label>
+                                            <select class="form-select" name="gender">
+                                                <option value="" {% if not student.gender %}selected{% endif %}>—</option>
+                                                <option value="Male" {% if student.gender == 'Male' %}selected{% endif %}>Male</option>
+                                                <option value="Female" {% if student.gender == 'Female' %}selected{% endif %}>Female</option>
+                                                <option value="Other" {% if student.gender == 'Other' %}selected{% endif %}>Other</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">Admission No</label>
+                                            <input type="text" class="form-control" name="admission_number" maxlength="40" value="{{ student.admission_number or '' }}">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">Admission Date</label>
+                                            <input type="date" class="form-control" name="admission_date" value="{{ student.admission_date.isoformat() if student.admission_date else '' }}">
+                                        </div>
+                                    <div class="col-12"><h6 class="border-bottom pb-2 mb-0 mt-2"><i class="fas fa-list-check me-2 text-success"></i>Custom Fields</h6></div>
+                                    <div class="col-12">
+                                        {{ render_custom_fields(student_custom_fields, student.custom_fields_data | fromjson) }}
+                                    </div>
                                     </div>
                                 </div>
                                 <div class="modal-footer">
@@ -232,22 +358,38 @@
                     </div>
                 </div>
 
-                <!-- Delete Modal -->
+                <!-- Archive / Status Change Modal -->
                 <div class="modal fade" id="deleteStudentModal{{ student.id }}" tabindex="-1" aria-hidden="true">
                     <div class="modal-dialog">
                         <div class="modal-content">
                             <form action="{{ url_for('main.delete_student', id=student.id) }}" method="POST">
                                 <div class="modal-header bg-danger text-white">
-                                    <h5 class="modal-title">Confirm Archive</h5>
+                                    <h5 class="modal-title"><i class="fas fa-user-slash me-1"></i>Archive / Status Change</h5>
                                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                                 </div>
-                                <div class="modal-body">
-                                    <p>Are you sure you want to archive <strong>{{ student.student_name }}</strong> (Roll No: {{ student.roll_number }})?</p>
-                                    <p class="text-muted small">The student will be moved to Archive Bin and can be restored later.</p>
+                                <div class="modal-body text-start">
+                                    <p>Change the status of <strong>{{ student.student_name }}</strong> (Roll No: {{ student.roll_number }})?</p>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">New Status</label>
+                                        <select class="form-select" name="status" required>
+                                            <option value="slc_issued">SLC Issued</option>
+                                            <option value="graduated">Graduated</option>
+                                            <option value="struck_off">Struck Off</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Leaving Date <span class="text-muted small">(optional)</span></label>
+                                        <input type="date" class="form-control" name="leaving_date" value="{{ today }}">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">Leaving Reason / Notes <span class="text-muted small">(optional)</span></label>
+                                        <textarea class="form-control" name="leaving_reason" rows="2" placeholder="e.g. Family moved to another city"></textarea>
+                                    </div>
+                                    <p class="text-muted small mb-0">The student will move to the Archive Bin with this status and can be restored later.</p>
                                 </div>
                                 <div class="modal-footer">
                                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                    <button type="submit" class="btn btn-danger">Yes, Archive</button>
+                                    <button type="submit" class="btn btn-danger"><i class="fas fa-archive me-1"></i>Archive</button>
                                 </div>
                             </form>
                         </div>
@@ -272,7 +414,7 @@
 <div class="modal fade" id="addStudentModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg overflow-hidden">
-            <form action="{{ url_for('main.add_student') }}" method="POST" class="roll-assist-form" data-autofill="1">
+            <form action="{{ url_for('main.add_student') }}" method="POST" class="roll-assist-form" data-autofill="1" data-student-sponsor-form>
                 <div class="modal-header px-4 py-3 text-white" style="background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%); border: none;">
                     <div>
                         <p class="mb-1 small text-uppercase text-white-50 fw-bold" style="letter-spacing: 0.08em;">Admission</p>
@@ -282,10 +424,11 @@
                 </div>
                 <div class="modal-body p-4 bg-light">
                     <div class="row g-3">
+                        <div class="col-12"><h6 class="border-bottom pb-2 mb-0"><i class="fas fa-user-graduate me-2 text-primary"></i>Personal &amp; Guardian Information</h6></div>
                         <div class="col-md-6">
                             <label class="form-label fw-bold small text-muted">Class</label>
                             <select class="form-select" name="class_id" id="add_student_class"
-                                    data-roll-assist="class" required>
+                                    data-roll-assist="class" data-fee-assist="class" required>
                                 {% for c in classes %}
                                 <option value="{{ c.id }}">{{ c.name }}</option>
                                 {% endfor %}
@@ -303,12 +446,26 @@
                             <input type="text" class="form-control" name="student_name" placeholder="Enter full name" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-bold small text-muted">Father / Guardian Name</label>
-                            <input type="text" class="form-control" name="father_name" placeholder="Guardian name" required>
+                            <label class="form-label fw-bold small text-muted">Sponsor Type</label>
+                            <select class="form-select" name="sponsor_type" data-sponsor-type required>
+                                <option value="Father" selected>Father</option>
+                                <option value="Guardian">Guardian</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small text-muted"><span data-sponsor-name-label>Father Name</span></label>
+                            <input type="text" class="form-control" name="father_name" placeholder="Enter name" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small text-muted"><span data-sponsor-cnic-label>Father CNIC Number</span> <span class="text-muted">(optional)</span></label>
+                            <input type="text" class="form-control" name="sponsor_cnic" data-cnic-input
+                                   inputmode="numeric" autocomplete="off" maxlength="15"
+                                   pattern="[0-9]{5}-[0-9]{7}-[0-9]" placeholder="12345-1234567-1">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-bold small text-muted">Monthly Fee (PKR)</label>
-                            <input type="number" step="0.01" class="form-control" name="monthly_fee" placeholder="e.g. 3500">
+                            <input type="number" step="0.01" class="form-control" name="monthly_fee"
+                                   data-fee-assist="fee" placeholder="e.g. 3500">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-bold small text-muted">Guardian Phone Number</label>
@@ -321,10 +478,51 @@
                             </select>
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label fw-bold small text-muted">Date of Birth <span class="text-muted">(optional)</span></label>
+                            <input type="date" class="form-control" name="date_of_birth">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold small text-muted">Gender</label>
+                            <select class="form-select" name="gender">
+                                <option value="">—</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold small text-muted">Admission No <span class="text-muted">(optional)</span></label>
+                            <input type="text" class="form-control" name="admission_number" maxlength="40">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small text-muted">Admission Date <span class="text-muted">(optional)</span></label>
+                            <input type="date" class="form-control" name="admission_date">
+                        </div>
+                        <div class="col-md-6">
                             <label class="form-label fw-bold small text-muted">Address</label>
                             <input type="text" class="form-control" name="address" placeholder="Street / locality" required>
                         </div>
+                        <div class="col-12"><h6 class="border-bottom pb-2 mb-0 mt-2"><i class="fas fa-graduation-cap me-2 text-primary"></i>Academic &amp; Fees</h6></div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold small text-muted">Discount Type</label>
+                            <select class="form-select" name="discount_type" data-fee-assist="discount-type">
+                                <option value="percentage" selected>Percentage (%)</option>
+                                <option value="fixed">Fixed Amount (PKR)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold small text-muted">Discount Value</label>
+                            <input type="number" step="0.01" min="0" class="form-control"
+                                   name="discount_value" data-fee-assist="discount-value" placeholder="0" value="0">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small text-muted">Net Fee (PKR)</label>
+                            <input type="text" class="form-control bg-white" data-fee-assist="net-fee" readonly>
+                            <div class="form-text" data-fee-assist="fee-hint">Final amount after discount.</div>
+                        </div>
                     </div>
+                    <div class="col-12"><h6 class="border-bottom pb-2 mb-0 mt-2"><i class="fas fa-list-check me-2 text-success"></i>Custom Fields</h6></div>
+                    <div class="col-12">{{ render_custom_fields(student_custom_fields, {}) }}</div>
                 </div>
                 <div class="modal-footer px-4 py-3 border-0 bg-white">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -462,6 +660,7 @@ if (searchInput) {
 var sectionsByClass = {{ sections_by_class|tojson }};
 var nextRollByClass = {{ next_roll_by_class|tojson }};
 var firstRollNumber = {{ first_roll_number }};
+var classFeeByClass = {{ class_fee_by_class|tojson }};
 
 function initSectionAssist(formEl) {
     var classSelect = formEl.querySelector('[name="class_id"]');
@@ -521,9 +720,128 @@ function initRollAssist(formEl) {
     updateHint();
 }
 
+function initFeeAssist(formEl) {
+    var classSelect = formEl.querySelector('[data-fee-assist="class"]');
+    var feeInput = formEl.querySelector('[data-fee-assist="fee"]');
+    var discountType = formEl.querySelector('[data-fee-assist="discount-type"]');
+    var discountValue = formEl.querySelector('[data-fee-assist="discount-value"]');
+    var netInput = formEl.querySelector('[data-fee-assist="net-fee"]');
+    var hint = formEl.querySelector('[data-fee-assist="fee-hint"]');
+    if (!feeInput || !discountType || !discountValue || !netInput) return;
+
+    function fmt(value) {
+        return (Math.round(value * 100) / 100).toFixed(2);
+    }
+
+    function recalc() {
+        var base = parseFloat(feeInput.value);
+        var input = parseFloat(discountValue.value);
+        if (isNaN(input) || input < 0) input = 0;
+        if (isNaN(base)) {
+            netInput.value = '';
+            if (hint) hint.textContent = 'Select a class or enter a fee to see the net amount.';
+            return;
+        }
+        var discount = 0;
+        if (input > 0) {
+            discount = discountType.value === 'percentage' ? base * input / 100 : input;
+        }
+        var net = Math.max(0, base - discount);
+        netInput.value = fmt(net);
+        if (hint) {
+            hint.textContent = discount > 0
+                ? 'Discount: ' + fmt(discount) + ' PKR, net fee: ' + fmt(net) + ' PKR.'
+                : 'Final amount after discount.';
+        }
+    }
+
+    if (classSelect) {
+        classSelect.addEventListener('change', function () {
+            var standard = classFeeByClass[classSelect.value];
+            if (standard !== undefined && standard !== null && standard !== '') {
+                feeInput.value = standard;
+            }
+            recalc();
+        });
+    }
+
+    feeInput.addEventListener('input', recalc);
+    discountType.addEventListener('change', recalc);
+    discountValue.addEventListener('input', recalc);
+
+    if (classSelect && !feeInput.value.trim()) {
+        var initial = classFeeByClass[classSelect.value];
+        if (initial !== undefined && initial !== null && initial !== '') {
+            feeInput.value = initial;
+        }
+    }
+    recalc();
+}
+
+function syncSponsorLabels(form) {
+    var sponsorType = form.querySelector('[data-sponsor-type]');
+    if (!sponsorType) return;
+    var sponsorName = form.querySelector('[data-sponsor-name-label]');
+    var sponsorCnic = form.querySelector('[data-sponsor-cnic-label]');
+    var label = sponsorType.value === 'Guardian' ? 'Guardian' : 'Father';
+    if (sponsorName) sponsorName.textContent = label + ' Name';
+    if (sponsorCnic) sponsorCnic.textContent = label + ' CNIC Number';
+}
+
+function formatCnicInput(input) {
+    var digits = input.value.replace(/\D/g, '').slice(0, 13);
+    var formatted = digits.slice(0, 5);
+    if (digits.length > 5) formatted += '-' + digits.slice(5, 12);
+    if (digits.length > 12) formatted += '-' + digits.slice(12, 13);
+    input.value = formatted;
+    input.setCustomValidity(digits.length && digits.length !== 13
+        ? 'Enter all 13 CNIC digits.' : '');
+}
+
+document.querySelectorAll('[data-student-sponsor-form]').forEach(function (form) {
+    var sponsorType = form.querySelector('[data-sponsor-type]');
+    if (sponsorType) sponsorType.addEventListener('change', function () { syncSponsorLabels(form); });
+    syncSponsorLabels(form);
+});
+document.querySelectorAll('[data-cnic-input]').forEach(function (input) {
+    input.addEventListener('input', function () { formatCnicInput(input); });
+    if (input.value) formatCnicInput(input);
+});
+
 document.querySelectorAll('form.roll-assist-form').forEach(function (formEl) {
     initSectionAssist(formEl);
     initRollAssist(formEl);
+    initFeeAssist(formEl);
+});
+
+function syncSponsorLabels(form) {
+    var sponsorType = form.querySelector('[data-sponsor-type]');
+    if (!sponsorType) return;
+    var sponsorName = form.querySelector('[data-sponsor-name-label]');
+    var sponsorCnic = form.querySelector('[data-sponsor-cnic-label]');
+    var selected = sponsorType.value === 'Guardian' ? 'Guardian' : 'Father';
+    if (sponsorName) sponsorName.textContent = selected + ' Name';
+    if (sponsorCnic) sponsorCnic.textContent = selected + ' CNIC Number';
+}
+
+function formatCnicInput(input) {
+    var digits = input.value.replace(/\D/g, '').slice(0, 13);
+    var formatted = digits.slice(0, 5);
+    if (digits.length > 5) formatted += '-' + digits.slice(5, 12);
+    if (digits.length > 12) formatted += '-' + digits.slice(12, 13);
+    input.value = formatted;
+    input.setCustomValidity(digits.length && digits.length !== 13
+        ? 'Enter all 13 CNIC digits.' : '');
+}
+
+document.querySelectorAll('[data-student-sponsor-form]').forEach(function (form) {
+    var sponsorType = form.querySelector('[data-sponsor-type]');
+    if (sponsorType) sponsorType.addEventListener('change', function () { syncSponsorLabels(form); });
+    syncSponsorLabels(form);
+    form.querySelectorAll('[data-cnic-input]').forEach(function (input) {
+        input.addEventListener('input', function () { formatCnicInput(input); });
+        if (input.value) formatCnicInput(input);
+    });
 });
 
 var cascadeModal = document.getElementById('cascadePreviewModal');

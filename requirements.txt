@@ -13,6 +13,9 @@ pandas==2.2.3                 # Excel + CSV export and reporting
 openpyxl==3.1.5               # .xlsx writer used by pandas
 reportlab==4.2.5              # PDF result cards, ID cards, certificates
 
+# Offline license verification (Ed25519 signatures)
+cryptography==46.0.6
+
 # Outbound calls to the optional Node WhatsApp bridge
 requests==2.32.3
 

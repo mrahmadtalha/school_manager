@@ -1,0 +1,27 @@
+{#
+  Renders the dynamic custom-field inputs shared by the student and teacher
+  add/edit modals.  Call with the field definitions (list of dicts with
+  name/label/type) and the record's stored values dict.
+#}
+{% macro render_custom_fields(fields, values) -%}
+{% if fields %}
+<div class="mt-3 pt-3 border-top">
+  <div class="row g-3">
+  {% for field in fields %}
+    {% set value = (values or {}).get(field.name) or '' %}
+  {% set required_field = field.get('is_mandatory', false) %}
+  <div class="col-md-6 custom-field-item">
+    <label class="form-label">{{ field.label or field.name }}</label>
+        {% if field.type == 'date' %}
+    <input type="date" class="form-control" name="custom_{{ field.name }}" value="{{ value }}" {% if required_field %}required{% endif %}>
+        {% elif field.type == 'number' %}
+    <input type="number" step="any" class="form-control" name="custom_{{ field.name }}" value="{{ value }}" {% if required_field %}required{% endif %}>
+        {% else %}
+    <input type="text" class="form-control" name="custom_{{ field.name }}" value="{{ value }}" {% if required_field %}required{% endif %}>
+        {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{%- endmacro %}

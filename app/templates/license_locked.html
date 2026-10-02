@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card shadow-sm border-0 mx-auto mt-4" style="max-width: 680px;">
+    <div class="card-body p-5 text-center">
+        <div class="display-6 text-danger mb-3"><i class="fas fa-lock"></i></div>
+        <h1 class="h3 fw-bold mb-3">Read-only mode</h1>
+        <p class="text-muted mb-2">
+            That change was not saved. The software license is not active, so the system only allows
+            viewing, printing and exporting records.
+        </p>
+        {% if license_status %}
+        <p class="small text-muted mb-4">{{ license_status.message }}</p>
+        {% endif %}
+
+        {% if current_user and current_user.is_authenticated and current_user.role == 'admin' %}
+        <a class="btn btn-primary" href="{{ url_for('main.license_page') }}">Renew or activate license</a>
+        {% else %}
+        <p class="small mb-4">Please contact the school administrator.</p>
+        {% endif %}
+        <a class="btn btn-outline-secondary" href="javascript:history.back()">Go back</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('main.dashboard') }}">Dashboard</a>
+    </div>
+</div>
+{% endblock %}

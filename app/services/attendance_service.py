@@ -1,10 +1,44 @@
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, time, timedelta
 from app.database import db
 from app.models import (
     StudentModel, TeacherModel, ClassModel, AttendanceModel, SchoolSettings
 )
 from app.services.teacher_payroll import get_school_working_days
 from app.services.whatsapp_automation import queue_automation_message
+
+
+def evaluate_checkin_attendance(status, checkin_time, settings=None):
+    """Apply school start time and grace period to a submitted check-in time."""
+    normalized_status = (status or 'Present').strip().capitalize()
+    value = (checkin_time or '').strip()
+    if normalized_status not in {'Present', 'Late'} or not value:
+        return normalized_status, None, None
+
+    try:
+        checkin = time.fromisoformat(value)
+    except ValueError:
+        return normalized_status, None, None
+
+    settings = settings or SchoolSettings.query.first()
+    start_value = getattr(settings, 'school_start_time', None) or '08:30'
+    try:
+        school_start = time.fromisoformat(start_value)
+    except ValueError:
+        school_start = time(8, 30)
+
+    start_seconds = school_start.hour * 3600 + school_start.minute * 60 + school_start.second
+    checkin_seconds = checkin.hour * 3600 + checkin.minute * 60 + checkin.second
+    late_seconds = max(0, checkin_seconds - start_seconds)
+    try:
+        grace_minutes = max(0, int(getattr(settings, 'attendance_grace_minutes', 0) or 0))
+    except (TypeError, ValueError):
+        grace_minutes = 0
+
+    if normalized_status == 'Present' and late_seconds > grace_minutes * 60:
+        normalized_status = 'Late'
+    late_minutes = (late_seconds + 59) // 60
+    precision = 'seconds' if checkin.second else 'minutes'
+    return normalized_status, checkin.isoformat(timespec=precision), late_minutes if normalized_status == 'Late' else None
 
 def build_student_attendance_summary(class_id, start_date, end_date):
     """
@@ -24,14 +58,19 @@ def build_student_attendance_summary(class_id, start_date, end_date):
     ).all()
     
     attendance_lookup = {(r.target_id, r.date): r.status for r in records}
+    late_minutes_lookup = {
+        (r.target_id, r.date): r.late_minutes
+        for r in records if r.late_minutes is not None
+    }
     taken_dates = sorted(set(r.date for r in records))
     active_dates = taken_dates if taken_dates else all_dates
     
     matrix_data = []
     for idx, s in enumerate(students, 1):
-        row = {'sr': idx, 'student': s, 'daily_status': {}}
+        row = {'sr': idx, 'student': s, 'daily_status': {}, 'daily_late_minutes': {}}
         for d in active_dates:
             row['daily_status'][d] = attendance_lookup.get((s.id, d), '—')
+            row['daily_late_minutes'][d] = late_minutes_lookup.get((s.id, d))
         p_count = sum(1 for v in row['daily_status'].values() if v == 'Present')
         a_count = sum(1 for v in row['daily_status'].values() if v == 'Absent')
         l_count = sum(1 for v in row['daily_status'].values() if v == 'Late')
@@ -39,6 +78,9 @@ def build_student_attendance_summary(class_id, start_date, end_date):
         row['p_count'] = p_count
         row['a_count'] = a_count
         row['l_count'] = l_count
+        row['total_late_minutes'] = sum(
+            minutes or 0 for d, minutes in row['daily_late_minutes'].items()
+            if row['daily_status'].get(d) == 'Late')
         row['percentage'] = round((p_count / taken) * 100, 1) if taken > 0 else 0
         row['is_at_risk'] = bool(taken > 0 and row['percentage'] < 75.0)
         matrix_data.append(row)
@@ -63,6 +105,7 @@ def build_student_attendance_summary(class_id, start_date, end_date):
         'dates_list': active_dates,
         'taken_dates': taken_dates,
         'attendance_lookup': attendance_lookup,
+        'late_minutes_lookup': late_minutes_lookup,
         'matrix_data': matrix_data,
         'kpi_stats': kpi_stats
     }
@@ -83,14 +126,19 @@ def build_teacher_attendance_summary(start_date, end_date):
     ).all()
     
     attendance_lookup = {(r.target_id, r.date): r.status for r in records}
+    late_minutes_lookup = {
+        (r.target_id, r.date): r.late_minutes
+        for r in records if r.late_minutes is not None
+    }
     taken_dates = sorted(set(r.date for r in records))
     active_dates = taken_dates if taken_dates else []
 
     matrix_data = []
     for idx, t in enumerate(teachers, 1):
-        row = {'sr': idx, 'teacher': t, 'daily_status': {}}
+        row = {'sr': idx, 'teacher': t, 'daily_status': {}, 'daily_late_minutes': {}}
         for d in active_dates:
             row['daily_status'][d] = attendance_lookup.get((t.id, d), '—')
+            row['daily_late_minutes'][d] = late_minutes_lookup.get((t.id, d))
         p_count = sum(1 for v in row['daily_status'].values() if v == 'Present')
         a_count = sum(1 for v in row['daily_status'].values() if v == 'Absent')
         l_count = sum(1 for v in row['daily_status'].values() if v == 'Late')
@@ -98,12 +146,16 @@ def build_teacher_attendance_summary(start_date, end_date):
         row['p_count'] = p_count
         row['a_count'] = a_count
         row['l_count'] = l_count
+        row['total_late_minutes'] = sum(
+            minutes or 0 for d, minutes in row['daily_late_minutes'].items()
+            if row['daily_status'].get(d) == 'Late')
         row['percentage'] = round((p_count / taken) * 100, 1) if taken > 0 else 0
         matrix_data.append(row)
 
     return {
         'teachers': teachers,
         'dates_list': active_dates,
+        'late_minutes_lookup': late_minutes_lookup,
         'matrix_data': matrix_data
     }
 
@@ -113,6 +165,7 @@ def save_student_attendance(selected_class_id, attendance_date, form_dict, class
     locks the session, and returns list of absent students and the next class.
     """
     absent_students = []
+    settings = SchoolSettings.query.first()
     for key, status in form_dict.items():
         if 'status' in key.lower():
             parts = key.replace('[', '_').replace(']', '').split('_')
@@ -129,13 +182,18 @@ def save_student_attendance(selected_class_id, attendance_date, form_dict, class
                     date=attendance_date
                 ).first()
 
-                late_time = form_dict.get(f'late_time_{student_id}', '').strip()
+                checkin_time = form_dict.get(
+                    f'checkin_time_{student_id}',
+                    form_dict.get(f'late_time_{student_id}', ''),
+                ).strip()
+                status, checkin_time, late_minutes = evaluate_checkin_attendance(
+                    status, checkin_time, settings)
                 previous_status = record.status if record else None
                 if record:
                     record.status = status
                     record.class_id = selected_class_id
-                    if status == 'Late' and late_time:
-                        record.late_time = late_time
+                    record.late_time = checkin_time
+                    record.late_minutes = late_minutes
                 else:
                     record = AttendanceModel(
                         target_type='student',
@@ -143,7 +201,8 @@ def save_student_attendance(selected_class_id, attendance_date, form_dict, class
                         class_id=selected_class_id,
                         date=attendance_date,
                         status=status,
-                        late_time=late_time if status == 'Late' else None
+                        late_time=checkin_time,
+                        late_minutes=late_minutes,
                     )
                     db.session.add(record)
 
@@ -184,18 +243,27 @@ def save_teacher_attendance(attendance_date, form_dict, teachers):
     """
     Processes and persists teacher attendance records from form submission.
     """
+    settings = SchoolSettings.query.first()
     for teacher in teachers:
         status = form_dict.get(f'status_{teacher.id}', 'Present')
+        checkin_time = form_dict.get(
+            f'checkin_time_{teacher.id}', form_dict.get(f'late_time_{teacher.id}', '')
+        ).strip()
+        status, checkin_time, late_minutes = evaluate_checkin_attendance(
+            status, checkin_time, settings)
         record = AttendanceModel.query.filter_by(
             date=attendance_date, target_type='teacher', target_id=teacher.id
         ).first()
         
         if record:
             record.status = status
+            record.late_time = checkin_time
+            record.late_minutes = late_minutes
         else:
             new_record = AttendanceModel(
                 date=attendance_date, target_type='teacher',
-                target_id=teacher.id, status=status
+                target_id=teacher.id, status=status,
+                late_time=checkin_time, late_minutes=late_minutes,
             )
             db.session.add(new_record)
     db.session.commit()
@@ -234,4 +302,19 @@ def get_daily_teacher_attendance(attendance_date):
         date=attendance_date
     ).all()
     return {r.target_id: r.status for r in records}
+
+
+def get_daily_teacher_attendance_details(attendance_date):
+    records = AttendanceModel.query.filter_by(
+        target_type='teacher', date=attendance_date).all()
+    return (
+        {r.target_id: r.late_time for r in records if r.late_time},
+        {r.target_id: r.late_minutes for r in records if r.late_minutes is not None},
+    )
+
+
+def get_daily_student_late_minutes(class_id, attendance_date):
+    records = AttendanceModel.query.filter_by(
+        target_type='student', class_id=class_id, date=attendance_date).all()
+    return {r.target_id: r.late_minutes for r in records if r.late_minutes is not None}
 

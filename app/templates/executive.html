@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .exec-hero { background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 55%, #1d4ed8 100%); border-radius: 20px; padding: 24px 28px; color: #fff; margin-bottom: 22px; }
+    .exec-kpi { border-radius: 16px; padding: 16px 18px; height: 100%; }
+    .exec-kpi .kpi-num { font-size: 1.55rem; font-weight: 800; line-height: 1.15; }
+    .exec-kpi .kpi-label { font-size: .72rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; opacity: .85; }
+    .exec-kpi.k-blue  { background: #e7efff; border: 1px solid #c9dbff; color: #0b3a8f; }
+    .exec-kpi.k-green { background: #e7f6ee; border: 1px solid #c6e9d8; color: #0a5c3a; }
+    .exec-kpi.k-amber { background: #fdf3e2; border: 1px solid #f5e2bf; color: #7a4a06; }
+    .exec-kpi.k-teal  { background: #e8f4fb; border: 1px solid #c9e6f6; color: #0b5478; }
+    .exec-chart-wrap { position: relative; height: 250px; }
+    .exec-card { border-radius: 16px; }
+</style>
+
+<div class="exec-hero d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+        <p class="mb-1 text-white-50 text-uppercase small fw-semibold">Executive overview</p>
+        <h1 class="h4 fw-bold text-white mb-0"><i class="fas fa-crown me-2"></i>Principal's Dashboard</h1>
+        <div class="small text-white-50 mt-1">Reporting month: {{ report_month }} &middot; Session {{ session_label }}</div>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="badge bg-light text-dark"><i class="fas fa-lock me-1 text-primary"></i>Read-only</span>
+        <a class="btn btn-light fw-bold shadow-sm" href="{{ url_for('main.executive_summary_pdf') }}">
+            <i class="fas fa-file-arrow-down me-1"></i>Executive Summary PDF
+        </a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-xl-3">
+        <div class="exec-kpi k-green">
+            <div class="kpi-num">Rs. {{ "{:,.0f}".format(kpis.collected) }}</div>
+            <div class="kpi-label">Fee Collections ({{ report_month }})</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="exec-kpi k-amber">
+            <div class="kpi-num">Rs. {{ "{:,.0f}".format(kpis.outstanding) }}</div>
+            <div class="kpi-label">Outstanding Dues</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="exec-kpi k-blue">
+            <div class="kpi-num">{% if kpis.class_avg is not none %}{{ kpis.class_avg }}%{% else %}&mdash;{% endif %}</div>
+            <div class="kpi-label">Average Class Performance</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="exec-kpi k-teal">
+            <div class="kpi-num">{% if kpis.students_att is not none %}{{ kpis.students_att }}%{% else %}&mdash;{% endif %}</div>
+            <div class="kpi-label">Attendance{% if kpis.staff_att is not none %} &middot; Staff {{ kpis.staff_att }}%{% endif %}</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm exec-card h-100">
+            <div class="card-body">
+                <h6 class="fw-bold text-dark mb-3"><i class="fas fa-hand-holding-dollar text-success me-1"></i>Financial Health (Collected vs Dues)</h6>
+                <div class="exec-chart-wrap"><canvas id="execFeeChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm exec-card h-100">
+            <div class="card-body">
+                <h6 class="fw-bold text-dark mb-3"><i class="fas fa-award text-primary me-1"></i>Class Performance (Average %)</h6>
+                <div class="exec-chart-wrap"><canvas id="execAcademicChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm exec-card h-100">
+            <div class="card-body">
+                <h6 class="fw-bold text-dark mb-3"><i class="fas fa-calendar-check text-primary me-1"></i>Student Attendance ({{ report_month }})</h6>
+                <div class="exec-chart-wrap"><canvas id="execAttendanceChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm exec-card">
+    <div class="card-body">
+        <h6 class="fw-bold text-dark mb-3"><i class="fas fa-ranking-star text-primary me-1"></i>Class Performance Snapshot</h6>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Class</th>
+                        <th>Active Students</th>
+                        <th class="text-end">Average %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in performance %}
+                    <tr>
+                        <td class="fw-bold">{{ row.name }}</td>
+                        <td>{{ row.students }}</td>
+                        <td class="text-end fw-bold">{% if row.avg is not none %}{{ row.avg }}%{% else %}&mdash;{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="text-muted small mb-0 mt-2">
+            <i class="fas fa-lock me-1"></i>Read-only view for the Principal / Owner — no editing, deleting, or settings access from this account.
+        </p>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+window.addEventListener('load', function () {
+    function chartOptions() {
+        return { responsive: true, maintainAspectRatio: false, animation: false,
+                 plugins: { legend: { position: 'bottom' } },
+                 scales: { y: { beginAtZero: true } } };
+    }
+
+    function makeChart(canvasId, config) {
+        var cv = document.getElementById(canvasId);
+        if (!cv) return null;
+        var chart = new Chart(cv, config);
+        try { chart.update('none'); } catch (e) {}
+        return chart;
+    }
+
+    var fee = {{ charts.fee | tojson }};
+    var aca = {{ charts.academic | tojson }};
+    var att = {{ charts.attendance | tojson }};
+
+    makeChart('execFeeChart', {
+        type: 'bar',
+        data: { labels: fee.labels, datasets: [
+            { label: 'Collected', data: fee.collected, backgroundColor: '#0f7b4f' },
+            { label: 'Outstanding', data: fee.outstanding, backgroundColor: '#dc3545' }] },
+        options: chartOptions()
+    });
+
+    makeChart('execAcademicChart', {
+        type: 'bar',
+        data: { labels: aca.labels, datasets: [{ label: 'Average %', data: aca.values, backgroundColor: '#1d4ed8' }] },
+        options: chartOptions()
+    });
+
+    makeChart('execAttendanceChart', {
+        type: 'line',
+        data: { labels: att.labels, datasets: [{ label: 'Present %', data: att.values,
+                borderColor: '#0f7b4f', backgroundColor: 'rgba(15, 123, 79, .12)', fill: true, tension: .3 }] },
+        options: chartOptions()
+    });
+});
+</script>
+{% endblock %}

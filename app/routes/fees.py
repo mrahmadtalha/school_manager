@@ -5,8 +5,8 @@ from flask_login import current_user
 
 from app.database import db
 from app.models import (
-    AutomationSettings, ClassModel, FeeRecordModel, FeeTransaction, StudentModel,
-    TXN_CHARGE, TXN_PAYMENT,
+    AutomationSettings, ClassModel, FeeRecordModel, FeeTransaction, MessageQueue, StudentModel,
+    ROLE_ACCOUNTANT, ROLE_ADMIN, TXN_CHARGE, TXN_PAYMENT,
 )
 from app.routes import main
 from app.security import role_required
@@ -16,6 +16,7 @@ from app.services.fee_ledger import (
     current_month, ensure_charge, ledger_totals, reconcile, recompute_fee_record,
     record_payment, set_month_charge, student_summary, transactions_for,
 )
+from app.services.whatsapp_automation import normalize_whatsapp_number
 
 PAYMENT_METHODS = ('cash', 'bank', 'online', 'other')
 
@@ -25,6 +26,7 @@ def fees_list():
     selected_class_id = request.args.get('class_id', type=int)
     month_year = (request.args.get('month_year') or '').strip() or current_month()
     show_unpaid = request.args.get('show_unpaid', '0') == '1'
+    ref_query = (request.args.get('ref_query') or request.args.get('reference') or request.args.get('q') or '').strip()
 
     classes = ClassModel.query.all()
     if not show_unpaid and not selected_class_id and classes:
@@ -43,6 +45,14 @@ def fees_list():
     else:
         students = []
 
+    if ref_query:
+        matching_ids = {
+            txn.student_id for txn in FeeTransaction.query.filter(
+                FeeTransaction.reference.ilike(f'%{ref_query}%')
+            ).all()
+        }
+        students = [student for student in students if student.id in matching_ids]
+
     records = {r.student_id: r for r in
                FeeRecordModel.query.filter_by(month_year=month_year).all()}
 
@@ -57,13 +67,22 @@ def fees_list():
             record = recompute_fee_record(student.id, month_year)
             touched = True
 
+        latest_payment = None
+        if record is not None:
+            latest_payment = (FeeTransaction.query
+                             .filter_by(student_id=student.id, month_year=month_year,
+                                        txn_type='payment', is_void=False)
+                             .order_by(FeeTransaction.created_at.desc(), FeeTransaction.id.desc())
+                             .first())
+
         row = {
             'student': student,
             'record': record,
             'due': record.amount_due if record else 0.0,
             'paid': record.amount_paid if record else 0.0,
-            'balance': record.balance if record else 0.0,
+            'balance': max((record.balance if record else 0.0), 0.0),
             'class_name': student.class_info.name if student.class_info else '—',
+            'reference': latest_payment.reference if latest_payment else None,
         }
         if show_unpaid and record and record.amount_due > 0 and record.amount_paid + 0.001 >= record.amount_due:
             continue
@@ -88,6 +107,13 @@ def fees_list():
     summary['total_paid'] = round(summary['total_paid'], 2)
     summary['total_balance'] = round(summary['total_due'] - summary['total_paid'], 2)
 
+    selected_class_fee = None
+    if selected_class_id:
+        for class_obj in classes:
+            if class_obj.id == selected_class_id:
+                selected_class_fee = class_obj.monthly_fee
+                break
+
     return render_template('fees.html',
                            classes=classes,
                            selected_class_id=selected_class_id,
@@ -95,13 +121,23 @@ def fees_list():
                            fee_data=fee_data,
                            show_unpaid=show_unpaid,
                            summary=summary,
-                           payment_methods=PAYMENT_METHODS)
+                           payment_methods=PAYMENT_METHODS,
+                           class_fee_by_class={str(c.id): c.monthly_fee
+                                               for c in classes
+                                               if c.monthly_fee is not None},
+                           selected_class_fee=selected_class_fee,
+                           ref_query=ref_query)
 
 
 @main.route('/fees/class-bulk-update', methods=['POST'])
 def bulk_update_class_fees():
     class_id = request.form.get('class_id', type=int)
-    fee_input = (request.form.get('monthly_fee') or '').strip()
+    fee_input = (request.form.get('monthly_fee') or '').strip().replace(',', '')
+    month_year = (request.form.get('month_year') or '').strip() or current_month()
+
+    if request.form.get('confirm_bulk_update') != 'yes':
+        flash('Bulk fee update requires confirmation before changes are saved.', 'danger')
+        return redirect(url_for('main.fees_list', class_id=class_id, month_year=month_year))
 
     if not class_id:
         flash('Please select a class.', 'danger')
@@ -120,8 +156,17 @@ def bulk_update_class_fees():
         flash('Class not found.', 'danger')
         return redirect(url_for('main.fees_list'))
 
+    # Keep the class standard fee (managed on the Classes page) in sync.
+    previous_standard = class_obj.monthly_fee
+    class_obj.monthly_fee = fee_value
+    if previous_standard != fee_value:
+        log_action('settings_change', entity_type='ClassModel', entity_id=class_obj.id,
+                   summary=f'Class standard fee for {class_obj.name} set to '
+                           f'{fee_value if fee_value is not None else "none"}',
+                   before={'monthly_fee': previous_standard},
+                   after={'monthly_fee': fee_value})
+
     students = StudentModel.query.filter_by(class_id=class_id, is_active=True).all()
-    month_year = (request.form.get('month_year') or '').strip() or current_month()
 
     for student in students:
         before = student.monthly_fee
@@ -149,11 +194,11 @@ def pay_fee(student_id):
         amount_paid = float(request.form.get('amount_paid') or 0)
     except ValueError:
         flash('Please enter a valid payment amount.', 'danger')
-        return redirect(request.referrer or url_for('main.fees_list'))
+        return redirect(request.referrer or url_for('main.fees_list', month_year=month_year))
 
     if amount_paid < 0:
         flash('Payment amount cannot be negative.', 'danger')
-        return redirect(request.referrer or url_for('main.fees_list'))
+        return redirect(request.referrer or url_for('main.fees_list', month_year=month_year))
 
     due_override_str = (request.form.get('amount_due_override') or '').strip()
     if due_override_str:
@@ -166,9 +211,15 @@ def pay_fee(student_id):
             set_month_charge(student, month_year, due_override)
 
     ensure_charge(student, month_year)
+    charged, paid = ledger_totals(student.id, month_year)
+    remaining_dues = max(charged - paid, 0.0)
+    if amount_paid > remaining_dues + 1e-9:
+        flash(f'Amount paid exceeds the remaining balance for {month_year}. Maximum allowed: {remaining_dues:.2f} PKR.', 'danger')
+        return redirect(request.referrer or url_for('main.fees_list', month_year=month_year))
 
+    payment_transaction = None
     if amount_paid > 0:
-        record_payment(
+        payment_transaction = record_payment(
             student, month_year, amount_paid,
             method=request.form.get('method') or 'cash',
             reference=(request.form.get('reference') or '').strip() or None,
@@ -177,6 +228,26 @@ def pay_fee(student_id):
         )
 
     record = recompute_fee_record(student.id, month_year, remarks=remarks or None)
+
+    automation_settings = AutomationSettings.get()
+    receipt_phone = normalize_whatsapp_number(student.guardian_phone or '')
+    if (payment_transaction and automation_settings.enabled
+            and automation_settings.notify_fee_receipts and receipt_phone):
+        charged_after, paid_after = ledger_totals(student.id, month_year)
+        receipt_message = (
+            f'Fee payment receipt for {student.student_name}: '
+            f'{payment_transaction.amount:,.2f} PKR received for {month_year}. '
+            f'Reference: {payment_transaction.reference}. '
+            f'Remaining balance: {max(charged_after - paid_after, 0):,.2f} PKR.'
+        )
+        db.session.add(MessageQueue(
+            phone=receipt_phone,
+            message=receipt_message,
+            status='pending' if automation_settings.mode == 'approval' else 'approved',
+            trigger='fee_receipt',
+            student_id=student.id,
+            ref_date=date.today(),
+        ))
 
     log_action('payment' if amount_paid > 0 else 'settings',
                entity_type='FeeTransaction', entity_id=student.id,
@@ -214,7 +285,7 @@ def fee_receipt(student_id, month_year):
 
 
 @main.route('/fees/reconciliation', methods=['GET'])
-@role_required('admin')
+@role_required(ROLE_ADMIN, ROLE_ACCOUNTANT)
 def fees_reconciliation():
     month_year = (request.args.get('month_year') or '').strip() or None
     rows, totals, discrepancies = reconcile(month_year)
