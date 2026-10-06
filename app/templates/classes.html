@@ -46,19 +46,25 @@
                 <i class="fas fa-table-cells-large me-1"></i>Grid
             </button>
         </div>
+        {% if current_user.is_admin %}
+        <a href="{{ url_for('main.archived_subjects_list') }}" class="btn btn-outline-warning btn-sm">
+            <i class="fas fa-archive me-1"></i> Archived Subjects
+        </a>
+        {% endif %}
         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addClassModal">
             <i class="fas fa-plus me-1"></i> Add Class
         </button>
     </div>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show">
-      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  {% endfor %}{% endif %}
-{% endwith %}
+{# Plain-language guidance, following the pattern used on the Payroll page. #}
+<div class="alert alert-info py-2 px-3 no-print" role="status">
+    <b><i class="fas fa-circle-info me-1"></i>What to do now:</b>
+    A <b>class</b> is the year group (e.g. Class 5). Inside it you add <b>sections</b>
+    (A, B…) and the <b>subjects</b> taught. Set the monthly fee on the class so student
+    fees fill in automatically. Use the pencil to edit, the archive icon to hide
+    something you no longer use, and <b>Grid</b> for a visual overview.
+</div>
 
 <!-- Summary strip -->
 <div class="row g-3 mb-4">
@@ -175,16 +181,16 @@
                                 <span class="text-muted small me-1">{{ sec.students | length }}</span>
                                 {% if current_user.is_admin %}
                                 <button class="btn btn-sm p-0 text-primary me-1" title="Edit"
-                                        data-bs-toggle="modal" data-bs-target="#editSection{{ sec.id }}">
+                                        data-bs-toggle="modal" data-bs-target="#editSection{{ sec.id }}" aria-label="Edit">
                                     <i class="fas fa-edit fa-xs"></i>
                                 </button>
                                 <button class="btn btn-sm p-0 text-danger me-1" title="Delete"
-                                        data-bs-toggle="modal" data-bs-target="#deleteSection{{ sec.id }}">
+                                        data-bs-toggle="modal" data-bs-target="#deleteSection{{ sec.id }}" aria-label="Delete">
                                     <i class="fas fa-times fa-xs"></i>
                                 </button>
                                 {% endif %}
                                 <button class="btn btn-sm p-0 text-secondary" title="Show students"
-                                        data-bs-toggle="collapse" data-bs-target="#roster{{ sec.id }}">
+                                        data-bs-toggle="collapse" data-bs-target="#roster{{ sec.id }}" aria-label="Show students">
                                     <i class="fas fa-chevron-down fa-xs"></i>
                                 </button>
                             </div>
@@ -270,11 +276,11 @@
                                     {% if current_user.is_admin %}
                                     <div class="d-flex gap-1 ms-2">
                                         <button class="btn btn-sm p-0 text-primary" title="Edit"
-                                                data-bs-toggle="modal" data-bs-target="#editSubject{{ sub.id }}">
+                                                data-bs-toggle="modal" data-bs-target="#editSubject{{ sub.id }}" aria-label="Edit">
                                             <i class="fas fa-edit fa-xs"></i>
                                         </button>
                                         <button class="btn btn-sm p-0 text-warning" title="Archive (hide from new tests)"
-                                                data-bs-toggle="modal" data-bs-target="#archiveSubject{{ sub.id }}">
+                                                data-bs-toggle="modal" data-bs-target="#archiveSubject{{ sub.id }}" aria-label="Archive (hide from new tests)">
                                             <i class="fas fa-archive fa-xs"></i>
                                         </button>
                                     </div>
@@ -290,7 +296,7 @@
                                         <span class="badge bg-secondary">Archived</span>
                                         {% if current_user.is_admin %}
                                         <form action="{{ url_for('main.restore_subject', id=sub.id) }}" method="POST" class="d-inline">
-                                            <button type="submit" class="btn btn-sm p-0 text-success" title="Restore">
+                                            <button type="submit" class="btn btn-sm p-0 text-success" title="Restore" aria-label="Restore">
                                                 <i class="fas fa-undo fa-xs"></i>
                                             </button>
                                         </form>
@@ -428,7 +434,7 @@
                         <input type="text" class="form-control" name="section_name" value="{{ sec.name }}" required>
                     </div>
                     <div class="modal-footer py-2">
-                        <button type="submit" class="btn btn-primary btn-sm">Update</button>
+                        <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>Save</button>
                     </div>
                 </form>
             </div>
@@ -501,7 +507,7 @@
                         </select>
                     </div>
                     <div class="modal-footer py-2">
-                        <button type="submit" class="btn btn-primary btn-sm">Update</button>
+                        <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>Save</button>
                     </div>
                 </form>
             </div>
@@ -631,9 +637,9 @@
                                 {{ sub.name }}{% if sub.teacher %}<span class="text-muted fw-normal ms-1">&middot; {{ sub.teacher.teacher_name }}</span>{% endif %}
                                 {% if current_user.is_admin %}
                                 <button class="btn btn-sm p-0 text-primary ms-1" title="Edit"
-                                        data-bs-toggle="modal" data-bs-target="#editSubject{{ sub.id }}"><i class="fas fa-edit fa-xs"></i></button>
+                                        data-bs-toggle="modal" data-bs-target="#editSubject{{ sub.id }}" aria-label="Edit"><i class="fas fa-edit fa-xs"></i></button>
                                 <button class="btn btn-sm p-0 text-warning ms-2" title="Archive (hide from new tests)"
-                                        data-bs-toggle="modal" data-bs-target="#archiveSubject{{ sub.id }}"><i class="fas fa-archive fa-xs"></i></button>
+                                        data-bs-toggle="modal" data-bs-target="#archiveSubject{{ sub.id }}" aria-label="Archive (hide from new tests)"><i class="fas fa-archive fa-xs"></i></button>
                                 {% endif %}
                             </span>
                             {% endfor %}
@@ -642,7 +648,7 @@
                                 {{ sub.name }} <span class="fw-normal ms-1">archived</span>
                                 {% if current_user.is_admin %}
                                 <form action="{{ url_for('main.restore_subject', id=sub.id) }}" method="POST" class="d-inline ms-1">
-                                    <button type="submit" class="btn btn-sm p-0 text-white" title="Restore"><i class="fas fa-undo fa-xs"></i></button>
+                                    <button type="submit" class="btn btn-sm p-0 text-white" title="Restore" aria-label="Restore"><i class="fas fa-undo fa-xs"></i></button>
                                 </form>
                                 {% endif %}
                             </span>
@@ -679,7 +685,7 @@
         <div class="modal-content">
             <form action="{{ url_for('main.add_class') }}" method="POST">
                 <div class="modal-header bg-dark text-white">
-                    <h5 class="modal-title">Add New Class</h5>
+                    <h5 class="modal-title">Add Class</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">

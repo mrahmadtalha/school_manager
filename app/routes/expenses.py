@@ -28,18 +28,59 @@ def _current_filters():
         'date_to': (request.args.get('date_to') or '').strip(),
         'category_id': request.args.get('category_id', type=int),
         'q': (request.args.get('q') or '').strip(),
+        'month': (request.args.get('month') or '').strip(),
     }
 
 
+def _resolve_month(filters):
+    """Work out which month the list should show.
+
+    The page opens on the **current month** so it never drowns the user in
+    history.  Any explicit narrowing the user asked for wins:
+
+    * a ``month=YYYY-MM`` selection (the month navigation strip),
+    * explicit ``date_from`` / ``date_to``,
+    * category or search filters (those are not time-scoped).
+
+    ``all=1`` is the escape hatch that restores the old "every expense" view.
+    """
+    from app.services import payroll_service
+
+    current = payroll_service.current_month_key()
+    if request.args.get('all') in ('1', 'true', 'yes'):
+        return None, current
+    if filters['date_from'] or filters['date_to']:
+        return None, current
+    if filters['category_id'] or filters['q']:
+        return None, current
+    month = filters['month'] if payroll_service.parse_month(filters['month']) else current
+    return month, current
+
+
 def _filtered_expenses():
+    """Return (filters, expenses, month, current_month) for this request.
+
+    ``month`` is the resolved 'YYYY-MM' being shown, or None when the request
+    asks for all history.  It is returned rather than re-derived afterwards
+    because resolving a month writes its bounds into ``filters``, which would
+    make a second call mistake our own default for an explicit filter.
+    """
     filters = _current_filters()
+    month, current_month = _resolve_month(filters)
+    date_from = _parse_date(filters['date_from'])
+    date_to = _parse_date(filters['date_to'])
+    if month:
+        from app.services import payroll_service
+        date_from, date_to = payroll_service.month_bounds(month)
+        filters['date_from'] = date_from.isoformat()
+        filters['date_to'] = date_to.isoformat()
     expenses = expense_service.filter_expenses(
-        date_from=_parse_date(filters['date_from']),
-        date_to=_parse_date(filters['date_to']),
+        date_from=date_from,
+        date_to=date_to,
         category_id=filters['category_id'],
         search=filters['q'],
     )
-    return filters, expenses
+    return filters, expenses, month, current_month
 
 
 def _validate_expense_form():
@@ -76,8 +117,11 @@ def _validate_expense_form():
 @main.route('/expenses')
 @role_required(ROLE_ADMIN, ROLE_ACCOUNTANT)
 def expenses_list():
+    from app.services import payroll_service
+
     expense_service.seed_default_categories()
-    filters, expenses = _filtered_expenses()
+    filters, expenses, month, current_month = _filtered_expenses()
+    previous_month = payroll_service.shift_month(current_month, -1)
     return render_template(
         'expenses.html',
         expenses=expenses,
@@ -87,6 +131,16 @@ def expenses_list():
         filters=filters,
         payment_methods=EXPENSE_PAYMENT_METHODS,
         today=date.today(),
+        # Month navigation + the "continue previous month" shortcut.
+        month=month or '',
+        current_month=current_month,
+        month_label=payroll_service.month_label(month) if month else 'All months',
+        prev_month=payroll_service.shift_month(month, -1) if month else None,
+        next_month=payroll_service.shift_month(month, 1) if month else None,
+        show_all=(month is None),
+        previous_month=previous_month,
+        previous_month_label=payroll_service.month_label(previous_month),
+        previous_month_expenses=expense_service.previous_month_expenses(current_month),
     )
 
 
@@ -111,10 +165,18 @@ def expenses_add():
     )
     db.session.add(expense)
     db.session.flush()
+
+    # A "continued" expense is always a brand-new row; the source record is
+    # only referenced here for the audit trail and never modified.
+    source_id = request.form.get('continue_from', type=int)
+    source = db.session.get(Expense, source_id) if source_id else None
+    summary = 'Expense logged: %s Rs. %s' % (
+        values['category'].name, '{:,.0f}'.format(expense.amount))
+    if source is not None:
+        summary += ' (continued from expense #%d)' % source.id
     log_action('create', entity_type='Expense', entity_id=expense.id,
                after={'amount': expense.amount, 'category': values['category'].name},
-               summary='Expense logged: %s Rs. %s' % (
-                   values['category'].name, '{:,.0f}'.format(expense.amount)))
+               summary=summary)
     db.session.commit()
     flash('Expense recorded: %s — Rs. %s.' % (
         values['category'].name, '{:,.0f}'.format(expense.amount)), 'success')
@@ -249,7 +311,7 @@ def _range_label(filters):
 @main.route('/expenses/export.csv')
 @role_required(ROLE_ADMIN, ROLE_ACCOUNTANT)
 def expenses_export_csv():
-    filters, expenses = _filtered_expenses()
+    filters, expenses, _month, _current = _filtered_expenses()
     text = expense_service.ledger_csv(expenses)
     log_action('export', entity_type='Expense',
                summary='Expense ledger exported to CSV (%d rows)' % len(expenses))
@@ -262,7 +324,7 @@ def expenses_export_csv():
 @main.route('/expenses/export.pdf')
 @role_required(ROLE_ADMIN, ROLE_ACCOUNTANT)
 def expenses_export_pdf():
-    filters, expenses = _filtered_expenses()
+    filters, expenses, _month, _current = _filtered_expenses()
     output = expense_service.ledger_pdf(expenses, current_app.root_path,
                                         range_label=_range_label(filters))
     log_action('export', entity_type='Expense',

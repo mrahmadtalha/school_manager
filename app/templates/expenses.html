@@ -2,30 +2,39 @@
 {% block content %}
 
 <!-- Header -->
-<div class="d-flex flex-wrap justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom gap-2">
-    <h1 class="h2 fw-bold text-dark mb-0"><i class="fas fa-file-invoice-dollar text-primary me-2"></i>Expense Tracker</h1>
-    <div class="d-flex gap-2 flex-wrap">
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Finance</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-file-invoice-dollar text-primary me-2"></i>Expense Tracker</h1>
+        <p class="text-muted small mb-0">Log and review day-to-day school spending.</p>
+    </div>
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addExpenseModal">
             <i class="fas fa-plus me-1"></i> Add Expense
         </button>
+        {% if previous_month_expenses %}
+        <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal"
+                data-bs-target="#continueExpenseModal"
+                title="Copy one of {{ previous_month_label }}'s expenses into a new entry">
+            <i class="fas fa-rotate-right me-1"></i> Continue Previous Month
+            <span class="badge bg-light text-success ms-1">{{ previous_month_expenses|length }}</span>
+        </button>
+        {% else %}
+        <button type="button" class="btn btn-outline-success btn-sm" disabled
+                title="No expenses were recorded in {{ previous_month_label }}">
+            <i class="fas fa-rotate-right me-1"></i> Continue Previous Month
+        </button>
+        {% endif %}
         <a class="btn btn-outline-success btn-sm"
-           href="{{ url_for('main.expenses_export_csv', date_from=filters.date_from or None, date_to=filters.date_to or None, category_id=filters.category_id or None, q=filters.q or None) }}">
+           href="{{ url_for('main.expenses_export_csv', date_from=filters.date_from or None, date_to=filters.date_to or None, category_id=filters.category_id or None, q=filters.q or None, all=('1' if show_all else None)) }}">
             <i class="fas fa-file-csv me-1"></i> Export CSV
         </a>
         <a class="btn btn-outline-danger btn-sm"
-           href="{{ url_for('main.expenses_export_pdf', date_from=filters.date_from or None, date_to=filters.date_to or None, category_id=filters.category_id or None, q=filters.q or None) }}">
+           href="{{ url_for('main.expenses_export_pdf', date_from=filters.date_from or None, date_to=filters.date_to or None, category_id=filters.category_id or None, q=filters.q or None, all=('1' if show_all else None)) }}">
             <i class="fas fa-file-pdf me-1"></i> Export PDF
         </a>
     </div>
 </div>
-
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show">
-      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  {% endfor %}{% endif %}
-{% endwith %}
 
 <!-- Summary cards -->
 <div class="row g-3 mb-3">
@@ -63,6 +72,47 @@
     </div>
 </div>
 
+<!-- Month navigation: the page opens on the current month -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <div class="fw-bold"><i class="fas fa-calendar-days me-2 text-primary"></i>Showing: {{ month_label }}</div>
+            <div class="text-muted small">
+                {% if show_all %}
+                Every expense on record. Pick a month to focus on one period.
+                {% else %}
+                {{ summary.count }} entr{{ 'y' if summary.count == 1 else 'ies' }} in this period — Rs. {{ '{:,.0f}'.format(summary.total) }}
+                {% endif %}
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            {% if not show_all %}
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.expenses_list', month=prev_month) }}" title="Previous month">
+                <i class="fas fa-chevron-left me-1"></i>Previous
+            </a>
+            {% endif %}
+            <form method="get" action="{{ url_for('main.expenses_list') }}" class="d-flex gap-2">
+                <input type="hidden" name="category_id" value="{{ filters.category_id or '' }}">
+                <input type="hidden" name="q" value="{{ filters.q or '' }}">
+                <input type="month" class="form-control form-control-sm" name="month"
+                       value="{{ month }}" style="width: 165px;" aria-label="Choose month">
+                <button class="btn btn-primary btn-sm">Show</button>
+            </form>
+            {% if not show_all %}
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.expenses_list', month=next_month) }}" title="Next month">
+                Next<i class="fas fa-chevron-right ms-1"></i>
+            </a>
+            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('main.expenses_list') }}" title="Jump back to this month">
+                This Month
+            </a>
+            {% endif %}
+            <a class="btn btn-outline-dark btn-sm" href="{{ url_for('main.expenses_list', all=1) }}" title="Show every expense ever recorded">
+                <i class="fas fa-clock-rotate-left me-1"></i>All History
+            </a>
+        </div>
+    </div>
+</div>
+
 <!-- Filters -->
 <div class="card border-0 shadow-sm mb-3">
     <div class="card-body py-3">
@@ -90,7 +140,7 @@
             </div>
             <div class="col-md-2 d-flex gap-2">
                 <button class="btn btn-dark btn-sm flex-fill"><i class="fas fa-filter me-1"></i>Apply</button>
-                <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.expenses_list') }}">Clear</a>
+                <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.expenses_list') }}" title="Back to this month with no other filters">Clear</a>
             </div>
         </form>
     </div>
@@ -104,7 +154,7 @@
     </div>
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle datatable" data-page-length="25">
+            <table class="table table-sm table-hover align-middle datatable" id="expenseMainTable" data-page-length="25">
                 <thead class="table-light">
                     <tr>
                         <th>Date</th>
@@ -128,6 +178,16 @@
                         <td class="text-muted small">{{ e.description or '—' }}</td>
                         <td class="small">{{ e.logged_by_name or '—' }}</td>
                         <td class="text-center text-nowrap">
+                            <button class="btn btn-sm btn-outline-success me-1 continue-expense-btn"
+                                    data-bs-toggle="modal" data-bs-target="#addExpenseModal"
+                                    data-source-id="{{ e.id }}"
+                                    data-category-id="{{ e.category_id }}"
+                                    data-amount="{{ '%.2f'|format(e.amount or 0) }}"
+                                    data-method="{{ e.payment_method }}"
+                                    data-receipt="{{ e.receipt_no or '' }}"
+                                    data-description="{{ e.description or '' }}"
+                                    data-source-date="{{ e.date.strftime('%d %b %Y') if e.date else '' }}"
+                                    title="Copy this into a new expense for today" aria-label="Copy this into a new expense for today"><i class="fas fa-rotate-right"></i></button>
                             <button class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editExpenseModal"
                                     data-action="{{ url_for('main.expenses_edit', id=e.id) }}"
                                     data-category-id="{{ e.category_id }}"
@@ -136,10 +196,11 @@
                                     data-method="{{ e.payment_method }}"
                                     data-receipt="{{ e.receipt_no or '' }}"
                                     data-description="{{ e.description or '' }}"
-                                    title="Edit"><i class="fas fa-pen"></i></button>
+                                    title="Edit" aria-label="Edit"><i class="fas fa-pen"></i></button>
                             <form method="post" action="{{ url_for('main.expenses_delete', id=e.id) }}" class="d-inline"
-                                  onsubmit="return confirm('Delete this expense? This cannot be undone.');">
-                                <button class="btn btn-sm btn-outline-danger" title="Delete"><i class="fas fa-trash"></i></button>
+                                  data-confirm="Delete this expense? This cannot be undone."
+                                  data-confirm-ok="Delete expense">
+                                <button class="btn btn-sm btn-outline-danger" title="Delete" aria-label="Delete"><i class="fas fa-trash"></i></button>
                             </form>
                         </td>
                     </tr>
@@ -153,67 +214,145 @@
     </div>
 </div>
 
-<!-- Categories -->
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-header bg-secondary text-white fw-bold border-0">
-        <i class="fas fa-tags me-2"></i>Categories
-    </div>
-    <div class="card-body">
-        <form method="post" action="{{ url_for('main.expenses_categories_add') }}" class="row g-2 align-items-end mb-3">
-            <div class="col-md-4">
-                <label class="form-label small fw-bold mb-1">New Category</label>
-                <input type="text" class="form-control form-control-sm" name="name" placeholder="e.g. Transport Fuel" maxlength="100" required>
+<!-- Categories: kept behind a button so the page stays focused on expenses -->
+<div class="d-flex justify-content-end mb-4">
+    <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="modal"
+            data-bs-target="#categoriesModal" id="categoriesButton">
+        <i class="fas fa-tags me-1"></i>Categories
+        <span class="badge bg-secondary ms-1">{{ all_categories|length }}</span>
+    </button>
+</div>
+
+<!-- Categories modal -->
+<div class="modal fade" id="categoriesModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title"><i class="fas fa-tags me-2"></i>Expense Categories</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="col-md-5">
-                <label class="form-label small fw-bold mb-1">Description (optional)</label>
-                <input type="text" class="form-control form-control-sm" name="description" maxlength="200">
+            <div class="modal-body">
+                <form method="post" action="{{ url_for('main.expenses_categories_add') }}" class="row g-2 align-items-end mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold mb-1">New Category</label>
+                        <input type="text" class="form-control form-control-sm" name="name" placeholder="e.g. Transport Fuel" maxlength="100" required>
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label small fw-bold mb-1">Description (optional)</label>
+                        <input type="text" class="form-control form-control-sm" name="description" maxlength="200">
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-dark btn-sm w-100"><i class="fas fa-plus me-1"></i>Add Category</button>
+                    </div>
+                </form>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Name</th>
+                                <th>Description</th>
+                                <th class="text-end">Entries</th>
+                                <th class="text-end">Total (Rs.)</th>
+                                <th>Status</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in all_categories %}
+                            <tr class="{% if not row.category.is_active %}text-muted{% endif %}">
+                                <td class="fw-bold">{{ row.category.name }}</td>
+                                <td class="small">{{ row.category.description or '—' }}</td>
+                                <td class="text-end">{{ row.count }}</td>
+                                <td class="text-end">{{ '{:,.0f}'.format(row.total) }}</td>
+                                <td>
+                                    {% if row.category.is_active %}<span class="badge bg-success">Active</span>
+                                    {% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
+                                </td>
+                                <td class="text-center text-nowrap">
+                                    <button class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editCategoryModal"
+                                            data-action="{{ url_for('main.expenses_categories_edit', id=row.category.id) }}"
+                                            data-name="{{ row.category.name }}"
+                                            data-description="{{ row.category.description or '' }}"
+                                            title="Edit" aria-label="Edit"><i class="fas fa-pen"></i></button>
+                                    <form method="post" action="{{ url_for('main.expenses_categories_toggle', id=row.category.id) }}" class="d-inline">
+                                        <button class="btn btn-sm btn-outline-{{ 'warning' if row.category.is_active else 'success' }}"
+                                                title="{{ 'Deactivate' if row.category.is_active else 'Reactivate' }}" aria-label="{{ 'Deactivate' if row.category.is_active else 'Reactivate' }}">
+                                            <i class="fas fa-{{ 'ban' if row.category.is_active else 'rotate-left' }}"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-muted small mb-0 mt-2">Categories that are no longer used can be deactivated — they stay on historical expenses and exports.</p>
             </div>
-            <div class="col-md-3">
-                <button class="btn btn-dark btn-sm w-100"><i class="fas fa-plus me-1"></i>Add Category</button>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
             </div>
-        </form>
-        <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>Name</th>
-                        <th>Description</th>
-                        <th class="text-end">Entries</th>
-                        <th class="text-end">Total (Rs.)</th>
-                        <th>Status</th>
-                        <th class="text-center">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in all_categories %}
-                    <tr class="{% if not row.category.is_active %}text-muted{% endif %}">
-                        <td class="fw-bold">{{ row.category.name }}</td>
-                        <td class="small">{{ row.category.description or '—' }}</td>
-                        <td class="text-end">{{ row.count }}</td>
-                        <td class="text-end">{{ '{:,.0f}'.format(row.total) }}</td>
-                        <td>
-                            {% if row.category.is_active %}<span class="badge bg-success">Active</span>
-                            {% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
-                        </td>
-                        <td class="text-center text-nowrap">
-                            <button class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editCategoryModal"
-                                    data-action="{{ url_for('main.expenses_categories_edit', id=row.category.id) }}"
-                                    data-name="{{ row.category.name }}"
-                                    data-description="{{ row.category.description or '' }}"
-                                    title="Edit"><i class="fas fa-pen"></i></button>
-                            <form method="post" action="{{ url_for('main.expenses_categories_toggle', id=row.category.id) }}" class="d-inline">
-                                <button class="btn btn-sm btn-outline-{{ 'warning' if row.category.is_active else 'success' }}"
-                                        title="{{ 'Deactivate' if row.category.is_active else 'Reactivate' }}">
-                                    <i class="fas fa-{{ 'ban' if row.category.is_active else 'rotate-left' }}"></i>
-                                </button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
         </div>
-        <p class="text-muted small mb-0 mt-2">Categories that are no longer used can be deactivated — they stay on historical expenses and exports.</p>
+    </div>
+</div>
+
+<!-- Continue previous month's expense: pick one, then edit before saving -->
+<div class="modal fade" id="continueExpenseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="fas fa-rotate-right me-2"></i>Continue an Expense from {{ previous_month_label }}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">
+                    Pick an expense below. Its details are copied into a <strong>new</strong> expense for today,
+                    which you can edit before saving. The original entry is never changed.
+                </p>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Category</th>
+                                <th class="text-end">Amount (Rs.)</th>
+                                <th>Method</th>
+                                <th>Description</th>
+                                <th class="text-end">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for e in previous_month_expenses %}
+                            <tr>
+                                <td class="text-nowrap">{{ e.date.strftime('%d %b %Y') if e.date else '—' }}</td>
+                                <td><span class="badge border bg-secondary-subtle text-dark">{{ e.category.name if e.category else '—' }}</span></td>
+                                <td class="text-end fw-bold">{{ '{:,.0f}'.format(e.amount or 0) }}</td>
+                                <td>{{ e.payment_method }}</td>
+                                <td class="text-muted small">{{ e.description or '—' }}</td>
+                                <td class="text-end text-nowrap">
+                                    <button type="button" class="btn btn-sm btn-success continue-expense-btn"
+                                            data-source-id="{{ e.id }}"
+                                            data-category-id="{{ e.category_id }}"
+                                            data-amount="{{ '%.2f'|format(e.amount or 0) }}"
+                                            data-method="{{ e.payment_method }}"
+                                            data-receipt="{{ e.receipt_no or '' }}"
+                                            data-description="{{ e.description or '' }}"
+                                            data-source-date="{{ e.date.strftime('%d %b %Y') if e.date else '' }}">
+                                        <i class="fas fa-rotate-right me-1"></i>Continue
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if not previous_month_expenses %}
+                <p class="text-muted small mb-0">No expenses were recorded in {{ previous_month_label }}.</p>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -227,6 +366,8 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="alert alert-success py-2 px-3 small d-none" data-continue-note></div>
+                    <input type="hidden" name="continue_from" value="">
                     <div class="row g-3">
                         <div class="col-6">
                             <label class="form-label small fw-bold">Category</label>
@@ -310,7 +451,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                    <button class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>Save Changes</button>
+                    <button class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>Save</button>
                 </div>
             </form>
         </div>
@@ -347,6 +488,54 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    var addModal = document.getElementById('addExpenseModal');
+
+    // Opening a "continue" button copies that expense into the Add form.
+    // Handled on click (rather than only via modal events) so the jump from
+    // the pick-list modal to the Add modal is explicit and dependable.
+    document.querySelectorAll('.continue-expense-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!addModal) return;
+            var form = addModal.querySelector('form');
+            form.querySelector('[name="category_id"]').value = btn.getAttribute('data-category-id');
+            form.querySelector('[name="amount"]').value = btn.getAttribute('data-amount');
+            form.querySelector('[name="payment_method"]').value = btn.getAttribute('data-method');
+            form.querySelector('[name="receipt_no"]').value = btn.getAttribute('data-receipt') || '';
+            form.querySelector('[name="description"]').value = btn.getAttribute('data-description') || '';
+            // The date keeps its default (today): this is a NEW expense.
+            form.querySelector('[name="continue_from"]').value = btn.getAttribute('data-source-id') || '';
+            var note = addModal.querySelector('[data-continue-note]');
+            if (note) {
+                note.textContent = 'Copied from expense #' + btn.getAttribute('data-source-id') +
+                    ' (' + (btn.getAttribute('data-source-date') || 'an earlier month') +
+                    '). Every field below is editable — saving creates a new expense and leaves the original untouched.';
+                note.classList.remove('d-none');
+            }
+            // Close the pick list if it was open, then show the Add form.
+            var openPicker = document.getElementById('continueExpenseModal');
+            if (openPicker && window.bootstrap) {
+                var pickerInstance = bootstrap.Modal.getInstance(openPicker);
+                if (pickerInstance) pickerInstance.hide();
+            }
+            if (window.bootstrap) {
+                bootstrap.Modal.getOrCreateInstance(addModal).show();
+            }
+        });
+    });
+
+    if (addModal) {
+        addModal.addEventListener('show.bs.modal', function (event) {
+            var btn = event.relatedTarget;
+            // Opened from the plain "Add Expense" button: start clean.
+            if (btn && btn.classList.contains('continue-expense-btn')) return;
+            var form = addModal.querySelector('form');
+            var note = addModal.querySelector('[data-continue-note]');
+            var sourceField = form.querySelector('[name="continue_from"]');
+            if (sourceField) sourceField.value = '';
+            if (note) { note.classList.add('d-none'); note.textContent = ''; }
+        });
+    }
+
     var editModal = document.getElementById('editExpenseModal');
     if (editModal) {
         editModal.addEventListener('show.bs.modal', function (event) {

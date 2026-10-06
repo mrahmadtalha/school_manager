@@ -51,7 +51,7 @@ TEACHER_ENDPOINTS = {
     'main.export_students_excel', 'main.export_students_pdf', 'main.import_students',
     # teachers
     'main.teachers_list', 'main.add_teacher', 'main.edit_teacher', 'main.archived_teachers_list',
-    'main.teacher_profile',
+    'main.teacher_profile', 'main.student_photo', 'main.teacher_photo',
     'main.export_teachers_csv', 'main.teachers_template_excel', 'main.export_teachers_excel',
     'main.export_teachers_pdf', 'main.import_teachers',
     # classes (read-only for teachers)

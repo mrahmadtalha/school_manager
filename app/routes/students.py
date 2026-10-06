@@ -10,12 +10,16 @@ from flask import (
     url_for, 
     flash, 
     send_file, 
-    Response
+    Response,
+    abort
 )
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import landscape, letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 from sqlalchemy.exc import IntegrityError
 
 from app.database import db
@@ -37,6 +41,9 @@ from app.models.student import STUDENT_STATUSES, STUDENT_STATUS_LABELS
 from app.routes import main
 from sqlalchemy import func
 from app.services.audit import log_action, serialize
+from app.services import record_view
+from app.services.marks import ABSENT_LABEL
+from app.services.photos import photo_path, save_photo, stash_upload, delete_photo, PhotoError
 from app.models.settings import calculate_grade, get_custom_fields
 from app.services.custom_fields import (
     collect_custom_field_values,
@@ -57,6 +64,18 @@ from app.services.roll_numbers import (
     cascade_shift_plan,
     next_roll_map,
     parse_roll_number,
+)
+from app.services.data_import import (
+    ImportFileError,
+    ImportResult,
+    RowChecker,
+    build_template_workbook,
+    collect_custom_values,
+    is_example_row,
+    norm_name,
+    parse_whole_number,
+    read_import_file,
+    student_import_fields,
 )
 
 
@@ -133,6 +152,10 @@ def _parse_optional_date(value):
     value = (value or '').strip()
     if not value:
         return None
+    try:
+        return datetime.strptime(value, '%Y-%m-%d').date()
+    except ValueError:
+        return None
 
 
 def _student_sponsor_values(form, existing=None):
@@ -143,14 +166,10 @@ def _student_sponsor_values(form, existing=None):
 
     raw_cnic = form.get('sponsor_cnic')
     sponsor_cnic = (raw_cnic if raw_cnic is not None else
-                    (existing.sponsor_cnic if existing else '')).strip()
+                    ((existing.sponsor_cnic if existing else '') or '')).strip()
     if sponsor_cnic and not re.fullmatch(r'\d{5}-\d{7}-\d', sponsor_cnic):
         raise ValueError('CNIC must use the format 12345-1234567-1.')
     return sponsor_type, sponsor_cnic or None
-    try:
-        return datetime.strptime(value, '%Y-%m-%d').date()
-    except ValueError:
-        return None
 
 
 def _student_form_context():
@@ -185,16 +204,27 @@ def _render_students_page(**extra):
     context = _student_form_context()
     listed = (StudentModel.query.filter_by(is_active=True)
               .order_by(StudentModel.student_name).all())
+    dues_map = _dues_balances([s.id for s in listed])
+    specs = record_view.field_specs('student')
+    row_extras = {'dues_map': dues_map}
     context.update({
         'students': listed,
         'sections': [],
         'selected_class': None,
         'selected_section': None,
         'search': '',
-        'dues_map': _dues_balances([s.id for s in listed]),
+        'dues_map': dues_map,
         'selected_gender': '',
         'selected_status': '',
         'has_dues': False,
+        'student_field_specs': specs,
+        'display_map': {
+            student.id: {spec.key: record_view.display_value(spec, student, row_extras)
+                         for spec in specs}
+            for student in listed
+        },
+        'column_picker': record_view.picker_payload('student'),
+        'row_extras': row_extras,
     })
     context.update(extra)
     return render_template('students.html', **context)
@@ -245,12 +275,23 @@ def students_list():
     dues_map = _dues_balances([s.id for s in students]) if students else {}
     sections = (SectionModel.query.filter_by(class_id=filters['class_id']).all()
                 if filters['class_id'] else [])
+    specs = record_view.field_specs('student')
+    row_extras = {'dues_map': dues_map}
+    display_map = {
+        student.id: {spec.key: record_view.display_value(spec, student, row_extras)
+                     for spec in specs}
+        for student in students
+    }
     return render_template(
         'students.html', students=students, sections=sections,
         dues_map=dues_map,
         selected_class=filters['class_id'], selected_section=filters['section_id'],
         search=filters['search'], selected_gender=filters['gender'],
         selected_status=filters['status'], has_dues=filters['has_dues'],
+        student_field_specs=specs,
+        display_map=display_map,
+        column_picker=record_view.picker_payload('student'),
+        row_extras=row_extras,
         **_student_form_context())
 
 @main.route('/students/add', methods=['POST'])
@@ -259,7 +300,7 @@ def add_student():
         'roll_number', 'student_name', 'father_name', 'guardian_phone',
         'address', 'class_id', 'section_id', 'monthly_fee',
         'discount_type', 'discount_value', 'date_of_birth',
-        'gender', 'admission_number', 'admission_date', 'sponsor_type', 'sponsor_cnic')}
+        'gender', 'admission_number', 'admission_date', 'sponsor_type', 'sponsor_cnic', 'photo_token')}
     custom_field_definitions = get_custom_fields('student')
     missing_fields = missing_required_custom_fields(request.form, custom_field_definitions)
     if missing_fields:
@@ -285,6 +326,16 @@ def add_student():
 
         conflict = StudentModel.query.filter_by(class_id=class_id,
                                                 roll_number=roll_number).first()
+        
+        photo_stash_id = payload.get('photo_token')
+        if not photo_stash_id:
+            try:
+                photo_stash_id = stash_upload(request.files.get('photo'))
+            except PhotoError as e:
+                flash(f'Photo ignored: {e}', 'warning')
+                photo_stash_id = ''
+        payload['photo_token'] = photo_stash_id
+
         if conflict and request.form.get('confirm_cascade') != '1':
             return _render_students_page(cascade_preview={
                 'mode': 'add',
@@ -319,6 +370,13 @@ def add_student():
             discount_value=discount_value,
             custom_fields_data=serialize_custom_field_values(custom_values),
         )
+        
+        try:
+            photo_filename = save_photo('student', token=payload.get('photo_token'))
+            new_student.photo_filename = photo_filename
+        except PhotoError as e:
+            flash(f'Photo ignored: {e}', 'warning')
+
         db.session.add(new_student)
         start_enrollment(new_student, reason='enrolled', start_date=date.today(),
                          end_previous=False)
@@ -344,7 +402,7 @@ def edit_student(id):
         'roll_number', 'student_name', 'father_name', 'guardian_phone',
         'address', 'class_id', 'section_id', 'monthly_fee',
         'discount_type', 'discount_value', 'date_of_birth',
-        'gender', 'admission_number', 'admission_date', 'sponsor_type', 'sponsor_cnic')}
+        'gender', 'admission_number', 'admission_date', 'sponsor_type', 'sponsor_cnic', 'photo_token')}
     custom_field_definitions = get_custom_fields('student')
     missing_fields = missing_required_custom_fields(request.form, custom_field_definitions)
     if missing_fields:
@@ -364,6 +422,16 @@ def edit_student(id):
             StudentModel.roll_number == roll_number,
             StudentModel.id != student.id,
         ).first()
+        
+        photo_stash_id = payload.get('photo_token')
+        if not photo_stash_id:
+            try:
+                photo_stash_id = stash_upload(request.files.get('photo'))
+            except PhotoError as e:
+                flash(f'Photo ignored: {e}', 'warning')
+                photo_stash_id = ''
+        payload['photo_token'] = photo_stash_id
+        
         if conflict and request.form.get('confirm_cascade') != '1':
             return _render_students_page(cascade_preview={
                 'mode': 'edit',
@@ -423,6 +491,20 @@ def edit_student(id):
             start_enrollment(student, reason='class_change', start_date=date.today())
         else:
             sync_open_enrollment(student)
+
+        if request.form.get('remove_photo') == '1':
+            if student.photo_filename:
+                delete_photo('student', student.photo_filename)
+                student.photo_filename = None
+        else:
+            try:
+                photo_filename = save_photo('student', token=payload.get('photo_token'))
+                if photo_filename:
+                    if student.photo_filename:
+                        delete_photo('student', student.photo_filename)
+                    student.photo_filename = photo_filename
+            except PhotoError as e:
+                flash(f'Photo ignored: {e}', 'warning')
 
         db.session.commit()
         flash('Student record updated successfully!', 'success')
@@ -549,6 +631,9 @@ def student_detailed_report(id):
         percentages = [m.percentage for m in marks if m.percentage is not None]
         overall_percentage = round(sum(percentages) / len(percentages), 1) if percentages else 0.0
     overall_grade = calculate_grade(overall_percentage)
+    if marks and all(m.is_absent for m in marks):
+        overall_grade = ABSENT_LABEL   # absent from everything: not a fail
+    scored_marks = [m for m in marks if not m.is_absent]
 
     summary = {
         'attendance_total': total_records,
@@ -559,7 +644,7 @@ def student_detailed_report(id):
         'attendance_pct': attendance_pct,
         'overall_percentage': overall_percentage,
         'overall_grade': overall_grade,
-        'best_test': max(marks, key=lambda m: (m.percentage or 0)).test_info.test_title if marks else 'N/A',
+        'best_test': max(scored_marks, key=lambda m: (m.percentage or 0)).test_info.test_title if scored_marks else 'N/A',
     }
 
     enrollments = (StudentEnrollment.query.filter_by(student_id=student.id)
@@ -624,6 +709,8 @@ def student_report_pdf(id):
         overall_grade = 'D'
     else:
         overall_grade = 'F'
+    if marks and all(m.is_absent for m in marks):
+        overall_grade = ABSENT_LABEL   # absent from everything: not a fail
 
     output = io.BytesIO()
     doc = SimpleDocTemplate(output, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -672,9 +759,9 @@ def student_report_pdf(id):
             test.test_type if test else 'N/A',
             test.subject_info.name if test and test.subject_info else 'N/A',
             str(test.test_date) if test else 'N/A',
-            str(mark.marks_obtained),
+            ABSENT_LABEL if mark.is_absent else str(mark.marks_obtained),
             f"{mark.percentage}%" if mark.percentage is not None else '—',
-            mark.grade or '—'
+            ABSENT_LABEL if mark.is_absent else (mark.grade or '—')
         ])
 
     table = Table(table_data, colWidths=[110, 55, 80, 70, 55, 45, 45])
@@ -708,229 +795,371 @@ def student_transcript_pdf(id):
     return send_file(output, mimetype='application/pdf', as_attachment=True,
                      download_name=f'transcript_{student.roll_number}_{student.student_name}.pdf')
 
-@main.route('/students/export/csv')
-def export_students_csv():
+def _student_export_context():
+    """Students to export for the current filters + the chosen columns.
+
+    ``cols`` follows the column picker: absent or ``all`` exports every field,
+    otherwise only the requested (and recognised) columns.
+    """
     filters = _student_filters()
     dues_ids = ([sid for sid, bal in _dues_balances().items() if bal > 0]
                 if filters['has_dues'] else None)
     students = (_apply_student_filters(StudentModel.query, filters,
                                        dues_ids=dues_ids)
                 .order_by(StudentModel.student_name).all())
+    dues_map = _dues_balances([s.id for s in students]) if students else {}
+    specs = record_view.export_specs('student', request.args.get('cols'))
+    return students, specs, {'dues_map': dues_map}
+
+
+@main.route('/students/export/csv')
+def export_students_csv():
+    students, specs, extras = _student_export_context()
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Roll Number', 'Student Name', 'Father Name', 'Class', 'Section',
-                     'Gender', 'Date of Birth', 'Admission No', 'Admission Date',
-                     'Guardian Phone', 'Address', 'Status'])
-    
-    for s in students:
-        class_name = s.class_info.name if s.class_info else 'N/A'
-        section_name = s.section_info.name if s.section_info else 'N/A'
-        writer.writerow([
-            s.roll_number, s.student_name, s.father_name, class_name, section_name,
-            s.gender or '', s.date_of_birth.isoformat() if s.date_of_birth else '',
-            s.admission_number or '',
-            s.admission_date.isoformat() if s.admission_date else '',
-            s.guardian_phone, s.address, s.status])
-    
+    writer.writerow(record_view.headers(specs))
+    for row in record_view.build_rows(students, specs, extras):
+        writer.writerow(row)
+
     output.seek(0)
     return Response(output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment;filename=students_report.csv"})
 
+STUDENT_EXAMPLE_KEYS = ('student_name', 'father_name', 'guardian_phone')
+
+
 @main.route('/students/template/excel')
 def students_template_excel():
-    template_data = [{
-        'Roll Number': '1001',
-        'Student Name': 'Ali Khan',
-        'Father Name': 'Ahmad Khan',
-        'Class': 'Class 1',
-        'Section': 'A',
-        'Guardian Phone': '+923001234567',
-        'Address': 'Main Bazaar, City'
-    }]
-    df = pd.DataFrame(template_data)
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Students Template')
-    output.seek(0)
-    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='students_import_template.xlsx')
+    """Import template: every current field, one example row, mandatory marked."""
+    classes = ClassModel.query.order_by(ClassModel.name).all()
+    specs = student_import_fields(get_custom_fields('student'))
+    example = {spec.key: spec.example for spec in specs}
+    if classes:
+        example['class_name'] = classes[0].name
+        first_sections = sorted(classes[0].sections, key=lambda sec: sec.name)
+        example['section'] = first_sections[0].name if first_sections else ''
+
+    class_lines = '; '.join(
+        f"{c.name} (sections: {', '.join(sec.name for sec in sorted(c.sections, key=lambda x: x.name))})"
+        if c.sections else c.name
+        for c in classes) or 'No classes created yet - add classes first.'
+    intro = [
+        'How to fill in the Students sheet:',
+        '1. Keep the column headings in row 1 exactly as they are. Do not rename or delete them.',
+        '2. The yellow row 2 is only an EXAMPLE. Type over it (or delete it). If it is left unchanged it is ignored.',
+        '3. Add one student per row, starting from row 2. Red columns must always be filled in.',
+        '4. Roll Number is optional: leave it blank and the next free number in the class is given automatically.',
+        '5. Students are never overwritten. A row is skipped (and reported) if the Roll Number is already used '
+        'in that class, the Admission No already exists, or a student with the same name, father name and class '
+        'is already registered.',
+        '6. Save the file as .xlsx (or .csv) and upload it with Import Excel. You will see exactly which rows '
+        'were skipped and why.',
+        'Your classes: ' + class_lines,
+    ]
+    output = build_template_workbook(
+        'Students', specs, example, 'Instructions', intro,
+        lists={'Classes': [c.name for c in classes]},
+        dropdowns={
+            'class_name': ('range', 'Classes'),
+            'gender': ('list', ['Male', 'Female', 'Other']),
+            'sponsor_type': ('list', ['Father', 'Guardian']),
+            'discount_type': ('list', ['percentage', 'fixed']),
+        })
+    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                     as_attachment=True, download_name='students_import_template.xlsx')
 
 
 @main.route('/students/export/excel')
 def export_students_excel():
-    filters = _student_filters()
-    dues_ids = ([sid for sid, bal in _dues_balances().items() if bal > 0]
-                if filters['has_dues'] else None)
-    students = (_apply_student_filters(StudentModel.query, filters,
-                                       dues_ids=dues_ids)
-                .order_by(StudentModel.student_name).all())
-    data = [{
-        'Roll Number': s.roll_number,
-        'Student Name': s.student_name,
-        'Father Name': s.father_name,
-        'Class': s.class_info.name if s.class_info else 'N/A',
-        'Section': s.section_info.name if s.section_info else 'N/A',
-        'Gender': s.gender or '',
-        'Date of Birth': s.date_of_birth.isoformat() if s.date_of_birth else '',
-        'Admission No': s.admission_number or '',
-        'Admission Date': s.admission_date.isoformat() if s.admission_date else '',
-        'Guardian Phone': s.guardian_phone,
-        'Address': s.address,
-        'Status': s.status
-    } for s in students]
-    
-    df = pd.DataFrame(data)
+    students, specs, extras = _student_export_context()
+    headers = record_view.headers(specs)
+    rows = [[record_view.excel_value(spec, student, extras) for spec in specs]
+            for student in students]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Students'
+    for col, title in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=title)
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='2D3748')
+    for row_index, row in enumerate(rows, 2):
+        for col_index, value in enumerate(row, 1):
+            ws.cell(row=row_index, column=col_index, value=value)
+    ws.freeze_panes = 'A2'
+    if rows:
+        ws.auto_filter.ref = f'A1:{get_column_letter(len(headers))}{len(rows) + 1}'
+    for col, _ in enumerate(headers, 1):
+        width = max([len(str(headers[col - 1]))] +
+                    [len(str(row[col - 1])) for row in rows] + [6])
+        ws.column_dimensions[get_column_letter(col)].width = min(width + 2, 32)
+
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Students')
+    wb.save(output)
     output.seek(0)
-    
+
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='students_report.xlsx')
 
 @main.route('/students/export/pdf')
 def export_students_pdf():
-    filters = _student_filters()
-    dues_ids = ([sid for sid, bal in _dues_balances().items() if bal > 0]
-                if filters['has_dues'] else None)
-    students = (_apply_student_filters(StudentModel.query, filters,
-                                       dues_ids=dues_ids)
-                .order_by(StudentModel.student_name).all())
+    students, specs, extras = _student_export_context()
+    headers = record_view.headers(specs)
+    rows = record_view.build_rows(students, specs, extras)
+
     output = io.BytesIO()
-    doc = SimpleDocTemplate(output, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    # All-fields exports are wide, so the page adapts to the column count.
+    wide = len(specs) > 7
+    pagesize = landscape(letter) if wide else letter
+    doc = SimpleDocTemplate(output, pagesize=pagesize, rightMargin=24, leftMargin=24,
+                            topMargin=24, bottomMargin=24)
     story = []
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=18, textColor=colors.HexColor('#1a202c'), spaceAfter=15, alignment=1)
-    
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor('#1a202c'), spaceAfter=12, alignment=1)
+
     story.append(Paragraph("School Management System — Student Report", title_style))
-    story.append(Spacer(1, 10))
-    
-    table_data = [['Roll No', 'Student Name', 'Father Name', 'Class', 'Phone']]
-    for s in students:
-        table_data.append([str(s.roll_number), str(s.student_name), str(s.father_name), str(s.class_info.name if s.class_info else 'N/A'), str(s.guardian_phone)])
-        
-    t = Table(table_data, colWidths=[70, 130, 130, 80, 110])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2d3748')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f7fafc')),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e0')),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-    ]))
-    story.append(t)
+    story.append(Spacer(1, 6))
+
+    if not specs:
+        story.append(Paragraph("No columns selected.", styles['Normal']))
+    else:
+        table_data = [headers] + rows
+        font_size = 8 if len(specs) <= 10 else 6
+        table = Table(table_data, repeatRows=1)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2d3748')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), font_size),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f7fafc')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e0')),
+            ('FONTSIZE', (0, 0), (-1, -1), font_size),
+        ]))
+        story.append(table)
     doc.build(story)
     output.seek(0)
     return send_file(output, mimetype='application/pdf', as_attachment=True, download_name='students_report.pdf')
 
 
+def _roll_conflict_text(roll, class_name, source):
+    if isinstance(source, int):
+        return f'Roll Number {roll} is repeated in this file (already used in row {source})'
+    return f'Roll Number {roll} is already registered in {class_name}'
+
+
 @main.route('/students/import', methods=['POST'])
 def import_students():
-    import io
+    """Bulk-import students.
+
+    Rules: mandatory fields must be present; nothing already registered is ever
+    overwritten (duplicate roll number in the class, duplicate admission number,
+    or an existing student with the same name + father name + class are skipped);
+    a blank Roll Number is assigned automatically (highest in class + 1).  Every
+    skipped row is listed with its reason on the result page.
+    """
     file = request.files.get('import_file')
     if not file or not file.filename:
         flash('No file selected.', 'warning')
         return redirect(url_for('main.students_list'))
 
-    ext = file.filename.rsplit('.', 1)[-1].lower()
+    specs = student_import_fields(get_custom_fields('student'))
     try:
-        if ext == 'csv':
-            import csv as csv_module
-            stream = io.StringIO(file.stream.read().decode('utf-8-sig'))
-            reader = csv_module.DictReader(stream)
-            rows = list(reader)
-        elif ext in ('xlsx', 'xls'):
-            df = pd.read_excel(file)
-            df.columns = df.columns.str.strip()
-            rows = df.to_dict(orient='records')
-        else:
-            flash('Only .xlsx or .csv files are supported.', 'danger')
-            return redirect(url_for('main.students_list'))
-    except Exception as e:
-        flash(f'Could not read file: {str(e)}', 'danger')
+        parsed = read_import_file(file, specs)
+    except ImportFileError as error:
+        flash(str(error), 'danger')
         return redirect(url_for('main.students_list'))
+
+    result = ImportResult('student')
+    result.total_rows = len(parsed.rows)
+    result.ignored_columns = parsed.ignored_columns
 
     class_map = {c.name.strip().lower(): c for c in ClassModel.query.all()}
-    section_map = {}
+    class_names = sorted(c.name for c in class_map.values())
+    sections_by_class = {}
     for sec in SectionModel.query.all():
-        section_map[(sec.class_id, sec.name.strip().lower())] = sec
+        sections_by_class.setdefault(sec.class_id, {})[sec.name.strip().lower()] = sec
 
-    added = 0
-    skipped = 0
-    errors = []
+    # What is already registered (archived students count too - they still own
+    # their roll number and would otherwise be re-created as duplicates).
+    used_rolls = {}      # class_id -> {roll: 'registered' | file row number}
+    used_admission = {}  # lower admission no -> 'registered' | file row number
+    people = {}          # (name, father, class_id) -> [(dob, source, is_active)]
+    for row in StudentModel.query.with_entities(
+            StudentModel.class_id, StudentModel.roll_number, StudentModel.student_name,
+            StudentModel.father_name, StudentModel.admission_number,
+            StudentModel.date_of_birth, StudentModel.is_active).all():
+        used_rolls.setdefault(row.class_id, {})[int(row.roll_number)] = 'registered'
+        if row.admission_number:
+            used_admission[row.admission_number.strip().lower()] = 'registered'
+        people.setdefault((norm_name(row.student_name), norm_name(row.father_name), row.class_id),
+                          []).append((row.date_of_birth, 'registered', bool(row.is_active)))
 
-    for i, row in enumerate(rows, start=2):
-        try:
-            roll     = str(row.get('Roll Number', '') or '').strip()
-            name     = str(row.get('Student Name', '') or '').strip()
-            father   = str(row.get('Father Name', '') or '').strip()
-            cls_name = str(row.get('Class', '') or '').strip()
-            sec_name = str(row.get('Section', '') or '').strip()
-            phone    = str(row.get('Guardian Phone', '') or '').strip()
-            address  = str(row.get('Address', '') or '').strip()
+    example = {spec.key: spec.example for spec in specs}
+    pending = []
 
-            if not roll or not name:
-                errors.append(f'Row {i}: Roll Number or Student Name is empty — skipped.')
-                skipped += 1
-                continue
+    # ---- pass 1: validate every row, detect duplicates ----------------------
+    for row_no, record in parsed.rows:
+        if is_example_row(record, example, STUDENT_EXAMPLE_KEYS):
+            result.example_rows += 1
+            continue
 
+        chk = RowChecker(record, specs)
+        name = chk.text('student_name', required=True, max_len=100)
+        father = chk.text('father_name', required=True, max_len=100)
+        class_text = chk.text('class_name', required=True)
+        phone = chk.phone('guardian_phone', required=True)
+        address = chk.long_text('address', required=True)
+        gender = chk.choice('gender', ('Male', 'Female', 'Other'),
+                            aliases={'m': 'Male', 'f': 'Female'})
+        dob = chk.date('date_of_birth')
+        admission_date = chk.date('admission_date')
+        admission_no = chk.text('admission_number', max_len=40)
+        sponsor_type = chk.choice('sponsor_type', ('Father', 'Guardian'), default='Father')
+        sponsor_cnic = chk.cnic('sponsor_cnic')
+        fee = chk.number('monthly_fee')
+        discount_type = chk.choice('discount_type', ('percentage', 'fixed'))
+        discount_value = chk.number('discount_value')
+        if discount_value and discount_type is None:
+            chk.add_problem('Discount Type (percentage or fixed) is required when a Discount Value is given')
+        if discount_value and discount_type == 'percentage' and discount_value > 100:
+            chk.add_problem('Discount Value cannot be more than 100 percent')
+        custom_values = collect_custom_values(chk, specs)
+
+        roll = None
+        roll_raw = chk.raw('roll_number')
+        if roll_raw:
             try:
-                roll_number = int(float(roll))
-            except (TypeError, ValueError):
-                errors.append(f'Row {i}: Roll No "{roll}" must be a whole number — {name} skipped.')
-                skipped += 1
-                continue
-            if roll_number < FIRST_ROLL_NUMBER:
-                errors.append(f'Row {i}: Roll No {roll_number} is below {FIRST_ROLL_NUMBER} — {name} skipped.')
-                skipped += 1
-                continue
+                roll = parse_whole_number(roll_raw)
+            except ValueError:
+                chk.add_problem(f'Roll Number "{roll_raw}" must be a whole number such as {FIRST_ROLL_NUMBER} '
+                                '(or leave it blank to assign one automatically)')
+            else:
+                if roll < FIRST_ROLL_NUMBER:
+                    chk.add_problem(f'Roll Numbers start at {FIRST_ROLL_NUMBER}; {roll} is too small')
+                    roll = None
 
-            cls_obj = class_map.get(cls_name.lower())
-            if not cls_obj:
-                errors.append(f'Row {i}: Class "{cls_name}" not found — {name} skipped.')
-                skipped += 1
-                continue
+        class_obj = section_obj = None
+        if class_text:
+            class_obj = class_map.get(class_text.lower())
+            if class_obj is None:
+                shown = ', '.join(class_names[:8]) + (' ...' if len(class_names) > 8 else '')
+                chk.add_problem(f'Class "{class_text}" does not exist (your classes: {shown or "none yet"})')
+        section_text = chk.text('section')
+        if section_text.lower() in ('n/a', 'na', '-'):
+            section_text = ''
+        if section_text and class_obj is not None:
+            section_obj = sections_by_class.get(class_obj.id, {}).get(section_text.lower())
+            if section_obj is None:
+                available = ', '.join(sorted(sec.name for sec in class_obj.sections)) or 'none'
+                chk.add_problem(f'Section "{section_text}" does not exist in {class_obj.name} '
+                                f'(available: {available})')
 
-            if StudentModel.query.filter_by(class_id=cls_obj.id, roll_number=roll_number).first():
-                errors.append(f'Row {i}: Roll No {roll_number} ({name}) already exists in '
-                              f'{cls_obj.name} — skipped.')
-                skipped += 1
-                continue
+        reason = chk.reason()
+        if reason:
+            result.skip(row_no, name, reason, 'missing' if chk.missing else 'invalid')
+            continue
 
-            sec_obj = section_map.get((cls_obj.id, sec_name.lower())) if sec_name else None
+        # duplicates -------------------------------------------------------
+        duplicates = []
+        class_rolls = used_rolls.setdefault(class_obj.id, {})
+        if roll is not None and roll in class_rolls:
+            duplicates.append(_roll_conflict_text(roll, class_obj.name, class_rolls[roll]))
+        if admission_no and admission_no.lower() in used_admission:
+            source = used_admission[admission_no.lower()]
+            duplicates.append(
+                f'Admission No "{admission_no}" is repeated in this file (row {source})'
+                if isinstance(source, int) else
+                f'Admission No "{admission_no}" is already registered')
+        person_key = (norm_name(name), norm_name(father), class_obj.id)
+        for known_dob, source, is_active in people.get(person_key, []):
+            if known_dob is None or dob is None or known_dob == dob:
+                if isinstance(source, int):
+                    duplicates.append(f'Looks like a duplicate of row {source} in this file '
+                                      f'(same name, father name and class)')
+                else:
+                    duplicates.append(
+                        f'A student named {name} (father: {father}) is already registered in '
+                        f'{class_obj.name}' + ('' if is_active else ' (archived - restore them instead)'))
+                break
+        if duplicates:
+            result.skip(row_no, name, '; '.join(duplicates), 'duplicate')
+            continue
+
+        # reserve what this row uses so later rows in the file cannot clash
+        if roll is not None:
+            class_rolls[roll] = row_no
+        if admission_no:
+            used_admission[admission_no.lower()] = row_no
+        people.setdefault(person_key, []).append((dob, row_no, True))
+        pending.append({
+            'row': row_no, 'name': name, 'father': father, 'class': class_obj,
+            'section': section_obj, 'phone': phone, 'address': address, 'roll': roll,
+            'gender': gender, 'dob': dob, 'admission_no': admission_no or None,
+            'admission_date': admission_date, 'sponsor_type': sponsor_type,
+            'sponsor_cnic': sponsor_cnic, 'fee': fee, 'discount_type': discount_type,
+            'discount_value': discount_value, 'custom': custom_values,
+        })
+
+    # ---- pass 2: assign automatic roll numbers and save ---------------------
+    try:
+        for item in pending:
+            class_obj = item['class']
+            class_rolls = used_rolls[class_obj.id]
+            auto_assigned = item['roll'] is None
+            if auto_assigned:
+                item['roll'] = max(class_rolls, default=FIRST_ROLL_NUMBER - 1) + 1
+                class_rolls[item['roll']] = item['row']
+
+            base_fee = item['fee'] if item['fee'] is not None else class_obj.monthly_fee
+            class_fee, monthly_fee, discount_type, discount_value = _student_fee_values({
+                'monthly_fee': '' if base_fee is None else str(base_fee),
+                'discount_type': item['discount_type'] or '',
+                'discount_value': '' if item['discount_value'] is None else str(item['discount_value']),
+            })
 
             student = StudentModel(
-                roll_number    = roll_number,
-                student_name   = name,
-                father_name    = father,
-                class_id       = cls_obj.id,
-                section_id     = sec_obj.id if sec_obj else None,
-                guardian_phone = phone,
-                address        = address,
-                is_active      = True
+                roll_number=item['roll'],
+                student_name=item['name'],
+                father_name=item['father'],
+                sponsor_type=item['sponsor_type'],
+                sponsor_cnic=item['sponsor_cnic'],
+                guardian_phone=item['phone'],
+                address=item['address'],
+                date_of_birth=item['dob'],
+                gender=item['gender'],
+                admission_number=item['admission_no'],
+                admission_date=item['admission_date'],
+                monthly_fee=monthly_fee,
+                class_fee=class_fee,
+                discount_type=discount_type,
+                discount_value=discount_value,
+                class_id=class_obj.id,
+                section_id=item['section'].id if item['section'] else None,
+                custom_fields_data=serialize_custom_field_values(item['custom']),
+                is_active=True,
             )
             db.session.add(student)
-            added += 1
-
-        except Exception as e:
-            errors.append(f'Row {i}: Error — {str(e)}')
-            skipped += 1
-
-    try:
+            start_enrollment(student, reason='enrolled', start_date=date.today(),
+                             end_previous=False)
+            label = f"{item['name']} (Roll No {item['roll']}, {class_obj.name})"
+            result.added.append((item['row'], label + (' - roll number assigned automatically'
+                                                       if auto_assigned else '')))
         db.session.commit()
-    except Exception as e:
+    except IntegrityError:
         db.session.rollback()
-        flash(f'Database error while saving: {str(e)}', 'danger')
+        flash('Import cancelled and nothing was saved: another user changed the student list '
+              'while the file was being imported. Please try again.', 'danger')
+        return redirect(url_for('main.students_list'))
+    except Exception as error:
+        db.session.rollback()
+        flash(f'Import cancelled and nothing was saved: {error}', 'danger')
         return redirect(url_for('main.students_list'))
 
-    flash(f'Import complete — {added} student(s) added, {skipped} skipped.',
-          'success' if added > 0 else 'warning')
-    for err in errors[:10]:
-        flash(err, 'warning')
-    if len(errors) > 10:
-        flash(f'...and {len(errors) - 10} more warnings not shown.', 'secondary')
-
-    return redirect(url_for('main.students_list'))
+    result.skipped.sort(key=lambda item: item['row'])
+    return render_template('import_result.html', result=result, entity_label='Student',
+                           entity_plural='Students',
+                           back_url=url_for('main.students_list'),
+                           template_url=url_for('main.students_template_excel'))
 
 
 @main.route('/students/restore-all', methods=['POST'])
@@ -940,4 +1169,13 @@ def restore_all_students():
     flash(f'{count} student(s) restored successfully.', 'success')
     return redirect(url_for('main.archived_students_list'))
 
+@main.route('/students/<int:id>/photo')
+def student_photo(id):
+    student = StudentModel.query.get_or_404(id)
+    if not student.photo_filename:
+        abort(404)
+    path = photo_path('student', student.photo_filename)
+    if not path:
+        abort(404)
+    return send_file(path, mimetype='image/jpeg')
 

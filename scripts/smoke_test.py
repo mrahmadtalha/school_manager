@@ -176,10 +176,14 @@ def main(argv=None):
             db.session.commit()
             test_id = test.id
 
-        marks = session.post(f'{base}/tests/marks/{test_id}', data={
-            f'marks_{student_id}': '78',
+        marks = session.post(f'{base}/tests/batch_marks', params={
+            'title': f'Smoke Test {marker}',
+            'date': _today().isoformat(),
+            'class_id': class_id,
+        }, data={
+            f'marks_{student_id}_{test_id}': '78',
         }, allow_redirects=False, timeout=5)
-        check('POST /tests/marks/<id> saves marks',
+        check('POST /tests/batch_marks saves marks',
               marks.status_code == 302, f'status={marks.status_code}')
 
         with app.app_context():

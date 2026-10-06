@@ -3,7 +3,9 @@ from flask import (
     request, 
     redirect, 
     url_for, 
-    flash
+    flash,
+    send_file,
+    current_app
 )
 
 from flask_login import current_user
@@ -16,7 +18,6 @@ from app.routes import main
 # CLASS, SECTION, & SUBJECT MANAGEMENT
 # ==========================================
 TIMETABLE_DAYS = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday')
-TIMETABLE_PERIODS = 8
 
 
 def _parse_class_fee(form):
@@ -133,54 +134,148 @@ def update_class_fee(id):
 
 @main.route('/classes/<int:id>/timetable', methods=['GET', 'POST'])
 def class_timetable(id):
-    """Optional Mon-Sat period grid for a class (may be left completely empty)."""
+    """Template-based, fully editable Mon-Sat timetable with period timings and PDF export."""
+    from app.services import timetable as tt
+    from app.services.audit import log_action
+
     class_obj = ClassModel.query.get_or_404(id)
     subjects = [s for s in class_obj.subjects if s.is_active]
+    subject_lookup = {s.id: s for s in class_obj.subjects}
+    day_count = len(TIMETABLE_DAYS)
 
     if request.method == 'POST':
         if not current_user.is_admin:
             flash('Only administrators can edit the timetable.', 'danger')
             return redirect(url_for('main.class_timetable', id=id))
 
-        valid_ids = {s.id for s in subjects}
-        existing = {(slot.day_of_week, slot.period_no): slot
-                    for slot in TimetableSlot.query.filter_by(class_id=id).all()}
-        for day in range(len(TIMETABLE_DAYS)):
-            for period in range(1, TIMETABLE_PERIODS + 1):
-                raw = (request.form.get('slot_%d_%d' % (day, period)) or '').strip()
+        action = request.form.get('action') or 'save'
+
+        # ---- Quick setup from a ready-made template (everything stays editable) ----
+        if action == 'generate':
+            template_key = request.form.get('template') or 'standard'
+            if template_key not in tt.TEMPLATES:
+                template_key = 'standard'
+            start = tt.clean_time(request.form.get('start_time'))
+            if not start:
+                flash('Please enter a valid school start time.', 'danger')
+                return redirect(url_for('main.class_timetable', id=id))
+            rows = tt.number_rows(tt.build_rows(template_key, start, request.form.get('minutes')))
+            TimetableSlot.query.filter_by(class_id=id).delete()
+            filled = 0
+            if request.form.get('autofill') == '1':
+                lessons = sum(1 for r in rows if r['kind'] == 'period')
+                for (day, period), subject_id in tt.autofill_pairs(
+                        [s.id for s in subjects], lessons, day_count).items():
+                    db.session.add(TimetableSlot(class_id=id, day_of_week=day,
+                                                 period_no=period, subject_id=subject_id))
+                    filled += 1
+            tt.save_config(id, rows, template_key=template_key, keep_incharge=True)
+            log_action('timetable_update', entity_type='ClassModel', entity_id=id,
+                       summary=f'Timetable generated from template "{template_key}" for {class_obj.name}')
+            db.session.commit()
+            flash('Timetable generated from the template. Review it below and change anything you like, '
+                  'then press Save.' if filled else
+                  'Period timings generated. Choose subjects for each cell below, then press Save.',
+                  'success')
+            return redirect(url_for('main.class_timetable', id=id))
+
+        # ---- Save manual edits: timings, breaks, subjects, in-charge ----
+        try:
+            row_count = int(request.form.get('row_count') or 0)
+        except ValueError:
+            row_count = 0
+        row_count = max(0, min(row_count, tt.MAX_ROWS))
+
+        rows = []
+        for i in range(row_count):
+            kind = 'break' if request.form.get('row_kind_%d' % i) == 'break' else 'period'
+            start = tt.clean_time(request.form.get('row_start_%d' % i))
+            end = tt.clean_time(request.form.get('row_end_%d' % i))
+            if start is None or end is None:
+                flash('Please enter times in a valid format (e.g. 08:30).', 'danger')
+                return redirect(url_for('main.class_timetable', id=id))
+            if start and end and tt._to_minutes(end) <= tt._to_minutes(start):
+                flash('A period/break ends before it starts - please check the times.', 'danger')
+                return redirect(url_for('main.class_timetable', id=id))
+            rows.append({'kind': kind, 'start': start, 'end': end,
+                         'label': (request.form.get('row_label_%d' % i) or '').strip()[:30]})
+        tt.number_rows(rows)
+        if sum(1 for r in rows if r['kind'] == 'period') > tt.MAX_PERIODS:
+            flash('A day can have at most %d lesson periods.' % tt.MAX_PERIODS, 'danger')
+            return redirect(url_for('main.class_timetable', id=id))
+
+        existing = TimetableSlot.query.filter_by(class_id=id).all()
+        valid_ids = {s.id for s in subjects} | {slot.subject_id for slot in existing if slot.subject_id}
+        new_slots = []
+        for i, row in enumerate(rows):
+            if row['kind'] == 'break':
+                continue
+            for day in range(day_count):
+                raw = (request.form.get('slot_%d_%d' % (day, i)) or '').strip()
                 try:
                     subject_id = int(raw) if raw else None
                 except ValueError:
                     subject_id = None
-                if subject_id is not None and subject_id not in valid_ids:
-                    subject_id = None
-                key = (day, period)
-                if subject_id is None:
-                    if key in existing:
-                        db.session.delete(existing[key])
-                elif key in existing:
-                    existing[key].subject_id = subject_id
-                else:
-                    db.session.add(TimetableSlot(class_id=id, day_of_week=day,
-                                                 period_no=period, subject_id=subject_id))
+                if subject_id in valid_ids:
+                    new_slots.append((day, row['no'], subject_id))
 
-        from app.services.audit import log_action
+        TimetableSlot.query.filter_by(class_id=id).delete()
+        db.session.flush()
+        for day, period, subject_id in new_slots:
+            db.session.add(TimetableSlot(class_id=id, day_of_week=day,
+                                         period_no=period, subject_id=subject_id))
+
+        raw_incharge = (request.form.get('incharge_teacher_id') or '').strip()
+        try:
+            incharge_id = int(raw_incharge) if raw_incharge else None
+        except ValueError:
+            incharge_id = None
+        if incharge_id is not None and db.session.get(TeacherModel, incharge_id) is None:
+            incharge_id = None
+        tt.save_config(id, rows, incharge_id=incharge_id)
+
         log_action('timetable_update', entity_type='ClassModel', entity_id=id,
                    summary=f'Timetable updated for {class_obj.name}')
         db.session.commit()
         flash('Timetable saved.', 'success')
         return redirect(url_for('main.class_timetable', id=id))
 
+    rows = tt.load_rows(id)
     slots = TimetableSlot.query.filter_by(class_id=id).all()
     grid = {(slot.day_of_week, slot.period_no): slot.subject_id for slot in slots}
-    subject_lookup = {s.id: s for s in class_obj.subjects}
+    cfg = tt.get_config(id)
+    incharge, incharge_auto = tt.resolve_incharge(class_obj, cfg)
+
+    if request.args.get('pdf'):
+        include_teachers = request.args.get('teachers') == '1'
+        output = tt.build_timetable_pdf(class_obj, rows, grid, subject_lookup, incharge,
+                                        include_teachers=include_teachers,
+                                        root_path=current_app.root_path)
+        log_action('export', entity_type='ClassModel', entity_id=id,
+                   summary=f'Timetable PDF exported: {class_obj.name}')
+        db.session.commit()
+        safe_name = ''.join(ch if ch.isalnum() else '_' for ch in class_obj.name)
+        return send_file(output, mimetype='application/pdf', as_attachment=True,
+                         download_name='timetable_%s.pdf' % safe_name)
+
+    teachers = (TeacherModel.query.filter_by(is_active=True)
+                .order_by(TeacherModel.teacher_name).all())
     return render_template('class_timetable.html',
                            class_obj=class_obj,
                            subjects=subjects,
                            subject_lookup=subject_lookup,
                            days=TIMETABLE_DAYS,
-                           periods=list(range(1, TIMETABLE_PERIODS + 1)),
-                           grid=grid)
+                           rows=rows,
+                           grid=grid,
+                           teachers=teachers,
+                           incharge=incharge,
+                           incharge_auto=incharge_auto,
+                           explicit_incharge_id=(cfg.incharge_teacher_id if cfg else None),
+                           templates=tt.TEMPLATES,
+                           default_start=tt.school_start_time(),
+                           has_slots=bool(slots),
+                           max_rows=tt.MAX_ROWS,
+                           max_periods=tt.MAX_PERIODS)
 
 
 @main.route('/sections/add', methods=['POST'])
@@ -336,14 +431,30 @@ def archive_subject(id):
     return redirect(url_for('main.classes_list'))
 
 
+@main.route('/subjects/archived')
+def archived_subjects_list():
+    """All archived subjects, with how many tests still reference each one."""
+    subjects = (SubjectModel.query.filter_by(is_active=False)
+                .join(ClassModel, SubjectModel.class_id == ClassModel.id)
+                .order_by(ClassModel.name, SubjectModel.name).all())
+    test_counts = dict(
+        db.session.query(TestModel.subject_id, db.func.count(TestModel.id))
+        .group_by(TestModel.subject_id).all())
+    return render_template('archived_subjects.html', subjects=subjects,
+                           subject_test_counts=test_counts)
+
+
 @main.route('/subjects/restore/<int:id>', methods=['POST'])
 def restore_subject(id):
     try:
         sub = SubjectModel.query.get_or_404(id)
         sub.is_active = True
         db.session.commit()
-        flash(f'Subject "{sub.name}" restored — it is available for tests again.', 'success')
+        flash(f'Subject "{sub.name}" restored in {sub.class_info.name if sub.class_info else "its class"} '
+              '— it is available for new tests/exams again.', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Error restoring subject: {str(e)}', 'danger')
+    if request.form.get('next') == 'archived':
+        return redirect(url_for('main.archived_subjects_list'))
     return redirect(url_for('main.classes_list'))

@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from types import SimpleNamespace
 
 from flask import flash, redirect, render_template, request, url_for
 from flask_login import current_user
@@ -13,12 +14,123 @@ from app.security import role_required
 from app.services.audit import log_action
 from app.services import fee_reminders as fee_reminders_service
 from app.services.fee_ledger import (
-    current_month, ensure_charge, ledger_totals, reconcile, recompute_fee_record,
-    record_payment, set_month_charge, student_summary, transactions_for,
+    DuplicateReferenceError, current_month, ensure_charge, ledger_totals, next_reference,
+    reconcile, recompute_fee_record, record_payment, reference_in_use, set_month_charge,
+    student_summary, transactions_for,
 )
 from app.services.whatsapp_automation import normalize_whatsapp_number
 
 PAYMENT_METHODS = ('cash', 'bank', 'online', 'other')
+
+# --------------------------------------------------------------------------- #
+# Returning to the fees list with the same filters
+#
+# The filters live in the query string (see ``fees_list``).  A form or a link
+# cannot forward the current query string on its own, so the active filters are
+# carried through the receipt round-trip as ``return_*`` values.  Everything is
+# whitelisted and rebuilt server-side with url_for -- a return URL is never
+# taken verbatim from the request, which would be an open redirect.
+# --------------------------------------------------------------------------- #
+
+#: query-string name -> (return form/param name, coercion)
+RETURN_FILTERS = {
+    'class_id': ('return_class_id', 'int'),
+    'month_year': ('return_month_year', 'text'),
+    'show_unpaid': ('return_show_unpaid', 'bool01'),
+    'ref_query': ('return_ref_query', 'text'),
+}
+
+
+def _coerce_filter(kind, value):
+    """Coerce one reported filter value; None when it is not usable."""
+    if kind == 'int':
+        try:
+            number = int(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+        return number if number > 0 else None
+    if kind == 'bool01':
+        return '1' if str(value).strip() in ('1', 'true', 'yes', 'on') else '0'
+    text = str(value or '').strip()
+    return text or None
+
+
+def list_return_filters(class_id=None, month_year=None, show_unpaid=False,
+                        ref_query=None):
+    """Build the ``return_*`` values for the fees list currently being viewed.
+
+    Called by ``fees_list`` with its *resolved* filter values (after defaults),
+    so the hidden form fields describe exactly what the user is looking at.
+    The Collect Fee form posts to a URL with no query string, so these have to
+    travel in the form body rather than being read back from request.args.
+    """
+    values = {}
+    if class_id:
+        values['return_class_id'] = str(class_id)
+    if month_year:
+        values['return_month_year'] = str(month_year).strip()
+    if ref_query:
+        values['return_ref_query'] = str(ref_query).strip()
+    # Always record the view mode so "By Class" vs "All Unpaid" round-trips even
+    # when the other filters happen to be empty.
+    values['return_show_unpaid'] = '1' if show_unpaid else '0'
+    return values
+
+
+def return_filter_values(source):
+    """Read and validate ``return_*`` values into fees-list query arguments.
+
+    Unknown keys are ignored and every value is coerced, so nothing from the
+    request can influence the redirect target beyond these four fields.
+    """
+    if source is None:
+        return {}
+    resolved = {}
+    for query_name, (return_name, kind) in RETURN_FILTERS.items():
+        if return_name not in source:
+            continue
+        value = _coerce_filter(kind, source.get(return_name))
+        if value is not None:
+            resolved[query_name] = value
+    return resolved
+
+
+def receipt_return_args(source):
+    """Validate ``return_*`` values, keyed by their ``return_*`` names.
+
+    Used when building the receipt URL, so the receipt can hand them straight
+    back to ``back_to_fees_url`` without re-parsing.
+    """
+    if source is None:
+        return {}
+    resolved = {}
+    for _query_name, (return_name, kind) in RETURN_FILTERS.items():
+        if return_name not in source:
+            continue
+        value = _coerce_filter(kind, source.get(return_name))
+        if value is not None:
+            resolved[return_name] = value
+    return resolved
+
+
+def back_to_fees_url(**kwargs):
+    """URL for the fees list, restoring the given filters.
+
+    Accepts either the ``return_*`` names (as carried on the receipt URL) or the
+    plain query names, and ignores anything else. With no usable filter it falls
+    back to the plain list, so the link is always safe.
+    """
+    by_return_name = {return_name: query_name
+                      for query_name, (return_name, _kind) in RETURN_FILTERS.items()}
+    allowed = {}
+    for key, value in kwargs.items():
+        if key in RETURN_FILTERS:
+            allowed[key] = value
+        elif key in by_return_name:
+            allowed[by_return_name[key]] = value
+    if not allowed:
+        return url_for('main.fees_list')
+    return url_for('main.fees_list', **allowed)
 
 
 @main.route('/fees', methods=['GET'])
@@ -56,16 +168,24 @@ def fees_list():
     records = {r.student_id: r for r in
                FeeRecordModel.query.filter_by(month_year=month_year).all()}
 
-    touched = False
+    # Read-only view: the ledger is the source of truth, so students without a
+    # cached summary row are rendered straight from their transactions.  A page
+    # load must never write (an expired-license school keeps full read access
+    # here) - charges are created explicitly via POST /fees/generate-charges.
+    pending_charges = 0
     for student in students:
         record = records.get(student.id)
         if record is None:
             charged, paid = ledger_totals(student.id, month_year)
             if charged == 0 and (student.monthly_fee or 0) > 0:
-                ensure_charge(student, month_year)
-                touched = True
-            record = recompute_fee_record(student.id, month_year)
-            touched = True
+                pending_charges += 1
+            if charged == 0 and paid == 0:
+                record = None
+            else:
+                status = ('Paid' if charged > 0 and paid + 0.001 >= charged
+                          else 'Partial' if paid > 0 else 'Pending')
+                record = SimpleNamespace(amount_due=charged, amount_paid=paid,
+                                         status=status, balance=round(charged - paid, 2))
 
         latest_payment = None
         if record is not None:
@@ -87,9 +207,6 @@ def fees_list():
         if show_unpaid and record and record.amount_due > 0 and record.amount_paid + 0.001 >= record.amount_due:
             continue
         fee_data.append(row)
-
-    if touched:
-        db.session.commit()
 
     for row in fee_data:
         record = row['record']
@@ -119,6 +236,7 @@ def fees_list():
                            selected_class_id=selected_class_id,
                            month_year=month_year,
                            fee_data=fee_data,
+                           pending_charges=pending_charges,
                            show_unpaid=show_unpaid,
                            summary=summary,
                            payment_methods=PAYMENT_METHODS,
@@ -126,7 +244,56 @@ def fees_list():
                                                for c in classes
                                                if c.monthly_fee is not None},
                            selected_class_fee=selected_class_fee,
-                           ref_query=ref_query)
+                           ref_query=ref_query,
+                           suggested_reference=next_reference(),
+                           # Carried to the receipt so "Back to Fees" can restore
+                           # exactly this filtered view.
+                           return_filters=list_return_filters(
+                               class_id=selected_class_id, month_year=month_year,
+                               show_unpaid=show_unpaid, ref_query=ref_query))
+
+
+@main.route('/fees/generate-charges', methods=['POST'])
+@role_required(ROLE_ADMIN, ROLE_ACCOUNTANT)
+def generate_monthly_charges():
+    """Create the monthly fee charge for every enrolled student (explicitly).
+
+    Posting the monthly charge is a deliberate billing action, not a side
+    effect of opening the page: only this endpoint writes charges, so the fees
+    list stays viewable (read-only) for schools with an expired license.  Any
+    month may be generated (e.g. to bill a month that was skipped).
+    """
+    month_year = (request.form.get('month_year') or '').strip() or current_month()
+    class_filter = request.form.get('class_id', type=int)
+
+    query = StudentModel.query.filter_by(is_active=True)
+    if class_filter:
+        query = query.filter_by(class_id=class_filter)
+    students = query.order_by(StudentModel.class_id, StudentModel.student_name).all()
+
+    created = 0
+    for student in students:
+        if not (student.monthly_fee or 0) > 0:
+            continue
+        existing = FeeTransaction.query.filter_by(
+            student_id=student.id, month_year=month_year,
+            txn_type=TXN_CHARGE, is_void=False).first()
+        if existing:
+            continue
+        ensure_charge(student, month_year)
+        recompute_fee_record(student.id, month_year)
+        created += 1
+
+    db.session.commit()
+    if created:
+        log_action('charge', entity_type='FeeTransaction',
+                   summary=f'Generated {created} monthly fee charge(s) for {month_year}')
+        db.session.commit()
+        flash(f'Generated {created} monthly fee charge(s) for {month_year}.', 'success')
+    else:
+        flash(f'All monthly charges for {month_year} were already posted.', 'info')
+    return redirect(url_for('main.fees_list', month_year=month_year,
+                            class_id=class_filter or None))
 
 
 @main.route('/fees/class-bulk-update', methods=['POST'])
@@ -200,6 +367,14 @@ def pay_fee(student_id):
         flash('Payment amount cannot be negative.', 'danger')
         return redirect(request.referrer or url_for('main.fees_list', month_year=month_year))
 
+    # A slip / reference number may only be used once.  Check it before anything
+    # is changed so a rejected form leaves the student's fee data untouched.
+    typed_reference = (request.form.get('reference') or '').strip()
+    if amount_paid > 0 and typed_reference and reference_in_use(typed_reference):
+        flash(f'Slip / Reference No "{typed_reference}" has already been used. '
+              f'Please enter a different number (next free: {next_reference()}).', 'danger')
+        return redirect(request.referrer or url_for('main.fees_list', month_year=month_year))
+
     due_override_str = (request.form.get('amount_due_override') or '').strip()
     if due_override_str:
         try:
@@ -219,13 +394,20 @@ def pay_fee(student_id):
 
     payment_transaction = None
     if amount_paid > 0:
-        payment_transaction = record_payment(
-            student, month_year, amount_paid,
-            method=request.form.get('method') or 'cash',
-            reference=(request.form.get('reference') or '').strip() or None,
-            note=remarks or None,
-            created_by=getattr(current_user, 'id', None),
-        )
+        try:
+            payment_transaction = record_payment(
+                student, month_year, amount_paid,
+                method=request.form.get('method') or 'cash',
+                reference=typed_reference or None,
+                note=remarks or None,
+                created_by=getattr(current_user, 'id', None),
+            )
+        except DuplicateReferenceError as error:
+            # Safety net for two cashiers saving the same number at the same moment.
+            db.session.rollback()
+            flash(f'{error} Please enter a different number '
+                  f'(next free: {error.suggestion}).', 'danger')
+            return redirect(request.referrer or url_for('main.fees_list', month_year=month_year))
 
     record = recompute_fee_record(student.id, month_year, remarks=remarks or None)
 
@@ -260,7 +442,17 @@ def pay_fee(student_id):
     db.session.commit()
 
     flash(f'Fee updated for {student.student_name}: status {record.status}.', 'success')
-    return redirect(url_for('main.fee_receipt', student_id=student.id, month_year=month_year))
+    # Carry the fees-list filters through to the receipt so the user can get back
+    # to the exact filtered view they came from. The form posts them in the body
+    # (the action URL has no query string), so read from the form here.
+    # ``month_year`` for the receipt path is the explicit billing month, so the
+    # returned copy is dropped to avoid a duplicate keyword argument.
+    carried = receipt_return_args(request.form)
+    # The receipt's own month is a URL path segment, which the receipt route
+    # cannot read back from the query string, so the list's billing month is
+    # always carried explicitly under its return_* name.
+    return redirect(url_for('main.fee_receipt', student_id=student.id,
+                            month_year=month_year, **carried))
 
 
 @main.route('/fees/receipt/<int:student_id>/<month_year>')
@@ -276,12 +468,19 @@ def fee_receipt(student_id, month_year):
     school = SchoolSettings.query.first()
     transactions = transactions_for(student_id, month_year)
 
+    # Filters reported by the fees page, validated against the whitelist, so the
+    # "Back to Fees" link can restore the same class/month/view/search. Nothing
+    # here is trusted verbatim: only these four keys survive, each coerced.
+    back_args = receipt_return_args(request.args)
+
     return render_template('fee_receipt.html',
                            student=student,
                            record=record,
                            school=school,
                            month_year=month_year,
-                           transactions=transactions)
+                           transactions=transactions,
+                           back_to_fees_url=back_to_fees_url(**back_args),
+                           back_has_filters=bool(back_args))
 
 
 @main.route('/fees/reconciliation', methods=['GET'])

@@ -1,4 +1,42 @@
 {% extends "base.html" %}
+
+{# One timetable row. i = row index (names are re-indexed by JS when rows are added/removed). #}
+{% macro tt_row(r, i) %}
+{% set subjects_ids = subjects | map(attribute='id') | list %}
+<tr class="tt-row {% if r.kind == 'break' %}tt-break-row{% endif %}">
+    <td class="tt-period">
+        <select class="form-select form-select-sm mb-1" data-f="kind" name="row_kind_{{ i }}">
+            <option value="period" {% if r.kind != 'break' %}selected{% endif %}>Lesson</option>
+            <option value="break" {% if r.kind == 'break' %}selected{% endif %}>Break</option>
+        </select>
+        <div class="tt-num small fw-bold">{% if r.no %}Period {{ r.no }}{% endif %}</div>
+        <input type="text" class="form-control form-control-sm tt-label" data-f="label" name="row_label_{{ i }}"
+               maxlength="30" value="{{ r.label or '' }}" placeholder="Break / Lunch">
+        <button type="button" class="btn btn-link btn-sm text-danger p-0 mt-1 tt-remove" title="Remove this row" aria-label="Remove this row"><i class="fas fa-trash-can fa-xs"></i></button>
+    </td>
+    <td class="tt-time">
+        <input type="time" class="form-control form-control-sm mb-1" data-f="start" name="row_start_{{ i }}" value="{{ r.start or '' }}" aria-label="Start time">
+        <input type="time" class="form-control form-control-sm" data-f="end" name="row_end_{{ i }}" value="{{ r.end or '' }}" aria-label="End time">
+    </td>
+    {% for d in days %}
+    {% set day_idx = loop.index0 %}
+    {% set cur = grid.get((day_idx, r.no)) if r.no else None %}
+    <td class="tt-cell">
+        <select class="form-select form-select-sm" data-f="slot" data-day="{{ day_idx }}" name="slot_{{ day_idx }}_{{ i }}">
+            <option value="">&mdash;</option>
+            {% for s in subjects %}
+            <option value="{{ s.id }}" {% if cur == s.id %}selected{% endif %}>{{ s.name }}{% if s.teacher %} &mdash; {{ s.teacher.teacher_name }}{% endif %}</option>
+            {% endfor %}
+            {% if cur and cur not in subjects_ids and subject_lookup.get(cur) %}
+            <option value="{{ cur }}" selected>{{ subject_lookup[cur].name }} (archived)</option>
+            {% endif %}
+        </select>
+        <span class="tt-break-text">{{ r.label or 'Break' }}</span>
+    </td>
+    {% endfor %}
+</tr>
+{% endmacro %}
+
 {% block content %}
 <style>
     .tt-shell { background: linear-gradient(135deg, #f8fafc 0%, #eef6ff 100%); border-radius: 22px; padding: 24px; box-shadow: 0 16px 40px rgba(15, 23, 42, .08); }
@@ -6,9 +44,17 @@
     .tt-table { border-radius: 16px; overflow: hidden; }
     .tt-table thead th { background: #0f172a; color: #fff; font-size: .78rem; letter-spacing: .05em; text-transform: uppercase; border: none; }
     .tt-table td, .tt-table th { border-color: #e2e8f0; vertical-align: middle; }
-    .tt-table td { min-width: 128px; }
-    .tt-period { background: #f1f5f9; font-weight: 700; text-align: center; width: 72px; }
+    .tt-table td.tt-cell { min-width: 128px; }
+    .tt-period { background: #f1f5f9; font-weight: 700; text-align: center; width: 112px; }
+    .tt-time { background: #f8fafc; width: 112px; text-align: center; font-size: .78rem; }
     .tt-badge { border-radius: 999px; }
+    .tt-break-row td { background: #fef3c7 !important; }
+    .tt-break-row .tt-cell select, .tt-break-row .tt-num { display: none; }
+    .tt-break-text { display: none; font-size: .8rem; color: #92400e; font-weight: 600; text-align: center; }
+    .tt-break-row .tt-break-text { display: block; }
+    .tt-row:not(.tt-break-row) .tt-label { display: none; }
+    .tt-static .tt-label, .tt-static .tt-remove { display: none; }
+    .tt-teacher { display: block; font-size: .72rem; color: #64748b; }
     @media print {
         .sidebar, .mobile-topbar, .tt-noprint, nav, footer, #licenseBannerWrap { display: none !important; }
         .tt-shell { box-shadow: none; border-radius: 0; padding: 0; background: #fff; }
@@ -22,62 +68,124 @@
         <div>
             <p class="mb-1 text-white-50 text-uppercase small fw-semibold">Class Timetable</p>
             <h1 class="h4 fw-bold text-white mb-0"><i class="fas fa-calendar-days me-2"></i>{{ class_obj.name }}</h1>
-            <div class="small text-white-50 mt-1">Mon &ndash; Sat &middot; {{ periods | length }} periods &middot; optional &mdash; leaving it empty does not affect anything</div>
+            <div class="small text-white-50 mt-1">
+                Class In-charge: <strong class="text-white">{% if incharge %}{{ incharge.teacher_name }}{% if incharge_auto %} (auto){% endif %}{% else %}not set{% endif %}</strong>
+                &middot; Mon &ndash; Sat &middot; optional &mdash; leaving it empty does not affect anything
+            </div>
         </div>
         <div class="d-flex gap-2 tt-noprint">
-            <button type="button" class="btn btn-outline-light btn-sm" onclick="window.print()"><i class="fas fa-print me-1"></i>Print</button>
+            <button type="button" class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#printModal"><i class="fas fa-print me-1"></i>Print / PDF</button>
             <a class="btn btn-light btn-sm" href="{{ url_for('main.classes_list') }}"><i class="fas fa-arrow-left me-1"></i>Back to Classes</a>
         </div>
     </div>
 
-    <form method="POST" action="{{ url_for('main.class_timetable', id=class_obj.id) }}">
+    {% if current_user.is_admin %}
+    <!-- Quick setup from a template -->
+    <div class="card border-0 shadow-sm mb-3 tt-noprint">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <div class="fw-bold"><i class="fas fa-wand-magic-sparkles text-primary me-2"></i>Quick Setup</div>
+                    <div class="small text-muted">Pick a ready-made layout and the periods, times and subjects are filled for you. You can change anything afterwards.</div>
+                </div>
+                <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#quickSetup">
+                    <i class="fas fa-chevron-down me-1"></i>{% if has_slots %}Start from a template{% else %}Choose template{% endif %}
+                </button>
+            </div>
+            <div class="collapse {% if not has_slots %}show{% endif %} mt-3" id="quickSetup">
+                <form method="POST" action="{{ url_for('main.class_timetable', id=class_obj.id) }}" class="row g-2 align-items-end"
+                      {% if has_slots %}data-confirm="This will replace the current timetable for {{ class_obj.name }}. Continue?" data-confirm-ok="Replace timetable"{% endif %}>
+                    <input type="hidden" name="action" value="generate">
+                    <div class="col-md-5">
+                        <label class="form-label small fw-bold mb-1">Template</label>
+                        <select class="form-select form-select-sm" name="template" id="tplSelect">
+                            {% for key, t in templates.items() %}
+                            <option value="{{ key }}" data-minutes="{{ t.minutes }}">{{ t.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label class="form-label small fw-bold mb-1">First period starts</label>
+                        <input type="time" class="form-control form-control-sm" name="start_time" value="{{ default_start }}" required>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label class="form-label small fw-bold mb-1">Minutes / period</label>
+                        <input type="number" class="form-control form-control-sm" name="minutes" id="tplMinutes" min="10" max="120" value="40">
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check small mb-2">
+                            <input class="form-check-input" type="checkbox" name="autofill" value="1" id="autofill" checked>
+                            <label class="form-check-label" for="autofill">Also fill subjects automatically ({{ subjects | length }} active)</label>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm w-100"><i class="fas fa-bolt me-1"></i>Generate Timetable</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <form method="POST" id="ttForm" action="{{ url_for('main.class_timetable', id=class_obj.id) }}" class="{% if not current_user.is_admin %}tt-static{% endif %}">
+        <input type="hidden" name="action" value="save">
+        <input type="hidden" name="row_count" id="rowCount" value="{{ rows | length }}">
+
+        {% if current_user.is_admin %}
+        <div class="row g-2 mb-3 tt-noprint">
+            <div class="col-md-5">
+                <label class="form-label small fw-bold mb-1"><i class="fas fa-user-tie me-1"></i>Class In-charge (shown on the timetable)</label>
+                <select class="form-select form-select-sm" name="incharge_teacher_id">
+                    <option value="">{% if incharge_auto and incharge %}Auto: {{ incharge.teacher_name }}{% else %}&mdash; not set &mdash;{% endif %}</option>
+                    {% for t in teachers %}
+                    <option value="{{ t.id }}" {% if explicit_incharge_id == t.id %}selected{% endif %}>{{ t.teacher_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        {% endif %}
+
         <div class="table-responsive">
             <table class="table tt-table bg-white align-middle mb-3">
                 <thead>
                     <tr>
-                        <th class="tt-period text-center">Period</th>
+                        <th class="text-center">Period</th>
+                        <th class="text-center">Time</th>
                         {% for d in days %}<th class="text-center">{{ d }}</th>{% endfor %}
                     </tr>
                 </thead>
-                <tbody>
-                    {% set active_ids = subjects | map(attribute='id') | list %}
-                    {% for p in periods %}
-                    <tr>
-                        <td class="tt-period">{{ p }}</td>
+                <tbody id="ttBody">
+                    {% for r in rows %}
+                    {% if current_user.is_admin %}
+                    {{ tt_row(r, loop.index0) }}
+                    {% else %}
+                    <tr class="{% if r.kind == 'break' %}tt-break-row{% endif %}">
+                        <td class="tt-period">{% if r.kind == 'break' %}{{ r.label or 'Break' }}{% else %}Period {{ r.no }}{% endif %}</td>
+                        <td class="tt-time">{% if r.start or r.end %}{{ r.start }}{% if r.start and r.end %} &ndash; {% endif %}{{ r.end }}{% else %}&mdash;{% endif %}</td>
+                        {% if r.kind == 'break' %}
+                        <td colspan="{{ days | length }}" class="text-center small fw-semibold text-warning-emphasis">{{ r.label or 'Break' }}</td>
+                        {% else %}
                         {% for d in days %}
-                        {% set day_idx = loop.index0 %}
-                        {% set cur = grid.get((day_idx, p)) %}
-                        {% set cur_sub = subject_lookup.get(cur) if cur else None %}
-                        <td>
-                            {% if current_user.is_admin %}
-                            <select class="form-select form-select-sm" name="slot_{{ day_idx }}_{{ p }}">
-                                <option value="">&mdash;</option>
-                                {% for s in subjects %}
-                                <option value="{{ s.id }}" {% if cur == s.id %}selected{% endif %}>{{ s.name }}{% if s.teacher %} &mdash; {{ s.teacher.teacher_name }}{% endif %}</option>
-                                {% endfor %}
-                                {% if cur and cur not in active_ids and cur_sub %}
-                                <option value="{{ cur }}" selected>{{ cur_sub.name }} (archived)</option>
-                                {% endif %}
-                            </select>
-                            {% else %}
-                            <span class="small">
-                                {%- if cur_sub -%}
-                                    {{ cur_sub.name }}{% if cur_sub.teacher %} <span class="text-muted">&mdash; {{ cur_sub.teacher.teacher_name }}</span>{% endif %}
-                                {%- else -%}
-                                    &mdash;
-                                {%- endif -%}
-                            </span>
-                            {% endif %}
+                        {% set cur_sub = subject_lookup.get(grid.get((loop.index0, r.no))) %}
+                        <td class="small">
+                            {%- if cur_sub -%}
+                                {{ cur_sub.name }}{% if cur_sub.teacher %}<span class="tt-teacher">{{ cur_sub.teacher.teacher_name }}</span>{% endif %}
+                            {%- else -%}&mdash;{%- endif -%}
                         </td>
                         {% endfor %}
+                        {% endif %}
                     </tr>
+                    {% endif %}
                     {% endfor %}
                 </tbody>
             </table>
         </div>
+
         {% if current_user.is_admin %}
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 tt-noprint">
-            <span class="text-muted small"><i class="fas fa-circle-info me-1"></i>Pick a subject per cell; leave cells empty to clear them. {{ subjects | length }} active subject(s) available.</span>
+            <div class="d-flex gap-2 flex-wrap">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="addPeriod"><i class="fas fa-plus me-1"></i>Add period</button>
+                <button type="button" class="btn btn-outline-warning btn-sm" id="addBreak"><i class="fas fa-mug-hot me-1"></i>Add break</button>
+                <span class="text-muted small align-self-center"><i class="fas fa-circle-info me-1"></i>Max {{ max_periods }} periods per day. Leave a cell on &mdash; to keep it empty.</span>
+            </div>
             <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>Save Timetable</button>
         </div>
         {% endif %}
@@ -96,9 +204,101 @@
             {% endfor %}
         </div>
         {% if current_user.is_admin %}
-        <p class="text-muted small mt-2 mb-0">Assign teachers per subject from the <a href="{{ url_for('main.classes_list') }}">Classes page</a> (edit a subject chip).</p>
+        <p class="text-muted small mt-2 mb-0">Assign teachers per subject from the <a href="{{ url_for('main.classes_list') }}">Classes page</a> (edit a subject chip). The timetable and PDF pick the right teacher automatically.</p>
         {% endif %}
     </div>
     {% endif %}
 </div>
+
+<!-- Print / PDF options -->
+<div class="modal fade tt-noprint" id="printModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" method="GET" action="{{ url_for('main.class_timetable', id=class_obj.id) }}">
+            <input type="hidden" name="pdf" value="1">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-print me-2"></i>Print Timetable</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-3">The PDF includes the school logo, class name, period timings and the timetable. Save any unsaved changes first.</p>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="teachers" value="1" id="pdfTeachers" checked>
+                    <label class="form-check-label" for="pdfTeachers">Fill teacher names automatically
+                        <span class="d-block small text-muted">Class in-charge in the header and the subject teacher in each period.</span></label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i class="fas fa-print me-1"></i>Print this page</button>
+                <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-file-pdf me-1"></i>Export PDF</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if current_user.is_admin %}
+<template id="rowTpl">{{ tt_row({'kind': 'period', 'start': '', 'end': '', 'label': '', 'no': None}, 0) }}</template>
+<script>
+(function () {
+    var MAX_ROWS = {{ max_rows }}, MAX_PERIODS = {{ max_periods }};
+    var body = document.getElementById('ttBody');
+    var form = document.getElementById('ttForm');
+
+    function reindex() {
+        var rows = body.querySelectorAll('tr.tt-row'), lesson = 0;
+        rows.forEach(function (tr, i) {
+            var isBreak = tr.querySelector('[data-f=kind]').value === 'break';
+            tr.classList.toggle('tt-break-row', isBreak);
+            tr.querySelectorAll('[data-f]').forEach(function (el) {
+                var f = el.dataset.f;
+                el.name = f === 'slot' ? 'slot_' + el.dataset.day + '_' + i : 'row_' + f + '_' + i;
+                if (f === 'slot') el.disabled = isBreak;
+            });
+            var num = tr.querySelector('.tt-num');
+            if (isBreak) { num.textContent = ''; }
+            else { lesson++; num.textContent = 'Period ' + lesson; }
+            tr.querySelector('.tt-break-text').textContent = tr.querySelector('[data-f=label]').value || 'Break';
+        });
+        document.getElementById('rowCount').value = rows.length;
+        return {rows: rows.length, lessons: lesson};
+    }
+
+    function lastEnd() {
+        var rows = body.querySelectorAll('tr.tt-row');
+        return rows.length ? rows[rows.length - 1].querySelector('[data-f=end]').value : '';
+    }
+
+    function addRow(kind) {
+        var counts = reindex();
+        if (counts.rows >= MAX_ROWS) { window.SchoolUI.toast('Maximum ' + MAX_ROWS + ' rows reached.', 'warning'); return; }
+        if (kind === 'period' && counts.lessons >= MAX_PERIODS) { window.SchoolUI.toast('A day can have at most ' + MAX_PERIODS + ' periods.', 'info'); return; }
+        var tr = document.getElementById('rowTpl').content.firstElementChild.cloneNode(true);
+        tr.querySelector('[data-f=kind]').value = kind;
+        if (kind === 'break') tr.querySelector('[data-f=label]').value = 'Break';
+        tr.querySelector('[data-f=start]').value = lastEnd();
+        body.appendChild(tr);
+        reindex();
+    }
+
+    document.getElementById('addPeriod').addEventListener('click', function () { addRow('period'); });
+    document.getElementById('addBreak').addEventListener('click', function () { addRow('break'); });
+    body.addEventListener('change', reindex);
+    body.addEventListener('input', function (e) { if (e.target.dataset.f === 'label') reindex(); });
+    body.addEventListener('click', function (e) {
+        var btn = e.target.closest('.tt-remove');
+        if (!btn) return;
+        if (body.querySelectorAll('tr.tt-row').length <= 1) return;
+        btn.closest('tr').remove();
+        reindex();
+    });
+    form.addEventListener('submit', reindex);
+    reindex();
+
+    var tpl = document.getElementById('tplSelect'), mins = document.getElementById('tplMinutes');
+    if (tpl && mins) {
+        var sync = function () { mins.value = tpl.options[tpl.selectedIndex].dataset.minutes; };
+        tpl.addEventListener('change', sync); sync();
+    }
+})();
+</script>
+{% endif %}
 {% endblock %}

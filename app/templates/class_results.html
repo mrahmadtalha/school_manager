@@ -31,14 +31,6 @@
     {% endif %}
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show">
-      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  {% endfor %}{% endif %}
-{% endwith %}
-
 <!-- Filter Bar -->
 <div class="card shadow-sm mb-4 bg-light border-0">
     <div class="card-body py-2">
@@ -208,7 +200,7 @@
                         {% if row.rank == 1 %}<span class="text-warning">🥇</span>
                         {% elif row.rank == 2 %}<span class="text-secondary">🥈</span>
                         {% elif row.rank == 3 %}<span style="color:#cd7f32">🥉</span>
-                        {% else %}<span class="text-muted">{{ row.rank }}</span>{% endif %}
+                        {% else %}<span class="text-muted">{{ row.rank_label }}</span>{% endif %}
                     </td>
                     <td class="font-monospace fw-bold text-primary">{{ row.student.roll_number }}</td>
                     <td class="fw-bold text-dark">{{ row.student.student_name }}</td>
@@ -218,7 +210,9 @@
                     {% set score = row.scores.get(test.id) %}
                     {% set grade = row.grades.get(test.id) %}
                     <td class="text-center">
-                        {% if score is not none %}
+                        {% if row.absent.get(test.id) %}
+                        <span class="badge bg-warning text-dark px-2 py-1" title="Absent — not counted in total or grade" data-bs-toggle="tooltip">ABS</span>
+                        {% elif score is not none %}
                         <span class="badge
                             {% if grade == 'A+' %}bg-success
                             {% elif grade == 'A' %}bg-primary
@@ -238,13 +232,14 @@
                     {% endfor %}
 
                     <td class="text-center fw-bold">
-                        {{ row.total_obtained | int }} / {{ row.total_max | int }}
+                        {% if row.all_absent %}—{% else %}{{ row.total_obtained | int }} / {{ row.total_max | int }}{% endif %}
+                        {% if row.absent_count and not row.all_absent %}<div class="small fw-normal text-warning-emphasis">absent in {{ row.absent_count }}</div>{% endif %}
                     </td>
                     <td class="text-center fw-bold
                         {% if pct >= 70 %}text-success
                         {% elif pct >= 40 %}text-warning
                         {% else %}text-danger{% endif %}">
-                        {{ '%s%%'|format(pct) }}
+                        {% if row.all_absent %}—{% else %}{{ '%s%%'|format(pct) }}{% endif %}
                     </td>
                     <td class="text-center">
                         <span class="badge
@@ -264,6 +259,8 @@
                         <span class="badge bg-success px-2 py-1">Pass</span>
                         {% elif row.status == 'Fail' %}
                         <span class="badge bg-danger px-2 py-1">Fail</span>
+                        {% elif row.status == 'Absent' %}
+                        <span class="badge bg-warning text-dark px-2 py-1">Absent</span>
                         {% else %}
                         <span class="text-muted">—</span>
                         {% endif %}

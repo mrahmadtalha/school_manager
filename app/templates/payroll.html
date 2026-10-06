@@ -1,81 +1,157 @@
 {% extends "base.html" %}
 {% block content %}
 
-<!-- Header -->
-<div class="d-flex flex-wrap justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom gap-2">
-    <h1 class="h2 fw-bold text-dark mb-0"><i class="fas fa-money-check-dollar text-primary me-2"></i>Payroll</h1>
-    <div class="d-flex align-items-center gap-2">
+{# ---- Small helpers computed once, used by the guide banner and buttons ---- #}
+{% set total_rows = rows|length %}
+{% set saved_count = rows|selectattr('record')|list|length %}
+{% set pending_count = rows|selectattr('record')|rejectattr('locked')|list|length %}
+{% set paid_count = rows|selectattr('locked')|list|length %}
+{% set unsaved_count = total_rows - saved_count %}
+
+<!-- Header: month picker -->
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Finance</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-money-check-dollar text-primary me-2"></i>Staff Salaries</h1>
+        <p class="text-muted small mb-0">Prepare and pay your teachers' monthly salaries.</p>
+    </div>
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
         <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.payroll_page', month=prev_month) }}" title="Previous month">
-            <i class="fas fa-chevron-left"></i>
+            <i class="fas fa-chevron-left me-1"></i>Previous
         </a>
         <form method="get" action="{{ url_for('main.payroll_page') }}" class="d-flex gap-2">
-            <input type="month" class="form-control form-control-sm" name="month" value="{{ month }}" style="width: 175px;">
-            <button class="btn btn-primary btn-sm">Go</button>
+            <input type="month" class="form-control form-control-sm" name="month" value="{{ month }}" style="width: 175px;" aria-label="Choose month">
+            <button class="btn btn-primary btn-sm">Show</button>
         </form>
         <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.payroll_page', month=next_month) }}" title="Next month">
-            <i class="fas fa-chevron-right"></i>
+            Next<i class="fas fa-chevron-right ms-1"></i>
         </a>
     </div>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show">
-      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+<!-- Where am I? : 3 simple steps + what to do next -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+            <h2 class="h5 fw-bold mb-0">Salaries for {{ month_label }}</h2>
+            {% if total_rows and paid_count == total_rows %}
+            <span class="badge bg-success fs-6"><i class="fas fa-circle-check me-1"></i>All salaries paid</span>
+            {% endif %}
+        </div>
+
+        <div class="row g-2 mb-3 text-center">
+            <div class="col-4">
+                <div class="rounded p-2 border {% if total_rows and saved_count == total_rows %}bg-success-subtle border-success{% else %}bg-primary-subtle border-primary{% endif %}">
+                    <div class="fw-bold">{% if total_rows and saved_count == total_rows %}<i class="fas fa-check-circle text-success me-1"></i>{% endif %}Step 1</div>
+                    <div class="small">Check the amounts</div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="rounded p-2 border {% if total_rows and saved_count == total_rows %}bg-success-subtle border-success{% else %}bg-light{% endif %}">
+                    <div class="fw-bold">{% if total_rows and saved_count == total_rows %}<i class="fas fa-check-circle text-success me-1"></i>{% endif %}Step 2</div>
+                    <div class="small">Save the salaries</div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="rounded p-2 border {% if total_rows and paid_count == total_rows %}bg-success-subtle border-success{% else %}bg-light{% endif %}">
+                    <div class="fw-bold">{% if total_rows and paid_count == total_rows %}<i class="fas fa-check-circle text-success me-1"></i>{% endif %}Step 3</div>
+                    <div class="small">Pay and mark as paid</div>
+                </div>
+            </div>
+        </div>
+
+        {% if not total_rows %}
+        <div class="alert alert-warning mb-0">
+            <i class="fas fa-triangle-exclamation me-1"></i>
+            There are no active teachers yet. Add teachers first, then come back here.
+            <a href="{{ url_for('main.teachers_list') }}" class="alert-link">Go to Teachers</a>
+        </div>
+        {% elif saved_count == 0 %}
+        <div class="alert alert-info mb-0">
+            <b>What to do now:</b> The amounts below are filled in for you from each teacher's salary and attendance.
+            Look them over, change anything that is wrong, then press <b>Save Salaries</b> at the bottom of the list.
+        </div>
+        {% elif unsaved_count > 0 %}
+        <div class="alert alert-info mb-0">
+            <b>What to do now:</b> {{ saved_count }} salar{{ 'ies are' if saved_count != 1 else 'y is' }} saved.
+            {{ unsaved_count }} teacher{{ 's are' if unsaved_count != 1 else ' is' }} still <b>not saved</b> — check the amounts and press <b>Save Salaries</b>.
+        </div>
+        {% elif pending_count > 0 %}
+        <div class="alert alert-warning mb-0">
+            <b>What to do now:</b> All salaries are saved. {{ pending_count }} teacher{{ 's are' if pending_count != 1 else ' is' }} still waiting to be paid.
+            After you hand over a salary, press <b>Mark as Paid</b> next to that teacher — or use <b>Mark All as Paid</b> if you paid everyone.
+        </div>
+        {% else %}
+        <div class="alert alert-success mb-0">
+            <i class="fas fa-circle-check me-1"></i><b>All done.</b> Every salary for {{ month_label }} has been paid.
+            You can still download any payslip from the list below.
+        </div>
+        {% endif %}
     </div>
-  {% endfor %}{% endif %}
-{% endwith %}
+</div>
 
 <!-- Month summary -->
 <div class="row g-3 mb-3">
-    <div class="col-md-3">
+    <div class="col-6 col-md-3">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Payroll — {{ month_label }}</div>
-            <div class="h4 fw-bold mb-0">{{ totals.count }} record{{ 's' if totals.count != 1 else '' }}</div>
+            <div class="text-muted small fw-bold">Teachers saved</div>
+            <div class="h4 fw-bold mb-0">{{ totals.count }} <span class="text-muted fs-6 fw-normal">of {{ total_rows }}</span></div>
         </div></div>
     </div>
-    <div class="col-md-3">
+    <div class="col-6 col-md-3">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Total Net</div>
+            <div class="text-muted small fw-bold">Total salaries (after deductions)</div>
             <div class="h4 fw-bold mb-0">Rs. {{ '{:,.2f}'.format(totals.total) }}</div>
         </div></div>
     </div>
-    <div class="col-md-3">
+    <div class="col-6 col-md-3">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Paid</div>
+            <div class="text-muted small fw-bold">Already paid</div>
             <div class="h4 fw-bold mb-0 text-success">Rs. {{ '{:,.2f}'.format(totals.paid) }}</div>
         </div></div>
     </div>
-    <div class="col-md-3">
+    <div class="col-6 col-md-3">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Pending</div>
+            <div class="text-muted small fw-bold">Still to pay</div>
             <div class="h4 fw-bold mb-0 text-warning">Rs. {{ '{:,.2f}'.format(totals.pending) }}</div>
         </div></div>
     </div>
 </div>
 
-<!-- Wizard settings -->
+<!-- Deduction rules (optional, collapsed) -->
 <div class="card border-0 shadow-sm mb-3">
-    <div class="card-body py-3">
-        <form method="get" action="{{ url_for('main.payroll_page') }}" class="row g-2 align-items-end">
-            <input type="hidden" name="month" value="{{ month }}">
-            <div class="col-md-3">
-                <label class="form-label small fw-bold mb-1">Late deduction per late day (Rs.)</label>
-                <input type="number" class="form-control form-control-sm" name="per_late" step="1" min="0" value="{{ '%g'|format(per_late) }}">
-            </div>
-            <div class="col-md-4">
-                <div class="form-check mt-4">
-                    <input class="form-check-input" type="checkbox" name="leave_as_absent" value="1" id="leaveAsAbsent" {% if leave_as_absent %}checked{% endif %}>
-                    <label class="form-check-label small" for="leaveAsAbsent">Count approved leave as unpaid (deduct as absence)</label>
+    <div class="card-body py-2">
+        <a class="d-flex justify-content-between align-items-center text-decoration-none text-dark fw-bold py-1"
+           data-bs-toggle="collapse" href="#rulesBox" role="button"
+           aria-expanded="{{ 'true' if (per_late or leave_as_absent) else 'false' }}" aria-controls="rulesBox">
+            <span><i class="fas fa-sliders me-2 text-secondary"></i>Deduction rules <span class="text-muted fw-normal small">(optional — for late days and leave)</span></span>
+            <i class="fas fa-chevron-down small text-muted"></i>
+        </a>
+        <div class="collapse {% if per_late or leave_as_absent %}show{% endif %}" id="rulesBox">
+            <hr class="mt-2">
+            <p class="small text-muted mb-3">
+                By default, a teacher loses one day's pay for every day marked <b>Absent</b>.
+                You can also deduct for late days and for approved leave. These rules only change the <b>suggested</b> deduction —
+                you can still type any amount yourself in the list below.
+            </p>
+            <form method="get" action="{{ url_for('main.payroll_page') }}" class="row g-3 align-items-end">
+                <input type="hidden" name="month" value="{{ month }}">
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold mb-1">Deduct this much for each late day (Rs.)</label>
+                    <input type="number" class="form-control form-control-sm" name="per_late" step="1" min="0" value="{{ '%g'|format(per_late) }}" placeholder="0 = no deduction for late days">
                 </div>
-            </div>
-            <div class="col-md-3">
-                <button class="btn btn-dark btn-sm"><i class="fas fa-calculator me-1"></i>Recalculate Suggestions</button>
-            </div>
-            <div class="col-md-2 text-end">
-                <span class="text-muted small">Marked attendance only</span>
-            </div>
-        </form>
+                <div class="col-md-5">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="leave_as_absent" value="1" id="leaveAsAbsent" {% if leave_as_absent %}checked{% endif %}>
+                        <label class="form-check-label small" for="leaveAsAbsent">Treat approved leave as unpaid (deduct a day's pay)</label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-dark btn-sm w-100"><i class="fas fa-calculator me-1"></i>Apply Rules</button>
+                </div>
+            </form>
+            <div class="small text-muted mt-2"><i class="fas fa-circle-info me-1"></i>Applying rules reloads the page, so press it <b>before</b> you type changes into the list. Attendance is taken from what has been marked on the Attendance page.</div>
+        </div>
     </div>
 </div>
 
@@ -83,71 +159,115 @@
     <input type="hidden" name="month" value="{{ month }}">
 </form>
 
-<!-- Wizard table -->
+<!-- Salary list -->
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-dark text-white fw-bold border-0 d-flex justify-content-between align-items-center">
-        <span><i class="fas fa-list-check me-2"></i>Salary Batch — {{ month_label }}</span>
-        <span class="badge bg-light text-dark">{{ rows|length }} teacher{{ 's' if rows|length != 1 else '' }}</span>
+        <span><i class="fas fa-list-check me-2"></i>Teacher salaries — {{ month_label }}</span>
+        <span class="badge bg-light text-dark">{{ total_rows }} teacher{{ 's' if total_rows != 1 else '' }}</span>
     </div>
     <div class="card-body">
         <form id="payrollForm" method="post" action="{{ url_for('main.payroll_generate') }}">
             <input type="hidden" name="month" value="{{ month }}">
         </form>
+
+        <p class="small text-muted mb-2">
+            <b>Take-home salary = Salary + Bonus − Deductions.</b>
+            Tick the teachers you want to save. Paid salaries are locked and cannot be changed (use <i>Undo Paid</i> if you must edit one).
+        </p>
+
         <div class="table-responsive">
-            <table class="table table-sm align-middle">
+            <table class="table align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th class="text-center" style="width:44px;">Include</th>
+                        <th class="text-center" style="width:70px;">
+                            {% if pending_count or unsaved_count %}
+                            <input class="form-check-input" type="checkbox" id="selectAllRows" checked title="Tick / untick all">
+                            {% endif %}
+                            <div class="small fw-normal">Save?</div>
+                        </th>
                         <th>Teacher</th>
-                        <th style="min-width:120px;">Base Salary (Rs.)</th>
-                        <th>Attendance / Rate</th>
-                        <th style="min-width:140px;">Deductions (Rs.)</th>
+                        <th style="min-width:120px;">Monthly Salary (Rs.)</th>
+                        <th style="min-width:200px;">Attendance this month</th>
+                        <th style="min-width:160px;">Deductions (Rs.)</th>
                         <th style="min-width:110px;">Bonus (Rs.)</th>
-                        <th class="text-end">Net (Rs.)</th>
-                        <th style="min-width:140px;">Notes</th>
-                        <th class="text-center" style="min-width:110px;">Status / Payslip</th>
+                        <th class="text-end" style="min-width:120px;">Take-home (Rs.)</th>
+                        <th class="text-center" style="min-width:190px;">Status &amp; Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in rows %}
+                    {% set tid = row.teacher.id %}
                     <tr class="{% if row.locked %}table-success{% endif %}" data-net-row>
                         <td class="text-center">
                             {% if row.locked %}
                             <i class="fas fa-lock text-success" title="Paid — locked"></i>
                             {% else %}
-                            <input class="form-check-input" type="checkbox" form="payrollForm"
-                                   name="include_{{ row.teacher.id }}" checked>
+                            <input class="form-check-input include-box" type="checkbox" form="payrollForm"
+                                   name="include_{{ tid }}" checked aria-label="Save salary for {{ row.teacher.teacher_name }}">
                             {% endif %}
                         </td>
                         <td>
                             <div class="fw-bold">{{ row.teacher.teacher_name }}</div>
-                            <div class="text-muted small">{{ row.teacher.teacher_id_str or '' }}
-                                {% if row.record %}· <span class="text-primary">saved</span>{% endif %}
+                            <div class="text-muted small">{{ row.teacher.teacher_id_str or '' }}</div>
+                            {% if not row.locked %}
+                            {% if row.base <= 0 %}
+                            <div class="small text-danger mt-1">
+                                <i class="fas fa-triangle-exclamation me-1"></i>No salary set.
+                                <a href="{{ url_for('main.teacher_profile', id=tid) }}">Open profile</a> or type it here.
                             </div>
+                            {% endif %}
+                            <a class="small text-decoration-none" data-bs-toggle="collapse" href="#note{{ tid }}" role="button"
+                               aria-expanded="{{ 'true' if row.notes else 'false' }}">
+                                <i class="fas fa-pen me-1"></i>{{ 'Edit note' if row.notes else 'Add note' }}
+                            </a>
+                            <div class="collapse {% if row.notes %}show{% endif %} mt-1" id="note{{ tid }}">
+                                <input type="text" class="form-control form-control-sm" form="payrollForm"
+                                       name="notes_{{ tid }}" value="{{ row.notes }}" maxlength="255"
+                                       placeholder="Note (optional), e.g. extra duty">
+                            </div>
+                            {% elif row.notes %}
+                            <div class="small text-muted mt-1"><i class="fas fa-note-sticky me-1"></i>{{ row.notes }}</div>
+                            {% endif %}
                         </td>
                         <td>
                             {% if row.locked %}
                             <span class="fw-bold">{{ '{:,.2f}'.format(row.base) }}</span>
                             {% else %}
                             <input type="number" step="0.01" min="0" class="form-control form-control-sm"
-                                   form="payrollForm" name="base_{{ row.teacher.id }}"
-                                   value="{{ '%.2f'|format(row.base) }}">
+                                   form="payrollForm" name="base_{{ tid }}"
+                                   value="{{ '%.2f'|format(row.base) }}" aria-label="Monthly salary">
                             {% endif %}
                         </td>
-                        <td class="small text-muted">
-                            {% if row.stats %}
-                            WD {{ row.stats.working_days }} · P {{ row.stats.present }} · A {{ row.stats.absent }} · L {{ row.stats.late }} · Lv {{ row.stats.leave }}
-                            <div>Rate: Rs. {{ '{:,.2f}'.format(row.daily_rate) }}/day</div>
-                            {% else %}—{% endif %}
+                        <td class="small">
+                            {% if row.stats and row.stats.marked_days %}
+                            <span class="badge bg-success-subtle text-success-emphasis border">Present {{ row.stats.present }}</span>
+                            <span class="badge bg-danger-subtle text-danger-emphasis border">Absent {{ row.stats.absent }}</span>
+                            <span class="badge bg-warning-subtle text-warning-emphasis border">Late {{ row.stats.late }}</span>
+                            <span class="badge bg-info-subtle text-info-emphasis border">Leave {{ row.stats.leave }}</span>
+                            <div class="text-muted mt-1">
+                                out of {{ row.stats.working_days }} working days · one day's pay ≈ Rs. {{ '{:,.0f}'.format(row.daily_rate) }}
+                            </div>
+                            {% elif row.stats %}
+                            <span class="text-muted">No attendance marked for this month</span>
+                            <div class="text-muted">{{ row.stats.working_days }} working days</div>
+                            {% else %}<span class="text-muted">—</span>{% endif %}
                         </td>
                         <td>
                             {% if row.locked %}
                             <span class="fw-bold">{{ '{:,.2f}'.format(row.deductions) }}</span>
                             {% else %}
                             <input type="number" step="0.01" min="0" class="form-control form-control-sm"
-                                   form="payrollForm" name="deductions_{{ row.teacher.id }}"
-                                   value="{{ '%.2f'|format(row.deductions) }}">
-                            <div class="text-muted" style="font-size:0.72rem;">auto suggestion: Rs. {{ '{:,.0f}'.format(row.auto_deduction) }}</div>
+                                   form="payrollForm" name="deductions_{{ tid }}"
+                                   value="{{ '%.2f'|format(row.deductions) }}" aria-label="Deductions">
+                            <div class="small text-muted mt-1">
+                                Suggested: Rs. {{ '{:,.0f}'.format(row.auto_deduction) }}
+                                {% if row.stats and (row.stats.absent or row.stats.late or (leave_as_absent and row.stats.leave)) %}
+                                <span class="text-muted">({{ row.stats.absent }} absent{% if per_late and row.stats.late %}, {{ row.stats.late }} late{% endif %}{% if leave_as_absent and row.stats.leave %}, {{ row.stats.leave }} leave{% endif %})</span>
+                                {% endif %}
+                                <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline use-suggested"
+                                        data-target="deductions_{{ tid }}"
+                                        data-value="{{ '%.2f'|format(row.auto_deduction) }}">Use suggested</button>
+                            </div>
                             {% endif %}
                         </td>
                         <td>
@@ -155,42 +275,37 @@
                             <span class="fw-bold">{{ '{:,.2f}'.format(row.bonus) }}</span>
                             {% else %}
                             <input type="number" step="0.01" min="0" class="form-control form-control-sm"
-                                   form="payrollForm" name="bonus_{{ row.teacher.id }}"
-                                   value="{{ '%.2f'|format(row.bonus) }}">
+                                   form="payrollForm" name="bonus_{{ tid }}"
+                                   value="{{ '%.2f'|format(row.bonus) }}" aria-label="Bonus">
                             {% endif %}
                         </td>
-                        <td class="text-end"><span class="net-cell fw-bold">{{ '{:,.2f}'.format(row.net) }}</span></td>
-                        <td>
+                        <td class="text-end"><span class="net-cell fw-bold fs-6">{{ '{:,.2f}'.format(row.net) }}</span></td>
+                        <td class="text-center">
                             {% if row.locked %}
-                            <span class="small text-muted">{{ row.notes or '—' }}</span>
-                            {% else %}
-                            <input type="text" class="form-control form-control-sm" form="payrollForm"
-                                   name="notes_{{ row.teacher.id }}" value="{{ row.notes }}" maxlength="255"
-                                   placeholder="Optional">
-                            {% endif %}
-                        </td>
-                        <td class="text-center text-nowrap">
-                            {% if row.locked %}
-                            <span class="badge bg-success mb-1">Paid</span>
+                            <span class="badge bg-success mb-1"><i class="fas fa-check me-1"></i>Paid{% if row.record.payment_method %} · {{ row.record.payment_method }}{% endif %}</span>
+                            {% if row.record.payment_date %}<div class="small text-muted mb-1">on {{ row.record.payment_date.strftime('%d %b %Y') }}</div>{% endif %}
                             {% elif row.record %}
-                            <span class="badge bg-warning text-dark mb-1">Pending</span>
+                            <span class="badge bg-warning text-dark mb-1">Saved — not paid yet</span>
                             {% else %}
-                            <span class="badge bg-secondary mb-1">Not saved</span>
+                            <span class="badge bg-secondary mb-1">Not saved yet</span>
                             {% endif %}
                             {% if row.record %}
-                            <div>
-                                <a class="btn btn-sm btn-outline-dark" href="{{ url_for('main.payroll_payslip_pdf', id=row.record.id) }}" title="Payslip PDF">
-                                    <i class="fas fa-file-invoice"></i>
+                            <div class="d-flex flex-wrap justify-content-center gap-1">
+                                <a class="btn btn-sm btn-outline-dark" href="{{ url_for('main.payroll_payslip_pdf', id=row.record.id) }}" title="Download payslip (PDF)">
+                                    <i class="fas fa-file-invoice me-1"></i>Payslip
                                 </a>
                                 {% if row.record.payment_status == 'Paid' %}
-                                <form method="post" action="{{ url_for('main.payroll_mark_pending', id=row.record.id) }}" class="d-inline">
-                                    <button class="btn btn-sm btn-outline-warning" title="Revert to Pending"><i class="fas fa-rotate-left"></i></button>
+                                <form method="post" action="{{ url_for('main.payroll_mark_pending', id=row.record.id) }}" class="d-inline"
+                                      data-confirm="Undo payment for {{ row.teacher.teacher_name }}? The salary will become unpaid again."
+                                      data-confirm-ok="Undo payment">
+                                    <button class="btn btn-sm btn-outline-warning" title="Mark as not paid again"><i class="fas fa-rotate-left me-1"></i>Undo Paid</button>
                                 </form>
                                 {% else %}
-                                <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#markPaidModal"
+                                <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#markPaidModal"
                                         data-action="{{ url_for('main.payroll_mark_paid', id=row.record.id) }}"
-                                        data-teacher="{{ row.teacher.teacher_name | e }}" title="Mark Paid">
-                                    <i class="fas fa-check"></i>
+                                        data-teacher="{{ row.teacher.teacher_name | e }}"
+                                        data-amount="{{ '{:,.2f}'.format(row.record.net_salary) }}" title="Mark this salary as paid">
+                                    <i class="fas fa-check me-1"></i>Mark as Paid
                                 </button>
                                 {% endif %}
                             </div>
@@ -202,18 +317,34 @@
             </table>
         </div>
 
-        <div class="d-flex flex-wrap justify-content-between align-items-center mt-3 gap-2">
-            <div class="text-muted small">Unchecked rows are skipped · Paid rows are locked · Deductions default to the attendance-based suggestion (absent days × daily rate + late days × per-day amount).</div>
-            <div class="d-flex gap-2">
-                <button class="btn btn-primary btn-sm" form="payrollForm" type="submit">
-                    <i class="fas fa-floppy-disk me-1"></i>Generate / Update Payroll
+        {% if total_rows %}
+        <div class="d-flex flex-wrap justify-content-between align-items-center mt-3 gap-3">
+            <div>
+                <div class="small text-muted">Total take-home of ticked teachers</div>
+                <div class="h5 fw-bold mb-0">Rs. <span id="ticked-total">0.00</span></div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                {% if pending_count or unsaved_count %}
+                <button class="btn btn-primary" form="payrollForm" type="submit">
+                    <i class="fas fa-floppy-disk me-1"></i>Save Salaries
                 </button>
-                <button class="btn btn-outline-success btn-sm" form="bulkPaidForm" type="submit"
-                        onclick="return confirm('Mark all Pending salaries for {{ month_label }} as paid (Cash, today)?');">
-                    <i class="fas fa-check-double me-1"></i>Mark All Pending Paid
+                {% endif %}
+                {% if pending_count %}
+                <button class="btn btn-outline-success" form="bulkPaidForm" type="submit"
+                        data-confirm="Mark all {{ pending_count }} saved-but-unpaid salar{{ 'ies' if pending_count != 1 else 'y' }} for {{ month_label }} as paid (Cash, today)?"
+                        data-confirm-ok="Mark all paid">
+                    <i class="fas fa-check-double me-1"></i>Mark All as Paid ({{ pending_count }})
                 </button>
+                {% endif %}
             </div>
         </div>
+        {% if pending_count or unsaved_count %}
+        <div class="small text-muted mt-2">
+            <i class="fas fa-circle-info me-1"></i><b>Save Salaries</b> stores the amounts but does not mean the money was handed over.
+            <b>Mark All as Paid</b> only affects salaries that are already saved, and records them as Cash paid today — use the individual <b>Mark as Paid</b> button if you paid by Bank or Cheque.
+        </div>
+        {% endif %}
+        {% endif %}
     </div>
 </div>
 
@@ -223,28 +354,29 @@
         <div class="modal-content">
             <form method="post" action="">
                 <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title"><i class="fas fa-check me-2"></i>Mark Salary Paid</h5>
+                    <h5 class="modal-title"><i class="fas fa-check me-2"></i>Mark Salary as Paid</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small mb-3">Teacher: <b id="markPaidTeacher"></b></p>
+                    <p class="small mb-1">Teacher: <b id="markPaidTeacher"></b></p>
+                    <p class="small mb-3">Amount: <b>Rs. <span id="markPaidAmount"></span></b></p>
                     <div class="mb-3">
-                        <label class="form-label small fw-bold">Payment Method</label>
+                        <label class="form-label small fw-bold">How was it paid?</label>
                         <select class="form-select form-select-sm" name="payment_method">
                             <option value="Cash">Cash</option>
-                            <option value="Bank">Bank</option>
+                            <option value="Bank">Bank transfer</option>
                             <option value="Cheque">Cheque</option>
                         </select>
                     </div>
                     <div class="mb-1">
-                        <label class="form-label small fw-bold">Payment Date</label>
+                        <label class="form-label small fw-bold">Date paid</label>
                         <input type="date" class="form-control form-control-sm" name="payment_date"
                                value="{{ today.strftime('%Y-%m-%d') }}">
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                    <button class="btn btn-success btn-sm"><i class="fas fa-check me-1"></i>Confirm Paid</button>
+                    <button class="btn btn-success btn-sm"><i class="fas fa-check me-1"></i>Yes, Mark as Paid</button>
                 </div>
             </form>
         </div>
@@ -253,8 +385,29 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // Live net recalculation per row.
-    document.querySelectorAll('[data-net-row]').forEach(function (row) {
+    var rows = document.querySelectorAll('[data-net-row]');
+    var tickedTotal = document.getElementById('ticked-total');
+
+    function fmt(n) {
+        return n.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    // Total of rows that are currently ticked (and not locked).
+    function updateTickedTotal() {
+        if (!tickedTotal) return;
+        var sum = 0;
+        rows.forEach(function (row) {
+            var box = row.querySelector('.include-box');
+            var cell = row.querySelector('.net-cell');
+            if (box && box.checked && cell) {
+                sum += parseFloat(cell.textContent.replace(/,/g, '')) || 0;
+            }
+        });
+        tickedTotal.textContent = fmt(sum);
+    }
+
+    // Live take-home recalculation per row.
+    rows.forEach(function (row) {
         var baseInput = row.querySelector('[name^="base_"]');
         var bonusInput = row.querySelector('[name^="bonus_"]');
         var dedInput = row.querySelector('[name^="deductions_"]');
@@ -264,14 +417,38 @@ document.addEventListener('DOMContentLoaded', function () {
             var base = parseFloat(baseInput.value) || 0;
             var bonus = parseFloat(bonusInput.value) || 0;
             var ded = parseFloat(dedInput.value) || 0;
-            var net = base + bonus - ded;
-            netCell.textContent = net.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            netCell.textContent = fmt(base + bonus - ded);
+            updateTickedTotal();
         }
         [baseInput, bonusInput, dedInput].forEach(function (input) {
             if (input) input.addEventListener('input', recalc);
         });
+        var box = row.querySelector('.include-box');
+        if (box) box.addEventListener('change', updateTickedTotal);
         recalc();
     });
+    updateTickedTotal();
+
+    // "Use suggested" fills the deduction box with the attendance-based amount.
+    document.querySelectorAll('.use-suggested').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var input = document.querySelector('[name="' + btn.getAttribute('data-target') + '"]');
+            if (!input) return;
+            input.value = btn.getAttribute('data-value');
+            input.dispatchEvent(new Event('input', {bubbles: true}));
+        });
+    });
+
+    // Tick / untick every row at once.
+    var selectAll = document.getElementById('selectAllRows');
+    if (selectAll) {
+        selectAll.addEventListener('change', function () {
+            document.querySelectorAll('.include-box').forEach(function (box) {
+                box.checked = selectAll.checked;
+            });
+            updateTickedTotal();
+        });
+    }
 
     // Mark-paid modal fill.
     var modal = document.getElementById('markPaidModal');
@@ -281,6 +458,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!btn) return;
             modal.querySelector('form').action = btn.getAttribute('data-action');
             document.getElementById('markPaidTeacher').textContent = btn.getAttribute('data-teacher') || '';
+            document.getElementById('markPaidAmount').textContent = btn.getAttribute('data-amount') || '';
         });
     }
 });

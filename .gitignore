@@ -1,4 +1,6 @@
+# ================================
 # Python
+# ================================
 __pycache__/
 .pytest_cache/
 *.py[cod]
@@ -9,31 +11,88 @@ venv/
 ENV/
 env/
 
-# Environment / secrets
+# ================================
+# Environment / Secrets
+# ================================
 .env
 .env.*
 *.sqlite3
 *.db
 instance/
 
-# License signing keys - PRIVATE, vendor machine only. Never commit or ship.
+# ================================
+# License signing keys
+# PRIVATE - NEVER COMMIT
+# ================================
 vendor_keys/
 
-# VS Code / editors
+# ================================
+# Editors / IDE
+# ================================
 .vscode/
 .idea/
 
+# ================================
 # OS files
+# ================================
 .DS_Store
 Thumbs.db
+desktop.ini
 
+# ================================
 # Logs
+# ================================
 *.log
+logs/
 
-# Node / whatsapp service
+# ================================
+# Node / WhatsApp service
+# ================================
 whatsapp-service/node_modules/
 whatsapp-service/session/
 
-# Local runtime artifacts
+# ================================
+# Local runtime / temporary files
+# ================================
 *.bak
 *.tmp
+*.temp
+*.swp
+
+# ================================
+# Build / Release output
+# ================================
+build/
+dist/
+release/
+*.exe
+*.msi
+
+# ================================
+# PyInstaller
+# ================================
+*.spec
+
+# ================================
+# Coverage / Test generated files
+# ================================
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# ================================
+# Packaging / Python generated
+# ================================
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# ================================
+# Backup archives
+# ================================
+*.zip
+*.7z
+*.rar

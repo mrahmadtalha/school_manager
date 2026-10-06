@@ -1,0 +1,66 @@
+SCHOOL MANAGER - QUICK START (for school staff)
+Ahmi software firm - established 2020
+============================================================
+
+Welcome! School Manager runs entirely on your own computer -
+no internet is needed for daily work.
+
+1. INSTALL
+   Double-click "SchoolManager_Setup_v1.0.0.exe".
+   - If Windows shows "Windows protected your PC", click
+     "More info" -> "Run anyway".
+   - Allow the installer when Windows asks (UAC).
+   - Shortcuts appear on your Desktop and Start Menu:
+     "School Manager - Ahmi software firm".
+
+2. ACTIVATE (one time)
+   The first launch asks for your license key.
+   Paste the key you received from Ahmi software firm
+   and click Activate. (Your key works on one computer.)
+
+3. CREATE YOUR ADMIN ACCOUNT
+   Choose an administrator username and password, and fill in
+   your school name, address and phone. These appear on receipts
+   and ID cards.
+
+4. LOAD DEMO DATA (optional)
+   The setup wizard can create sample students, teachers,
+   attendance, fees, tests and results so you can explore
+   before entering real data. You can also start empty.
+
+5. CONNECT WHATSAPP (optional, one time)
+   Open the "Automation" page in the sidebar.
+   - A QR code appears.
+   - On the school phone: WhatsApp -> Linked devices ->
+     Link a device -> scan the code.
+   The school phone stays paired for future launches.
+
+6. DAILY USE
+   - Students / Teachers / Classes: records and ID cards
+   - Attendance: mark Present, Absent, Late, Leave
+   - Fees: "Generate monthly charges" button, then record payments
+   - Tests & Exams: enter marks, publish results
+   - Reports: result cards, transcripts, ID cards, exports
+   Everything is saved automatically.
+
+7. BACKUP (recommended weekly)
+   Settings -> Backups -> "Create backup".
+   Backups are kept in your data folder:
+   %LOCALAPPDATA%\SchoolManager\backups
+   Copy this folder to a USB drive regularly.
+
+8. CLOSING THE APP
+   Use "Exit Software" at the bottom of the sidebar, or simply
+   close the app window. Everything is saved first.
+
+9. UPDATING
+   Run the new setup file. Your data, license and WhatsApp
+   pairing are preserved automatically.
+
+NEED HELP?
+   Contact Ahmi software firm with:
+   - the version number (see installer file name),
+   - the log file: %LOCALAPPDATA%\SchoolManager\school_manager.log
+
+All data belongs to your school and stays on your computer.
+============================================================

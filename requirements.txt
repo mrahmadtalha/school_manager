@@ -8,6 +8,9 @@ SQLAlchemy==2.1.1
 Werkzeug==3.1.9
 Jinja2==3.1.6
 
+# Production WSGI server used by the Windows launcher (school_manager.pyw)
+waitress==3.0.2
+
 # Reporting / export support
 pandas==2.2.3                 # Excel + CSV export and reporting
 openpyxl==3.1.5               # .xlsx writer used by pandas
@@ -21,3 +24,7 @@ requests==2.32.3
 
 # Test runner (the suite in tests/ is part of the deliverable)
 pytest==9.1.1
+
+# Build tools (Phase 4/5) - not needed at runtime on the customer machine
+pyarmor==9.2.7
+pyinstaller==6.22.3

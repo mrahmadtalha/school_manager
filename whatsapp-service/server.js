@@ -165,6 +165,12 @@ async function startSocket() {
       auth: state,
       printQRInTerminal: false,
       syncFullHistory: false,
+      // Generous timeouts: Baileys' init-queries handshake regularly exceeds
+      // the defaults on slow school connections ("Timed Out" during
+      // 'init queries'), and short keep-alives drop good connections.
+      connectTimeoutMs: 60000,
+      defaultQueryTimeoutMs: 60000,
+      keepAliveIntervalMs: 30000,
     });
     sock = activeSocket;
 
@@ -541,6 +547,17 @@ if (require.main === module) {
   process.on('SIGINT', () => {
     if (pollTimer) clearInterval(pollTimer);
     process.exit(0);
+  });
+  // Transient Baileys errors (e.g. 'unexpected error in init queries' /
+  // 'Timed Out' on flaky school connections) must never kill the bridge:
+  // the socket restart logic owns recovery, the process stays up.
+  process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled promise rejection (bridge stays up):',
+                  reason && reason.message ? reason.message : reason);
+  });
+  process.on('uncaughtException', (error) => {
+    console.error('Uncaught exception (bridge stays up):', error.message);
+    scheduleSocketRestart(2000);
   });
 }
 

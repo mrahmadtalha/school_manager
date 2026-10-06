@@ -34,12 +34,12 @@ async function sendTestWhatsApp() {
         });
         const data = await response.json();
         if (data.ok) {
-            alert('WhatsApp test message sent successfully.');
+            window.SchoolUI.toast('WhatsApp test message sent successfully.', 'success');
         } else {
-            alert(data.message || 'Could not send WhatsApp test message.');
+            window.SchoolUI.toast(data.message || 'Could not send WhatsApp test message.', 'warning');
         }
     } catch (error) {
-        alert('WhatsApp service is unavailable.');
+        window.SchoolUI.toast('WhatsApp service is unavailable.', 'warning');
     }
 }
 
@@ -47,25 +47,25 @@ window.addEventListener('DOMContentLoaded', checkWhatsappStatus);
 </script>
 
 <!-- ======================= HEADER ======================= -->
-<div class="d-flex flex-wrap justify-content-between align-items-start pt-3 pb-2 mb-3 border-bottom gap-3">
+<div class="dashboard-header d-flex justify-content-between align-items-start flex-wrap pt-3 pb-3 mb-4 gap-3">
     <div>
-        <p class="text-muted small text-uppercase fw-bold mb-1">School operations overview</p>
+        <p class="eyebrow mb-2">School operations overview</p>
         <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-tachometer-alt text-primary me-2"></i>Executive Command Center</h1>
         <p class="text-muted small mb-0">
             {{ today.strftime('%A, %d %B %Y') }}
             {% if dash.is_admin and dash.account_book %} · Session {{ dash.account_book.session_label }}{% endif %}
         </p>
     </div>
-    <div class="d-flex align-items-center gap-2 flex-wrap">
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
         <span class="badge {% if whatsapp_status and whatsapp_status.connected %}bg-success-subtle text-success-emphasis{% else %}bg-secondary-subtle text-secondary-emphasis{% endif %} border px-3 py-2" id="wa-status-badge">
             {% if whatsapp_status and whatsapp_status.connected %}Connected{% else %}Disconnected{% endif %}
         </span>
         <span class="visually-hidden" id="wa-status-text"></span>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="checkWhatsappStatus()" title="Refresh WhatsApp status">
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="checkWhatsappStatus()" title="Refresh WhatsApp status" aria-label="Refresh WhatsApp status">
             <i class="fas fa-sync-alt"></i>
         </button>
         {% if dash.is_admin %}
-        <button type="button" class="btn btn-sm btn-outline-success" onclick="sendTestWhatsApp()" title="Send WhatsApp test message">
+        <button type="button" class="btn btn-sm btn-outline-success" onclick="sendTestWhatsApp()" title="Send WhatsApp test message" aria-label="Send WhatsApp test message">
             <i class="fab fa-whatsapp"></i>
         </button>
         {% endif %}
@@ -389,7 +389,7 @@ window.addEventListener('DOMContentLoaded', checkWhatsappStatus);
 
 {% if dash.is_admin and dash.account_book %}
 <script id="dashData" type="application/json">{{ dash.chart_payload|tojson }}</script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>
 <script>
 (function () {
     var payloadEl = document.getElementById('dashData');

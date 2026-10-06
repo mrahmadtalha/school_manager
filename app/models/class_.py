@@ -53,3 +53,25 @@ class TimetableSlot(db.Model):
     subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=True)
 
     subject = db.relationship('SubjectModel', lazy=True)
+
+
+class TimetableConfig(db.Model):
+    """Per-class timetable setup: period timings (incl. breaks) and class in-charge.
+
+    ``rows_json`` is an ordered JSON list such as
+    ``[{"kind": "period", "start": "08:30", "end": "09:10", "label": ""},
+       {"kind": "break",  "start": "11:10", "end": "11:30", "label": "Break"}]``.
+    Lesson rows are numbered 1..N in order; those numbers match
+    ``TimetableSlot.period_no``. The table is created by ``db.create_all()``,
+    so no manual migration is needed.
+    """
+    __tablename__ = 'timetable_configs'
+    __table_args__ = {'extend_existing': True}
+
+    id = db.Column(db.Integer, primary_key=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), unique=True, nullable=False)
+    incharge_teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True)
+    template_key = db.Column(db.String(30), nullable=True)
+    rows_json = db.Column(db.Text, nullable=True)
+
+    incharge = db.relationship('TeacherModel', lazy=True)

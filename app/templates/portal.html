@@ -90,8 +90,13 @@
                             <td>{{ mark.test_info.test_title if mark.test_info else '—' }}</td>
                             <td>{{ mark.test_info.subject_info.name if mark.test_info and mark.test_info.subject_info else '—' }}</td>
                             <td>{{ mark.test_info.test_date if mark.test_info else '—' }}</td>
+                            {% if mark.is_absent %}
+                            <td><span class="badge bg-warning text-dark">Absent</span></td>
+                            <td><span class="badge bg-secondary">ABS</span></td>
+                            {% else %}
                             <td>{{ mark.marks_obtained }} / {{ mark.test_info.total_marks if mark.test_info else '—' }}</td>
                             <td><span class="badge bg-primary">{{ mark.grade or '—' }}</span></td>
+                            {% endif %}
                         </tr>
                         {% else %}
                         <tr><td colspan="5" class="text-center text-muted py-4">No results published yet.</td></tr>

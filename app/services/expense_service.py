@@ -57,6 +57,53 @@ def filter_expenses(date_from=None, date_to=None, category_id=None, search=None)
     return query.order_by(Expense.date.desc(), Expense.id.desc()).all()
 
 
+# --------------------------------------------------------------------------- #
+# Recurring expenses (continue a previous month's entry)
+# --------------------------------------------------------------------------- #
+
+def month_expenses(month_year):
+    """Every expense recorded inside the given 'YYYY-MM' month, newest first."""
+    from app.services.payroll_service import month_bounds
+
+    start, end = month_bounds(month_year)
+    if start is None:
+        return []
+    return filter_expenses(date_from=start, date_to=end)
+
+
+def previous_month_expenses(month_year=None):
+    """Expenses from the month before ``month_year`` (default: this month).
+
+    Used by the "Continue previous month's expense" shortcut: the school picks
+    one of last month's entries and the Add form is pre-filled from it.
+    """
+    from app.services.payroll_service import current_month_key, shift_month
+
+    base = month_year or current_month_key()
+    previous = shift_month(base, -1)
+    return month_expenses(previous) if previous else []
+
+
+def continue_payload(expense):
+    """Form field values to pre-fill the Add form from an existing expense.
+
+    Deliberately excludes the date: a continued expense is a *new* record for
+    today, so the user re-dates it (or keeps today's date) before saving.
+    """
+    if expense is None:
+        return None
+    return {
+        'source_id': expense.id,
+        'category_id': expense.category_id,
+        'category_name': expense.category.name if expense.category else '',
+        'amount': round(float(expense.amount or 0), 2),
+        'payment_method': expense.payment_method or 'Cash',
+        'receipt_no': expense.receipt_no or '',
+        'description': expense.description or '',
+        'source_date': expense.date.isoformat() if expense.date else '',
+    }
+
+
 def summary(expenses):
     total = round(sum(e.amount or 0 for e in expenses), 2)
     by_category = {}

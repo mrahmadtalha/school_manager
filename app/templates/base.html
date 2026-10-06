@@ -4,26 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ school.school_name if school else 'School Manager' }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/datatables/css/dataTables.bootstrap5.min.css') }}">
     <style>
         .required-asterisk { color: #dc3545; font-weight: 700; margin-left: .2rem; }
-        {% if school and school.primary_color %}
+        {# School brand colours.  Bootstrap bakes .btn-primary/.text-primary at
+           build time, so those need the explicit overrides below; the -rgb
+           variables are what its focus rings and *-subtle utilities read. #}
+        {% set brand = school.brand_palette if school and school.brand_palette else none %}
+        {% if brand %}
         :root {
-            --bs-primary: {{ school.primary_color }};
-            --bs-primary-rgb: {{ school.primary_color|replace('#','')|map('int', 16)|join(',') if false else '13,110,253' }}; /* Simplification for hex to rgb if needed, usually Bootstrap just needs override */
+            --bs-primary: {{ brand.primary }};
+            --bs-primary-rgb: {{ brand.primary_rgb }};
         }
-        .text-primary, .btn-outline-primary { color: {{ school.primary_color }} !important; }
-        .bg-primary, .btn-primary { background-color: {{ school.primary_color }} !important; border-color: {{ school.primary_color }} !important; }
+        .text-primary, .btn-outline-primary { color: {{ brand.primary }} !important; }
+        .bg-primary, .btn-primary { background-color: {{ brand.primary }} !important; border-color: {{ brand.primary }} !important; }
+        .bg-primary-subtle { background-color: {{ brand.primary_subtle }} !important; }
+        .border-primary-subtle { border-color: {{ brand.primary_border_subtle }} !important; }
         {% endif %}
-        {% if school and school.secondary_color %}
+        {% if brand and brand.secondary is defined %}
         :root {
-            --bs-secondary: {{ school.secondary_color }};
+            --bs-secondary: {{ brand.secondary }};
+            --bs-secondary-rgb: {{ brand.secondary_rgb }};
         }
-        .text-secondary, .btn-outline-secondary { color: {{ school.secondary_color }} !important; }
-        .bg-secondary, .btn-secondary { background-color: {{ school.secondary_color }} !important; border-color: {{ school.secondary_color }} !important; }
+        .text-secondary, .btn-outline-secondary { color: {{ brand.secondary }} !important; }
+        .bg-secondary, .btn-secondary { background-color: {{ brand.secondary }} !important; border-color: {{ brand.secondary }} !important; }
+        .bg-secondary-subtle { background-color: {{ brand.secondary_subtle }} !important; }
         {% endif %}
     </style>
     <script>
@@ -70,7 +78,7 @@
             <!-- School Identity -->
             <div class="text-center py-3 border-bottom border-secondary">
                 {% if school and school.logo_filename %}
-                <img src="{{ url_for('static', filename=school.logo_filename) }}"
+                <img src="{{ url_for('main.brand_logo') }}"
                      alt="Logo" style="max-height:60px; max-width:100%; object-fit:contain;" class="mb-2 d-block mx-auto">
                 {% else %}
                 <i class="fas fa-school text-warning fa-2x mb-2 d-block"></i>
@@ -262,18 +270,65 @@
                         <span class="nav-icon nav-icon-logout"><i class="fas fa-sign-out-alt"></i></span> <span class="nav-label">Logout</span>
                     </a>
                 </li>
+                {% if current_user.is_authenticated and current_user.role == 'admin' %}
+                <li class="nav-item mb-2">
+                    <button type="button" class="btn btn-link nav-link text-danger ps-2 text-start w-100"
+                            data-bs-toggle="modal" data-bs-target="#exitSoftwareModal"
+                            title="Close School Manager completely">
+                        <span class="nav-icon nav-icon-logout"><i class="fas fa-power-off"></i></span> <span class="nav-label">Exit Software</span>
+                    </button>
+                </li>
+                {% endif %}
             </ul>
         </nav>
 
         <!-- Main Content -->
         <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 py-4">
             {% include '_license_banner.html' %}
+            {# Flash messages: rendered once, for every page. `.no-print` keeps
+               them off printed documents and the aria attributes make them
+               announced when they appear. A page needing different placement
+               can override {% block flashes %}. #}
+            {% block flashes %}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}{% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show no-print" role="alert">
+                  {{ message }}
+                  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+              {% endfor %}{% endif %}
+            {% endwith %}
+            {% endblock %}
             {% block content %}{% endblock %}
         </main>
     </div>
 </div>
 
 <!-- Change Password Modal -->
+{% if current_user.is_authenticated and current_user.role == 'admin' %}
+<div class="modal fade" id="exitSoftwareModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form action="{{ url_for('auth.shutdown') }}" method="POST" id="exit-software-form">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title"><i class="fas fa-power-off me-2"></i>Exit Software</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-start">
+                    <p class="mb-1 fw-semibold">Are you sure you want to close School Manager?</p>
+                    <p class="text-muted small mb-0">The background server will stop and all users will be
+                    signed out. Everything is saved automatically before the app closes.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger"><i class="fas fa-power-off me-1"></i> Yes, close School Manager</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="modal fade" id="changePwModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -306,10 +361,11 @@
 </div>
 
 <!-- Scripts -->
-<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/jquery/jquery-3.7.0.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('static', filename='ui.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/datatables/js/jquery.dataTables.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/datatables/js/dataTables.bootstrap5.min.js') }}"></script>
 
 <script>
     (function () {
@@ -428,10 +484,22 @@
                     "pageLength": 10,
                     "lengthMenu": [[10, 25, 50, 100], [10, 25, 50, 100]],
                     "language": { "search": "Quick Filter:" },
+                    "autoWidth": false,
                     "columnDefs": [
                         { "orderable": false, "targets": "no-sort" }
                     ]
                 };
+
+                // Wide directories scroll sideways in DataTables' own scroll
+                // region (dataTables_scrollBody), so the search box, page
+                // length and pagination stay in view above/below the table.
+                // The table must NOT also sit in a .table-responsive wrapper:
+                // two nested scroll containers add a second scrollbar.
+                var scrollX = $table.data('scroll-x');
+                if (scrollX === true || scrollX === 'true' || scrollX === '1') {
+                    options.scrollX = true;
+                    options.scrollCollapse = true;
+                }
                 
                 var order = $table.data('order');
                 if (order) {

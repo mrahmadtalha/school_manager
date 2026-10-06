@@ -1,0 +1,166 @@
+{#-
+    Column picker + client-side column visibility, shared by the Student and
+    Teacher pages.
+
+    Usage (inside a page that renders the table):
+        {% include '_column_picker.html' %}
+    Expected context:
+        column_picker  -> picker_payload(...) from app.services.record_view
+        export_urls    -> {format: {"view": url, "all": url}} for the current filters
+
+    Every <th>/<td> in the table carries a data-col="<field key>"; the script
+    below shows/hides those columns, remembers the choice in localStorage, and
+    rewrites the "current view" export links to match.
+-#}
+{% set picker = column_picker %}
+<div class="dropdown" data-column-picker="{{ picker.entity }}">
+    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+            data-bs-toggle="dropdown" data-bs-auto-close="outside" id="columnPickerBtn">
+        <i class="fas fa-table-columns me-1"></i> Columns
+        <span class="badge bg-secondary ms-1" data-column-count>{{ picker.columns | selectattr('selected') | list | length }}</span>
+    </button>
+    <div class="dropdown-menu p-3 shadow" style="min-width: 320px; max-height: 70vh; overflow-y: auto;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-bold small text-muted text-uppercase">Show / hide fields</span>
+            <span class="badge bg-light text-muted border" data-column-total>{{ picker.columns | length }} fields</span>
+        </div>
+
+        <div class="btn-group btn-group-sm w-100 mb-3" role="group">
+            <button type="button" class="btn btn-outline-primary" data-column-preset="all">
+                <i class="fas fa-list me-1"></i>Show all fields
+            </button>
+            <button type="button" class="btn btn-outline-secondary" data-column-preset="default">
+                <i class="fas fa-rotate-left me-1"></i>Reset
+            </button>
+        </div>
+
+        {% for group in picker.groups %}
+        <div class="mb-2">
+            <div class="small fw-bold text-primary border-bottom pb-1 mb-1">{{ group.name }}</div>
+            {% for field in group.fields %}
+            <div class="form-check small">
+                <input class="form-check-input" type="checkbox"
+                       id="col_{{ picker.entity }}_{{ field.key | replace(':', '_') }}"
+                       data-col-toggle="{{ field.key }}"
+                       {% if field.selected %}checked{% endif %}>
+                <label class="form-check-label" for="col_{{ picker.entity }}_{{ field.key | replace(':', '_') }}">
+                    {{ field.label }}
+                    {% if field.required %}<span class="text-danger" title="Required field">*</span>{% endif %}
+                </label>
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+
+        <div class="form-text mt-2 mb-0">
+            Exports follow this choice — use the Export Data menu to download
+            <strong>current view columns</strong> or <strong>all fields</strong>.
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var picker = document.querySelector('[data-column-picker="{{ picker.entity }}"]');
+    if (!picker) return;
+    var ENTITY = {{ picker.entity | tojson }};
+    var TABLE_ID = {{ table_id | tojson }};
+    var EXPORT_URLS = {{ export_urls | tojson }};
+    var STORAGE_KEY = 'zwork:columns:' + ENTITY;
+    var DEFAULT_KEYS = {{ picker.columns | selectattr('default') | map(attribute='key') | list | tojson }};
+    var ALL_KEYS = {{ picker.columns | map(attribute='key') | list | tojson }};
+
+    function tableEl() { return document.getElementById(TABLE_ID); }
+
+    function storedKeys() {
+        try {
+            var raw = window.localStorage.getItem(STORAGE_KEY);
+            if (!raw) return null;
+            var parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return null;
+            return parsed.filter(function (key) { return ALL_KEYS.indexOf(key) !== -1; });
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function currentKeys() {
+        return Array.prototype.slice.call(
+            picker.querySelectorAll('[data-col-toggle]'))
+            .filter(function (box) { return box.checked; })
+            .map(function (box) { return box.dataset.colToggle; });
+    }
+
+    function applyKeys(keys, persist) {
+        var wanted = {};
+        keys.forEach(function (key) { wanted[key] = true; });
+
+        var table = tableEl();
+        if (table) {
+            var dt = (window.jQuery && jQuery.fn.DataTable &&
+                      jQuery.fn.DataTable.isDataTable(table)) ? jQuery(table).DataTable() : null;
+            ALL_KEYS.forEach(function (key, index) {
+                if (dt) {
+                    // Prefer DataTables' API so filtering / paging stay consistent.
+                    dt.column(index).visible(!!wanted[key]);
+                } else {
+                    table.querySelectorAll('[data-col="' + key + '"]').forEach(function (cell) {
+                        cell.style.display = wanted[key] ? '' : 'none';
+                    });
+                }
+            });
+            if (dt) dt.columns.adjust();
+        }
+
+        picker.querySelectorAll('[data-col-toggle]').forEach(function (box) {
+            box.checked = !!wanted[box.dataset.colToggle];
+        });
+
+        var count = picker.querySelector('[data-column-count]');
+        if (count) count.textContent = keys.length;
+
+        // Keep "current view" export links in step with what is on screen.
+        var csv = keys.join(',');
+        Object.keys(EXPORT_URLS || {}).forEach(function (fmt) {
+            var button = document.querySelector('[data-export-view="' + fmt + '"]');
+            if (button) {
+                var sep = EXPORT_URLS[fmt].view.indexOf('?') === -1 ? '?' : '&';
+                button.href = EXPORT_URLS[fmt].view + sep + 'cols=' + encodeURIComponent(csv);
+            }
+        });
+
+        if (persist) {
+            try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(keys)); } catch (e) {}
+        }
+    }
+
+    // Restore a previous choice (if any) once DataTables has initialised.
+    function restore() {
+        var keys = storedKeys();
+        if (keys && keys.length) {
+            applyKeys(keys, false);
+        } else {
+            applyKeys(DEFAULT_KEYS, false);
+        }
+    }
+    if (window.jQuery && jQuery.fn.DataTable && tableEl() &&
+        jQuery.fn.DataTable.isDataTable(tableEl())) {
+        restore();
+    } else {
+        window.addEventListener('load', restore);
+    }
+
+    picker.addEventListener('change', function (event) {
+        if (event.target.matches('[data-col-toggle]')) {
+            applyKeys(currentKeys(), true);
+        }
+    });
+
+    picker.querySelectorAll('[data-column-preset]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var preset = this.dataset.columnPreset;
+            applyKeys(preset === 'all' ? ALL_KEYS.slice() : DEFAULT_KEYS.slice(), true);
+        });
+    });
+})();
+</script>

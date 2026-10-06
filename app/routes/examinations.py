@@ -9,6 +9,7 @@ from app.models import (ClassModel, StudentMarkModel, StudentModel, SubjectModel
                         TermExam, TestModel, TestTypeModel)
 from app.routes import main
 from app.services.audit import log_action
+from app.services.marks import ABSENT_LETTER, is_absent_token
 from app.services.whatsapp_automation import queue_automation_message  # noqa: F401
 
 #: Card accent colours per test category (case-insensitive, with safe fallback).
@@ -312,7 +313,23 @@ def enter_batch_marks():
             for test in tests:
                 for student in students:
                     marks_str = request.form.get(f'marks_{student.id}_{test.id}')
-                    if marks_str is not None and marks_str.strip() != '':
+                    if marks_str is not None and is_absent_token(marks_str):
+                        # Absent: stored as a real record so the paper counts as
+                        # entered, but it is left out of every total and grade.
+                        mark_record = StudentMarkModel.query.filter_by(
+                            test_id=test.id, student_id=student.id).first()
+                        if mark_record:
+                            mark_record.marks_obtained = 0.0
+                            mark_record.percentage = None
+                            mark_record.grade = None
+                            mark_record.is_absent = True
+                        else:
+                            db.session.add(StudentMarkModel(
+                                test_id=test.id, student_id=student.id,
+                                marks_obtained=0.0, percentage=None, grade=None,
+                                is_absent=True))
+                        saved_count += 1
+                    elif marks_str is not None and marks_str.strip() != '':
                         marks_obtained = float(marks_str)
                         if marks_obtained > test.total_marks:
                             flash(f'Error: Marks obtained cannot exceed total marks ({test.total_marks}) for {student.student_name} in {test.subject_info.name}.', 'danger')
@@ -328,6 +345,7 @@ def enter_batch_marks():
                             mark_record.marks_obtained = marks_obtained
                             mark_record.percentage = round(percentage, 1)
                             mark_record.grade = grade
+                            mark_record.is_absent = False
                         else:
                             new_mark = StudentMarkModel(
                                 test_id=test.id, student_id=student.id,
@@ -364,7 +382,8 @@ def enter_batch_marks():
     all_marks = StudentMarkModel.query.filter(StudentMarkModel.test_id.in_([t.id for t in tests])).all()
     for m in all_marks:
         if m.student_id in existing_marks:
-            existing_marks[m.student_id][m.test_id] = m.marks_obtained
+            existing_marks[m.student_id][m.test_id] = (
+                ABSENT_LETTER if m.is_absent else m.marks_obtained)
 
     return render_template(
         'enter_batch_marks.html',

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import re
 from datetime import date, datetime
 from functools import wraps
@@ -21,7 +22,7 @@ from flask_login import current_user
 from app.database import db
 from app.models import (
     AutomationSettings, ClassModel, DeliveryLog, MessageQueue, SchoolSettings,
-    StudentModel, TeacherModel, ROLE_ADMIN,
+    StudentModel, TeacherModel, ROLE_ADMIN, get_holiday_ranges, set_holiday_ranges,
 )
 from app.routes import main
 from app.security import role_required
@@ -61,23 +62,19 @@ def bridge_access_required(view):
 
 
 def get_whatsapp_service_status():
-    try:
-        response = requests.get(f'{_node_service_url()}/health', timeout=3)
-        data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
-        if response.ok:
-            data.setdefault('serviceReachable', True)
-            data.setdefault('phonePaired', bool(data.get('connected')))
-            data.setdefault('messageSent', bool(data.get('messageSent')))
-            if data.get('message'):
-                return data
-            if data.get('lastError'):
-                data['message'] = data['lastError']
-                return data
-            data['message'] = 'WhatsApp service is running.' if data.get('connected') else 'Waiting for WhatsApp to connect.'
-            return data
-        return {'ok': False, 'connected': False, 'serviceReachable': False, 'phonePaired': False, 'messageSent': False, 'status': 'offline', 'message': 'WhatsApp service unavailable'}
-    except requests.RequestException:
-        return {'ok': False, 'connected': False, 'serviceReachable': False, 'phonePaired': False, 'messageSent': False, 'status': 'offline', 'message': 'WhatsApp service unavailable'}
+    """Bridge status for the automation page and dashboard.
+
+    Always includes the optional-component ``install`` block (see
+    ``app/services/whatsapp_bridge.py``) so the UI can tell "not installed"
+    (a normal state - WhatsApp is optional) apart from "installed but down".
+    """
+    from app.services import whatsapp_bridge
+
+    status = whatsapp_bridge.health()
+    install = whatsapp_bridge.install_summary(status)
+    install['service_url'] = _node_service_url()
+    status['install'] = install
+    return status
 
 
 @main.route('/settings', methods=['GET', 'POST'])
@@ -103,9 +100,14 @@ def school_settings():
             if logo and logo.filename:
                 ext = logo.filename.rsplit('.', 1)[-1].lower()
                 if ext in ('png', 'jpg', 'jpeg', 'gif', 'webp'):
-                    logo_path = os.path.join(current_app.root_path, 'static', 'logo.' + ext)
-                    logo.save(logo_path)
-                    settings.logo_filename = 'logo.' + ext
+                    # Stored in the per-school data folder (writable at
+                    # runtime) — the install directory is read-only for
+                    # standard users when the app lives in Program Files.
+                    uploads_dir = Path(current_app.config['DATA_DIR']) / 'uploads'
+                    uploads_dir.mkdir(parents=True, exist_ok=True)
+                    logo_path = uploads_dir / f'logo.{ext}'
+                    logo.save(str(logo_path))
+                    settings.logo_filename = f'logo.{ext}'
                 else:
                     flash('Logo must be PNG, JPG, GIF or WEBP.', 'warning')
         elif action == 'save_academic_settings':
@@ -121,8 +123,30 @@ def school_settings():
             settings.school_start_time = request.form.get('school_start_time', '08:30').strip() or '08:30'
             settings.school_end_time = request.form.get('school_end_time', '15:00').strip() or '15:00'
             settings.attendance_grace_minutes = grace_minutes
-            settings.weekend_off = request.form.get('weekend_off') == 'on'
+            if 'saturday_off' in request.form or 'sunday_off' in request.form:
+                settings.saturday_off = request.form.get('saturday_off') == 'on'
+                settings.sunday_off = request.form.get('sunday_off') == 'on'
+            else:
+                # Older clients posting only the combined weekend_off flag.
+                legacy_weekend = request.form.get('weekend_off') == 'on'
+                settings.saturday_off = legacy_weekend
+                settings.sunday_off = legacy_weekend
+            # Legacy flag stays true when both weekend days are off.
+            settings.weekend_off = (settings.saturday_off and settings.sunday_off)
             settings.custom_off_days = request.form.get('custom_off_days', '').strip()
+
+            # Holiday / vacation date ranges (label + start + end rows)
+            labels = request.form.getlist('holiday_label[]')
+            starts = request.form.getlist('holiday_start[]')
+            ends = request.form.getlist('holiday_end[]')
+            ranges = []
+            for i in range(max(len(starts), len(ends), len(labels))):
+                label = labels[i].strip() if i < len(labels) else ''
+                start = starts[i].strip() if i < len(starts) else ''
+                end = ends[i].strip() if i < len(ends) else ''
+                if start and end and start <= end:
+                    ranges.append({'label': label, 'start': start, 'end': end})
+            set_holiday_ranges(ranges)
             settings_tab = 'academic'
         else:
             flash('Choose a settings section to save.', 'danger')
@@ -161,7 +185,7 @@ def school_settings():
     active_tab = request.args.get('tab', 'general')
     if active_tab not in {'general', 'academic', 'custom-fields', 'integrations'}:
         active_tab = 'general'
-    return render_template('settings.html', settings=settings, backup_state=backup_state, grading_scale=grading_scale, student_custom_fields=student_custom_fields, teacher_custom_fields=teacher_custom_fields, active_tab=active_tab)
+    return render_template('settings.html', settings=settings, backup_state=backup_state, grading_scale=grading_scale, student_custom_fields=student_custom_fields, teacher_custom_fields=teacher_custom_fields, active_tab=active_tab, holiday_ranges=get_holiday_ranges())
 
 
 @main.route('/settings/grading', methods=['POST'])
@@ -515,8 +539,27 @@ def automation_panel():
         trigger_filter=trigger_filter,
         search_term=search_term,
         quote=quote,
+        bridge_install=get_whatsapp_service_status().get('install'),
         classes=ClassModel.query.order_by(ClassModel.name).all(),
     )
+
+
+@main.route('/brand-logo')
+def brand_logo():
+    """Serve the school logo from the data folder (installed products keep
+    the install directory read-only), falling back to the legacy static copy
+    from development setups."""
+    settings = SchoolSettings.query.first()
+    filename = (settings.logo_filename if settings else None) or ''
+    if filename:
+        data_copy = Path(current_app.config['DATA_DIR']) / 'uploads' / filename
+        if data_copy.is_file():
+            return send_file(data_copy, max_age=3600)
+        legacy_copy = Path(current_app.root_path) / 'static' / filename
+        if legacy_copy.is_file():
+            return send_file(legacy_copy, max_age=3600)
+    from flask import abort
+    abort(404)
 
 
 @main.route('/api/whatsapp/status', methods=['GET'])

@@ -4,6 +4,87 @@ body {
     color: #1f2937;
 }
 
+/* -- keyboard accessibility -----------------------------------------------
+   A visible focus ring is essential for keyboard users. Bootstrap's default is
+   subtle and disappears against the light card backgrounds, so ring any focused
+   control (keyboard focus only, via :focus-visible). */
+
+:focus-visible {
+    outline: 3px solid rgba(59, 130, 246, 0.65) !important;
+    outline-offset: 2px !important;
+}
+
+/* Keep the ring legible on dark surfaces (sidebar, dark cards). */
+#sidebar :focus-visible,
+.bg-dark :focus-visible,
+.btn-dark:focus-visible,
+.modal-header.bg-dark :focus-visible {
+    outline-color: #93c5fd !important;
+}
+
+/* Buttons and links inside tables need the ring above neighbouring cells. */
+.btn:focus-visible,
+.page-link:focus-visible {
+    position: relative;
+    z-index: 2;
+    box-shadow: none !important;
+}
+
+.form-control:focus-visible,
+.form-select:focus-visible,
+.form-check-input:focus-visible {
+    outline: 3px solid rgba(59, 130, 246, 0.55) !important;
+    outline-offset: 1px !important;
+}
+
+/* -- printing -------------------------------------------------------------
+   Documents such as date sheets and fee receipts are printed straight from the
+   browser. Anything marked .no-print (toolbars, flash messages, navigation)
+   must be hidden, and the page content must use the full sheet. */
+
+@media print {
+    .no-print,
+    .mobile-topbar,
+    #sidebar,
+    .sidebar-toggle,
+    .sidebar-toggle-row,
+    .btn-toolbar,
+    .no-print-bar {
+        display: none !important;
+    }
+
+    /* Content spans the sheet once the sidebar is hidden. */
+    main.col-md-9,
+    main[class*="col-lg-10"] {
+        margin-left: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: 0 0 100% !important;
+        padding: 0 !important;
+    }
+
+    body {
+        background: #fff !important;
+        color: #000 !important;
+    }
+
+    /* Cards print without shadows or gradients. */
+    .card,
+    .dashboard-header {
+        box-shadow: none !important;
+        background: #fff !important;
+        border-color: #cbd5e0 !important;
+    }
+
+    a[href]:after {
+        content: "";
+    }
+
+    .table {
+        font-size: 0.8rem;
+    }
+}
+
 #sidebar {
     min-height: 100vh;
     background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
@@ -325,6 +406,114 @@ body {
     padding-bottom: 0.9rem;
 }
 
+/* -- compact data tables --------------------------------------------------
+   Wide directories (Students/Teachers with many fields visible) must stay
+   readable: tighter cell padding/type, a horizontal scroll region that keeps
+   the toolbar and column picker in place, and ellipsised long free-text
+   columns whose full value stays available via the title attribute. */
+
+.table-panel .table > :not(caption) > * > * {
+    padding: 0.45rem 0.6rem;
+}
+
+.table-panel .table {
+    font-size: 0.875rem;
+    width: 100%;
+    margin-bottom: 0;
+}
+
+.table-panel .table thead th {
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+    vertical-align: bottom;
+    white-space: nowrap;
+}
+
+/* Keep short, predictable columns on one line... */
+.table-panel .col-date,
+.table-panel .col-num,
+.table-panel .col-bool,
+.table-panel .col-image,
+.table-panel .col-actions {
+    white-space: nowrap;
+}
+
+/* ...and let long free text wrap rather than stretch the table. */
+.table-panel .col-truncate {
+    max-width: 15rem;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.table-panel .col-image {
+    width: 48px;
+    padding-right: 0.2rem !important;
+}
+
+/* Actions stay reachable while the rest of the row scrolls sideways. */
+.table-panel .col-actions {
+    position: sticky;
+    right: 0;
+    background: #ffffff;
+    box-shadow: -1px 0 0 rgba(148, 163, 184, 0.2);
+    z-index: 1;
+}
+
+.table-panel .table tbody tr:hover .col-actions {
+    background-color: #f8fafc;
+}
+
+.table-panel thead th.col-actions {
+    z-index: 2;
+}
+
+/* Actions buttons are icon-only: keep them from adding extra width. */
+.table-panel .col-actions .btn {
+    padding: 0.25rem 0.45rem;
+    box-shadow: none;
+}
+
+.table-panel .col-actions .btn:hover {
+    transform: none;
+}
+
+/* DataTables horizontal scrolling: the scroll region is bounded and the
+   wrapper itself scrolls, so the search box, page length and pagination stay
+   visible above/below instead of being pushed off-screen. */
+.table-panel .dataTables_wrapper {
+    border-radius: 18px;
+}
+
+.table-panel .dataTables_wrapper > .row:first-child,
+.table-panel .dataTables_wrapper > .row:last-child {
+    padding: 0.6rem 0.9rem;
+    margin: 0;
+}
+
+.table-panel .dataTables_wrapper .dataTables_filter input,
+.table-panel .dataTables_wrapper .dataTables_length select {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.85rem;
+}
+
+.table-panel .dataTables_wrapper .dataTables_info,
+.table-panel .dataTables_wrapper .dataTables_paginate {
+    font-size: 0.85rem;
+}
+
+.table-panel div.dataTables_scrollBody {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.pagination .page-link {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.85rem;
+}
+
 .card-body {
     padding: 1.25rem;
 }
@@ -365,6 +554,10 @@ body {
 .table-panel {
     border-radius: 18px;
     overflow: hidden;
+    /* `clip` keeps the rounded corners without creating a scroll container,
+       which would otherwise stop the sticky Actions column from working.
+       Browsers that do not support it keep the `hidden` fallback above. */
+    overflow: clip;
 }
 
 .table thead th {

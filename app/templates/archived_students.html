@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_photo_macro.html" import avatar %}
 {% block content %}
 <div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
     <div>
@@ -11,14 +12,6 @@
     </a>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show">
-      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  {% endfor %}{% endif %}
-{% endwith %}
-
 {% if students %}
 
 <!-- Bulk Action Bar -->
@@ -30,7 +23,8 @@
         <div class="ms-auto d-flex gap-2 flex-wrap">
             <!-- Restore All -->
             <form action="{{ url_for('main.restore_all_students') }}" method="POST"
-                  onsubmit="return confirm('Restore ALL {{ students | length }} archived students?')">
+                  data-confirm="Restore ALL {{ students | length }} archived student(s)? They will return to the active list."
+                  data-confirm-ok="Restore all">
                 <button type="submit" class="btn btn-success btn-sm px-3">
                     <i class="fas fa-undo me-1"></i> Restore All ({{ students | length }})
                 </button>
@@ -60,7 +54,7 @@
                 {% for student in students %}
                 <tr>
                     <td class="ps-3 font-monospace fw-bold text-secondary">{{ student.roll_number }}</td>
-                    <td class="fw-bold">{{ student.student_name }}</td>
+                    <td class="fw-bold" data-order="{{ student.student_name | lower }}"><div class="d-flex align-items-center gap-2">{{ avatar('student', student, 32) }}<span>{{ student.student_name }}</span></div></td>
                     <td class="text-muted">{{ student.father_name }}</td>
                     <td><span class="badge bg-secondary">{{ student.class_info.name if student.class_info else 'N/A' }}</span></td>
                     <td class="text-muted small">{{ student.guardian_phone }}</td>
@@ -87,7 +81,7 @@
                         <a class="btn btn-sm btn-outline-dark me-1" href="{{ url_for('main.student_transcript_pdf', id=student.id) }}" title="Academic transcript">
                             <i class="fas fa-scroll"></i>
                         </a>
-                        <button class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#certModal{{ student.id }}" title="Print certificate">
+                        <button class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#certModal{{ student.id }}" title="Print certificate" aria-label="Print certificate">
                             <i class="fas fa-certificate"></i>
                         </button>
                         <form action="{{ url_for('main.restore_student', id=student.id) }}" method="POST" class="d-inline">

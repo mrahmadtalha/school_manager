@@ -8,7 +8,7 @@
         <a href="{{ url_for('main.fee_student_ledger', student_id=student.id) }}" class="btn btn-outline-secondary btn-sm">
             <i class="fas fa-book me-1"></i> Full Ledger
         </a>
-        <a href="{{ url_for('main.fees_list') }}" class="btn btn-outline-secondary btn-sm">
+        <a href="{{ back_to_fees_url }}" class="btn btn-outline-secondary btn-sm">
             <i class="fas fa-arrow-left me-1"></i> Back to Fees
         </a>
         <button onclick="window.print()" class="btn btn-dark btn-sm px-4">
@@ -16,14 +16,6 @@
         </button>
     </div>
 </div>
-
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show no-print">
-      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  {% endfor %}{% endif %}
-{% endwith %}
 
 <!-- Receipt Card -->
 <div class="row justify-content-center">
@@ -33,7 +25,7 @@
     <!-- School Header -->
     <div class="card-header bg-dark text-white text-center py-4">
         {% if school and school.logo_filename %}
-        <img src="{{ url_for('static', filename=school.logo_filename) }}"
+        <img src="{{ url_for('main.brand_logo') }}"
              alt="Logo" style="max-height:55px;" class="mb-2 d-block mx-auto">
         {% else %}
         <i class="fas fa-school fa-2x text-warning mb-2 d-block"></i>

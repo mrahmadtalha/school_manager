@@ -306,6 +306,9 @@ def migrate_teacher_profile_schema(app):
         if 'gender' not in columns:
             connection.execute('ALTER TABLE teachers ADD COLUMN gender VARCHAR(20)')
             print('Migration: added gender to teachers')
+        if 'photo_filename' not in columns:
+            connection.execute('ALTER TABLE teachers ADD COLUMN photo_filename VARCHAR(120)')
+            print('Migration: added photo_filename to teachers')
 
         # Salary normalization: monthly_salary is the single source of truth;
         # backfill it once from the legacy salary column where it is still empty.
@@ -415,6 +418,20 @@ def migrate_school_settings_schema(app):
         if 'weekend_off' not in settings_columns:
             connection.execute('ALTER TABLE school_settings ADD COLUMN weekend_off BOOLEAN DEFAULT 1')
             print('Migration: added weekend_off to school_settings')
+        if 'saturday_off' not in settings_columns:
+            # Seed from the legacy weekend_off flag so existing installs keep
+            # their Saturday behaviour when the toggle is split in two.
+            connection.execute(
+                'ALTER TABLE school_settings ADD COLUMN saturday_off BOOLEAN DEFAULT 1')
+            connection.execute(
+                'UPDATE school_settings SET saturday_off = weekend_off')
+            print('Migration: added saturday_off to school_settings')
+        if 'sunday_off' not in settings_columns:
+            connection.execute(
+                'ALTER TABLE school_settings ADD COLUMN sunday_off BOOLEAN DEFAULT 1')
+            connection.execute(
+                'UPDATE school_settings SET sunday_off = weekend_off')
+            print('Migration: added sunday_off to school_settings')
         if 'custom_off_days' not in settings_columns:
             connection.execute("ALTER TABLE school_settings ADD COLUMN custom_off_days VARCHAR(200) DEFAULT ''")
             print('Migration: added custom_off_days to school_settings')
@@ -532,6 +549,9 @@ def migrate_student_profile_schema(app):
             if 'sponsor_cnic' not in columns:
                 connection.execute('ALTER TABLE students ADD COLUMN sponsor_cnic VARCHAR(20)')
                 print('Migration: added sponsor_cnic to students')
+            if 'photo_filename' not in columns:
+                connection.execute('ALTER TABLE students ADD COLUMN photo_filename VARCHAR(120)')
+                print('Migration: added photo_filename to students')
             index_row = connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='index' "
                 "AND name='idx_students_status'").fetchone()
@@ -596,7 +616,7 @@ def migrate_term_exam_schema(app):
 
 
 def migrate_test_schema(app):
-    """Add per-category default marks to test types."""
+    """Add per-category default marks to test types and the absent flag to marks."""
     db_path = _sqlite_db_path(app)
     if not db_path or not os.path.exists(db_path):
         return
@@ -606,6 +626,11 @@ def migrate_test_schema(app):
         if columns and 'default_marks' not in columns:
             connection.execute('ALTER TABLE test_types ADD COLUMN default_marks FLOAT')
             print('Migration: added default_marks to test_types')
+        mark_columns = _table_columns(connection, 'student_marks')
+        if mark_columns and 'is_absent' not in mark_columns:
+            connection.execute(
+                'ALTER TABLE student_marks ADD COLUMN is_absent BOOLEAN NOT NULL DEFAULT 0')
+            print('Migration: added is_absent to student_marks')
         connection.commit()
 
 
@@ -708,98 +733,27 @@ def ensure_school_settings():
 
 
 def seed_demo_data(student_count=60, teacher_count=8, default_monthly_fee=2500.0):
-    from app.models import ClassModel, SectionModel, SubjectModel, TeacherModel, StudentModel, TestTypeModel
+    """Legacy entry point kept for compatibility — delegates to the generator.
 
-    class_names = [
-        'Playgroup', 'Nursery', 'Class 1', 'Class 2', 'Class 3',
-        'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'
-    ]
-    subject_names = ['English', 'Urdu', 'Mathematics', 'Science', 'Islamiyat']
-    test_types = ['Daily', 'Weekly', 'Monthly', 'Mid-Term', 'Final']
+    The advanced generator (app/services/seed_generator.py) supersedes the old
+    inline classes/teachers/students seeding; this wrapper produces a short
+    3-month demo history when called without explicit options.
+    """
+    from app.services.seed_generator import SeedConfig, run_seed
 
-    classes = []
-    for class_name in class_names:
-        class_obj = ClassModel.query.filter_by(name=class_name).first()
-        if class_obj is None:
-            class_obj = ClassModel(name=class_name)
-            db.session.add(class_obj)
-            db.session.flush()
-        classes.append(class_obj)
-
-        for section_name in ['A', 'B']:
-            if not SectionModel.query.filter_by(class_id=class_obj.id, name=section_name).first():
-                db.session.add(SectionModel(name=section_name, class_id=class_obj.id))
-
-        for subject_name in subject_names:
-            if not SubjectModel.query.filter_by(class_id=class_obj.id, name=subject_name).first():
-                db.session.add(SubjectModel(name=subject_name, class_id=class_obj.id))
-
-    for test_name in test_types:
-        if not TestTypeModel.query.filter_by(name=test_name).first():
-            db.session.add(TestTypeModel(name=test_name))
-
-    teacher_total = max(0, int(teacher_count))
-    if TeacherModel.query.count() == 0 and teacher_total > 0:
-        teacher_names = [
-            'M. Akram', 'Ayesha Bibi', 'Tariq Mahmood', 'Sana Khan', 'Usman Ali',
-            'Farah Nadeem', 'Ali Raza', 'Hina Malik', 'Bilal Ahmed', 'Maryam Noor',
-            'Zahid Hassan', 'Nadia Shahid', 'Kashif Aslam', 'Saima Qureshi'
-        ]
-        for idx in range(teacher_total):
-            teacher_name = teacher_names[idx % len(teacher_names)]
-            assigned_class = classes[idx % len(classes)].name
-            db.session.add(TeacherModel(
-                teacher_id_str=f'T{idx + 1:03d}',
-                teacher_name=teacher_name,
-                joining_date=datetime.utcnow().date(),
-                qualification='B.Ed / M.Ed',
-                salary=35000 + (idx * 1500),
-                assigned_class=assigned_class,
-            ))
-
-    student_total = max(0, int(student_count))
-    if StudentModel.query.count() == 0 and student_total > 0:
-        from app.services.roll_numbers import FIRST_ROLL_NUMBER
-
-        first_names = ['Ali', 'Ahmed', 'Hassan', 'Hussain', 'Bilal', 'Ayesha', 'Fatima', 'Maryam', 'Hamza', 'Zain']
-        last_names = ['Khan', 'Awan', 'Malik', 'Rana', 'Qureshi', 'Abbasi']
-        class_list = ClassModel.query.order_by(ClassModel.id).all()
-        if not class_list:
-            class_list = classes
-
-        next_rolls = {}
-        for index in range(student_total):
-            class_obj = class_list[index % len(class_list)]
-            sections = SectionModel.query.filter_by(class_id=class_obj.id).order_by(SectionModel.id).all()
-            section = sections[index % len(sections)] if sections else None
-            first_name = first_names[index % len(first_names)]
-            last_name = last_names[index % len(last_names)]
-            next_roll = next_rolls.get(class_obj.id, FIRST_ROLL_NUMBER)
-            next_rolls[class_obj.id] = next_roll + 1
-            student = StudentModel(
-                roll_number=next_roll,
-                student_name=f'{first_name} {last_name}',
-                father_name=f'Father of {first_name}',
-                guardian_phone=f'+923{(300 + index) % 900:03d}{(1234567 + index) % 10000000:07d}',
-                address='Main Bazaar, Sargodha',
-                class_id=class_obj.id,
-                section_id=section.id if section else None,
-                monthly_fee=float(default_monthly_fee),
-            )
-            db.session.add(student)
-
-    db.session.flush()
-
-    ensure_demo_accounts()
-
-    db.session.commit()
+    run_seed(SeedConfig(
+        student_count=max(0, int(student_count)),
+        teacher_count=max(0, int(teacher_count)),
+        monthly_fee=float(default_monthly_fee),
+        months=3,
+    ))
 
 
 def ensure_demo_accounts(default_password=None):
     """Create one teacher and one parent demo account when missing."""
     from app.models import AdminUser, GuardianStudentLink, StudentModel
 
-    password = default_password or os.environ.get('DEFAULT_DEMO_PASSWORD') or 'School@2026'
+    password = default_password or os.environ.get('DEFAULT_DEMO_PASSWORD')
 
     if not AdminUser.query.filter_by(username='teacher1').first():
         teacher_user = AdminUser(username='teacher1', role=ROLE_TEACHER, full_name='Demo Teacher')

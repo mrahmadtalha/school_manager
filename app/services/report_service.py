@@ -1,6 +1,7 @@
 from app.models import (
     ClassModel, StudentModel, TestModel, StudentMarkModel
 )
+from app.services.marks import ABSENT_LABEL, mark_is_absent
 
 def calculate_grade(percentage, total_max):
     """
@@ -37,6 +38,10 @@ def build_class_results_matrix(selected_class_id, selected_type=''):
 
         for t in class_tests:
             m = marks_map.get((s.id, t.id))
+            if mark_is_absent(m):
+                student_row['scores'][t.id] = None
+                student_row['grades'][t.id] = None
+                continue          # absent: left out of the total and the maximum
             if m:
                 student_row['scores'][t.id] = m.marks_obtained
                 student_row['grades'][t.id] = m.grade
@@ -99,8 +104,12 @@ def get_class_results_export_rows(selected_class_id):
 
         for t in class_tests:
             m = marks_map.get((s.id, t.id))
-            score_str = f"{m.marks_obtained} ({m.grade})" if m else "-"
             col_name = f"{t.test_title} ({t.test_type})"
+            if mark_is_absent(m):
+                row_dict[col_name] = ABSENT_LABEL
+                row_list.append(ABSENT_LABEL)
+                continue          # absent: left out of the total and the maximum
+            score_str = f"{m.marks_obtained} ({m.grade})" if m else "-"
             row_dict[col_name] = score_str
             row_list.append(score_str)
             if m: total_ob += m.marks_obtained

@@ -17,16 +17,6 @@
     </div>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{ category }} alert-dismissible fade show">
-        {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-      </div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
-
 <ul class="nav nav-tabs settings-tabs mb-3" id="settings-tabs" role="tablist">
     <li class="nav-item" role="presentation">
         <button class="nav-link {% if active_tab == 'general' %}active{% endif %}" id="general-tab" data-bs-toggle="tab" data-bs-target="#general-panel" type="button" role="tab" aria-controls="general-panel" aria-selected="{{ 'true' if active_tab == 'general' else 'false' }}">
@@ -78,7 +68,7 @@
                         <label class="form-label fw-bold">School Logo <span class="text-muted small">(PNG, JPG, WEBP — optional)</span></label>
                         {% if settings.logo_filename %}
                         <div class="mb-2">
-                            <img src="{{ url_for('static', filename=settings.logo_filename) }}"
+                            <img src="{{ url_for('main.brand_logo') }}"
                                  alt="Current Logo" style="max-height:80px;" class="border rounded p-1">
                             <span class="text-muted small ms-2">Current logo</span>
                         </div>
@@ -146,7 +136,7 @@
                 <div class="text-center py-3 border-bottom border-secondary">
                     <div id="previewLogo">
                         {% if settings.logo_filename %}
-                        <img src="{{ url_for('static', filename=settings.logo_filename) }}"
+                        <img src="{{ url_for('main.brand_logo') }}"
                              style="max-height:60px;" class="mb-2 d-block mx-auto">
                         {% else %}
                         <i class="fas fa-school text-warning fa-2x mb-2 d-block" id="previewIcon"></i>
@@ -210,15 +200,54 @@
                         </div>
                         <div class="form-text">Check-ins after school start plus this time are marked Late.</div>
                     </div>
-                    <div class="form-check form-switch mb-3">
-                        <input class="form-check-input" type="checkbox" role="switch" id="weekend_off" name="weekend_off" {% if settings.weekend_off is not false %}checked{% endif %}>
-                        <label class="form-check-label fw-semibold" for="weekend_off">Weekend off (Saturday &amp; Sunday)</label>
+                    <div class="row g-3 mb-3">
+                        <div class="col-sm-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="saturday_off" name="saturday_off" {% if settings.saturday_off is not false %}checked{% endif %}>
+                                <label class="form-check-label fw-semibold" for="saturday_off">Saturday off</label>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="sunday_off" name="sunday_off" {% if settings.sunday_off is not false %}checked{% endif %}>
+                                <label class="form-check-label fw-semibold" for="sunday_off">Sunday off</label>
+                            </div>
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Other Days Off <span class="text-muted fw-normal">(optional)</span></label>
                         <input type="text" class="form-control" name="custom_off_days"
                                value="{{ settings.custom_off_days or '' }}" placeholder="e.g. Friday">
                         <div class="form-text">Separate multiple days with commas.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Holidays / Vacations <span class="text-muted fw-normal">(optional)</span></label>
+                        <div class="form-text mb-2">Date ranges when the school is closed. These days are excluded from attendance summaries and are never counted as attendance days.</div>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-2" style="max-width: 640px;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Label (e.g. Summer Vacations)</th>
+                                        <th>From</th>
+                                        <th>To</th>
+                                        <th class="text-center">Remove</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="holiday-ranges-body">
+                                    {% for item in holiday_ranges %}
+                                    <tr>
+                                        <td><input type="text" class="form-control form-control-sm" name="holiday_label[]" value="{{ item.label }}"></td>
+                                        <td><input type="date" class="form-control form-control-sm" name="holiday_start[]" value="{{ item.start }}"></td>
+                                        <td><input type="date" class="form-control form-control-sm" name="holiday_end[]" value="{{ item.end }}"></td>
+                                        <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()" aria-label="Remove"><i class="fas fa-times"></i></button></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="addHolidayRow()">
+                            <i class="fas fa-plus me-1"></i>Add Holiday Range
+                        </button>
                     </div>
                     <button type="submit" class="btn btn-success"><i class="fas fa-save me-1"></i> Save Academic Settings</button>
                 </form>
@@ -250,7 +279,7 @@
                                 <tr>
                                     <td><input type="text" class="form-control form-control-sm" name="grade[]" value="{{ item.grade }}" required></td>
                                     <td><input type="number" step="0.1" class="form-control form-control-sm" name="min_pct[]" value="{{ item.min }}" required></td>
-                                    <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()"><i class="fas fa-times"></i></button></td>
+                                    <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()" aria-label="Remove"><i class="fas fa-times"></i></button></td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -304,7 +333,7 @@
                                         </select>
                                     </td>
                                     <td class="text-center"><input type="checkbox" class="form-check-input custom-field-required" name="field_required[]" value="{{ field.name }}" {% if field.get('is_mandatory') %}checked{% endif %} aria-label="Require {{ field.label }}"></td>
-                                    <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()"><i class="fas fa-times"></i></button></td>
+                                    <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()" aria-label="Remove"><i class="fas fa-times"></i></button></td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -354,7 +383,7 @@
                                         </select>
                                     </td>
                                     <td class="text-center"><input type="checkbox" class="form-check-input custom-field-required" name="field_required[]" value="{{ field.name }}" {% if field.get('is_mandatory') %}checked{% endif %} aria-label="Require {{ field.label }}"></td>
-                                    <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()"><i class="fas fa-times"></i></button></td>
+                                    <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()" aria-label="Remove"><i class="fas fa-times"></i></button></td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -487,7 +516,18 @@ function addGradeRow() {
     var tr = document.createElement('tr');
     tr.innerHTML = '<td><input type="text" class="form-control form-control-sm" name="grade[]" required></td>' + 
                    '<td><input type="number" step="0.1" class="form-control form-control-sm" name="min_pct[]" required></td>' +
-                   '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest(\'tr\').remove()"><i class="fas fa-times"></i></button></td>';
+                   '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest(\'tr\').remove()" aria-label="Remove"><i class="fas fa-times"></i></button></td>';
+    tbody.appendChild(tr);
+}
+
+function addHolidayRow() {
+    var tbody = document.getElementById('holiday-ranges-body');
+    if (!tbody) return;
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><input type="text" class="form-control form-control-sm" name="holiday_label[]" placeholder="e.g. Eid Holidays"></td>' +
+                   '<td><input type="date" class="form-control form-control-sm" name="holiday_start[]"></td>' +
+                   '<td><input type="date" class="form-control form-control-sm" name="holiday_end[]"></td>' +
+                   '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest(\'tr\').remove()" aria-label="Remove"><i class="fas fa-times"></i></button></td>';
     tbody.appendChild(tr);
 }
 
@@ -504,7 +544,7 @@ function addCustomFieldRow(tbodyId) {
                        '</select>' +
                    '</td>' +
                    '<td class="text-center"><input type="checkbox" class="form-check-input custom-field-required" name="field_required[]" value="" aria-label="Make field required"></td>' +
-                   '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest(\'tr\').remove()"><i class="fas fa-times"></i></button></td>';
+                   '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest(\'tr\').remove()" aria-label="Remove"><i class="fas fa-times"></i></button></td>';
     tbody.appendChild(tr);
     bindCustomFieldRequiredRow(tr);
 }

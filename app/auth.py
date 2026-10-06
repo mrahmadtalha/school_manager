@@ -1,12 +1,14 @@
 from datetime import datetime
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import (Blueprint, current_app, flash, jsonify, redirect,
+                   render_template, request, session, url_for)
 from flask_login import current_user, login_required, login_user, logout_user
 
-from app.bootstrap import seed_demo_data
 from app.database import db
 from app.models import (ROLE_ACCOUNTANT, ROLE_ADMIN, ROLE_OWNER, AdminUser,
                         SchoolSettings)
+from app.seed_progress import (get_seed_job, seed_config_from_form,
+                               start_seed_job)
 from app.security import (
     clear_failed_logins,
     is_login_locked,
@@ -42,20 +44,6 @@ def setup_admin():
         email = (request.form.get('email') or '').strip()
         include_dummy_data = request.form.get('dummy_data') == 'on'
 
-        def clean_int(value, default):
-            try:
-                return max(0, int(value))
-            except (TypeError, ValueError):
-                return default
-
-        dummy_student_count = clean_int(request.form.get('dummy_student_count'), 60)
-        dummy_teacher_count = clean_int(request.form.get('dummy_teacher_count'), 8)
-        dummy_fee_value = (request.form.get('dummy_fee') or '').strip()
-        try:
-            dummy_fee = float(dummy_fee_value) if dummy_fee_value else 2500.0
-        except ValueError:
-            dummy_fee = 2500.0
-
         if not username or not password:
             flash('Username and password are required.', 'danger')
         elif len(username) > 80:
@@ -86,17 +74,36 @@ def setup_admin():
                        after={'username': username, 'role': ROLE_ADMIN})
 
             if include_dummy_data:
-                seed_demo_data(
-                    student_count=dummy_student_count,
-                    teacher_count=dummy_teacher_count,
-                    default_monthly_fee=dummy_fee,
-                )
+                # Commit the admin account before the worker thread starts
+                # writing, so both never fight over the SQLite write lock.
+                db.session.commit()
+                config = seed_config_from_form(request.form)
+                token = start_seed_job(current_app._get_current_object(), config)
+                session['seed_job_token'] = token
+                return redirect(url_for('auth.setup_progress'))
 
             db.session.commit()
             flash('School setup completed successfully. Please log in.', 'success')
             return redirect(url_for('auth.login'))
 
     return render_template('setup_admin.html')
+
+
+@auth.route('/setup-progress')
+def setup_progress():
+    token = session.get('seed_job_token')
+    if not token or get_seed_job(token) is None:
+        return redirect(url_for('auth.login'))
+    return render_template('setup_progress.html')
+
+
+@auth.route('/setup-progress/status')
+def setup_progress_status():
+    token = session.get('seed_job_token')
+    job = get_seed_job(token)
+    if job is None:
+        return jsonify({'state': 'unknown'}), 404
+    return jsonify(job)
 
 
 @auth.route('/login', methods=['GET', 'POST'])
@@ -149,6 +156,19 @@ def logout():
     session.clear()
     flash('You have been logged out.', 'info')
     return redirect(url_for('auth.login'))
+
+
+@auth.route('/shutdown', methods=['POST'])
+@login_required
+def shutdown():
+    """Exit School Manager (admin only) — stops the local server process."""
+    if getattr(current_user, 'role', '') != ROLE_ADMIN:
+        flash('Only an administrator can close School Manager.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    from app.graceful_exit import request_shutdown
+    request_shutdown(current_app._get_current_object())
+    return render_template('shutdown.html')
 
 
 @auth.route('/change-password', methods=['POST'])

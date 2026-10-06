@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_photo_macro.html" import photo_field, avatar, photo_script %}
 {% from "_custom_fields_macro.html" import render_custom_fields %}
 {% block content %}
 <style>
@@ -13,16 +14,39 @@
         <p class="text-muted small mb-0">Track admissions, fees, and student records from one place.</p>
     </div>
     <div class="btn-toolbar mb-2 mb-md-0 gap-2">
+        {% set export_args = {'search': search or None,
+                             'class_id': selected_class or None,
+                             'section_id': selected_section or None,
+                             'gender': selected_gender or None,
+                             'status': selected_status or None,
+                             'has_dues': '1' if has_dues else None} %}
+        {% set export_urls = {
+            'pdf': {'view': url_for('main.export_students_pdf', **export_args),
+                    'all': url_for('main.export_students_pdf', cols='all', **export_args)},
+            'excel': {'view': url_for('main.export_students_excel', **export_args),
+                      'all': url_for('main.export_students_excel', cols='all', **export_args)},
+            'csv': {'view': url_for('main.export_students_csv', **export_args),
+                    'all': url_for('main.export_students_csv', cols='all', **export_args)},
+        } %}
         <div class="dropdown">
             <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
                 <i class="fas fa-download me-1"></i> Export Data
             </button>
             <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="{{ url_for('main.export_students_pdf', search=search or None, class_id=selected_class or None, section_id=selected_section or None, gender=selected_gender or None, status=selected_status or None, has_dues='1' if has_dues else None) }}"><i class="fas fa-file-pdf text-danger me-2"></i>Download PDF (current view)</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('main.export_students_excel', search=search or None, class_id=selected_class or None, section_id=selected_section or None, gender=selected_gender or None, status=selected_status or None, has_dues='1' if has_dues else None) }}"><i class="fas fa-file-excel text-success me-2"></i>Download Excel (current view)</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('main.export_students_csv', search=search or None, class_id=selected_class or None, section_id=selected_section or None, gender=selected_gender or None, status=selected_status or None, has_dues='1' if has_dues else None) }}"><i class="fas fa-file-csv text-primary me-2"></i>Download CSV (current view)</a></li>
+                <li><h6 class="dropdown-header">Current view columns</h6></li>
+                <li><a class="dropdown-item" data-export-view="pdf" href="{{ export_urls['pdf']['view'] }}"><i class="fas fa-file-pdf text-danger me-2"></i>PDF — columns on screen</a></li>
+                <li><a class="dropdown-item" data-export-view="excel" href="{{ export_urls['excel']['view'] }}"><i class="fas fa-file-excel text-success me-2"></i>Excel — columns on screen</a></li>
+                <li><a class="dropdown-item" data-export-view="csv" href="{{ export_urls['csv']['view'] }}"><i class="fas fa-file-csv text-primary me-2"></i>CSV — columns on screen</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><h6 class="dropdown-header">All available fields ({{ column_picker.columns | length }})</h6></li>
+                <li><a class="dropdown-item" href="{{ export_urls['pdf']['all'] }}"><i class="fas fa-file-pdf text-danger me-2"></i>PDF — every field</a></li>
+                <li><a class="dropdown-item" href="{{ export_urls['excel']['all'] }}"><i class="fas fa-file-excel text-success me-2"></i>Excel — every field</a></li>
+                <li><a class="dropdown-item" href="{{ export_urls['csv']['all'] }}"><i class="fas fa-file-csv text-primary me-2"></i>CSV — every field</a></li>
             </ul>
         </div>
+        {% with table_id = 'studentTable', export_urls = export_urls %}
+        {% include '_column_picker.html' %}
+        {% endwith %}
         <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#importModal">
             <i class="fas fa-file-upload me-1"></i> Import Excel
         </button>
@@ -35,22 +59,23 @@
         </a>
         {% endif %}
         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addStudentModal">
-            <i class="fas fa-plus me-1"></i> Add New Student
+            <i class="fas fa-plus me-1"></i> Add Student
         </button>
     </div>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
-
+{# Plain-language guidance, following the pattern used on the Payroll page. #}
+<div class="alert alert-info py-2 px-3 no-print" role="status">
+    <b><i class="fas fa-circle-info me-1"></i>What to do now:</b>
+    {% if students %}
+    Use the search and filters to find a student, click a name to open their full report, or
+    <b>Add Student</b> to admit someone new. <b>Columns</b> controls which fields you see;
+    <b>Export Data</b> downloads what is on screen (or every field).
+    {% else %}
+    There are no students yet. Start with <b>Add Student</b>, or use
+    <b>Import Excel</b> to add a whole class at once from a spreadsheet.
+    {% endif %}
+</div>
 <!-- Search & Filter Bar -->
 <div class="card shadow-sm mb-4 border-0 analytics-panel">
     <div class="card-body py-3">
@@ -153,19 +178,17 @@
 
 <!-- Students Table -->
 <div class="card shadow-sm border-0 table-panel">
-    <div class="card-body table-responsive p-0">
+    <div class="card-body p-0">
         {% if students %}
-        <table class="table table-hover align-middle mb-0 datatable" id="studentTable" data-order='[[0, "asc"]]'>
+        <table class="table table-hover align-middle mb-0 datatable" id="studentTable"
+               data-scroll-x="true" data-page-length="25">
             <thead class="table-light">
                 <tr>
-                    <th class="py-3 ps-3">Roll No</th>
-                    <th class="py-3">Student Name</th>
-                    <th class="py-3">Father Name</th>
-                    <th class="py-3">Class</th>
-                    <th class="py-3">Monthly Fee</th>
-                    <th class="py-3">Dues</th>
-                    <th class="py-3">Phone</th>
-                    <th class="text-end py-3 pe-3">Actions</th>
+                    {% for spec in student_field_specs %}
+                    <th class="py-3 {{ column_classes(spec) }}{% if spec.key in ('photo', 'roll_number') %} ps-3{% endif %}"
+                        data-col="{{ spec.key }}"{% if spec.required %} title="Required field"{% endif %}>{{ spec.label }}{% if spec.required %} <span class="text-danger">*</span>{% endif %}</th>
+                    {% endfor %}
+                    <th class="text-end py-3 pe-3 {{ actions_col_class }}" data-col="actions">Actions</th>
                 </tr>
             </thead>
             <tbody id="studentTableBody">
@@ -175,31 +198,52 @@
                     data-roll="{{ student.roll_number | lower }}"
                     data-father="{{ student.father_name | lower }}"
                     data-phone="{{ student.guardian_phone | lower }}">
-                    <td class="ps-3 font-monospace fw-bold text-primary">{{ student.roll_number }}</td>
-                    <td class="fw-bold">
+                    <td class="ps-3" data-col="photo">{{ avatar('student', student, 36) }}</td>
+                    <td class="font-monospace fw-bold text-primary" data-col="roll_number">{{ student.roll_number }}</td>
+                    <td class="fw-bold" data-col="student_name">
                         <a href="{{ url_for('main.student_detailed_report', id=student.id) }}"
                            class="text-decoration-none text-dark student-name-link">{{ student.student_name }}</a>
                         {% if not student.is_active %}<span class="badge bg-secondary ms-1">Archived</span>{% endif %}
                     </td>
-                    <td class="text-muted">{{ student.father_name }}</td>
-                    <td><span class="badge bg-secondary">{{ student.class_info.name if student.class_info else 'N/A' }}</span></td>
-                    <td>
-                        {% if student.monthly_fee %}
+                    <td class="text-muted" data-col="father_name">{{ student.father_name }}</td>
+                    <td data-col="class"><span class="badge bg-secondary">{{ student.class_info.name if student.class_info else 'N/A' }}</span></td>
+                    {# Every remaining field is rendered from the same spec list as the
+                       header, so column order always matches. #}
+                    {% for spec in student_field_specs %}
+                    {% if spec.key not in ('photo', 'roll_number', 'student_name', 'father_name', 'class') %}
+                    {% set cell_text = display_map.get(student.id, {}).get(spec.key, '—') %}
+                    <td data-col="{{ spec.key }}" class="{{ column_classes(spec) }}{% if spec.key == 'is_active' %} text-center{% endif %}"
+                        {% if spec.truncate %}title="{{ cell_text }}"{% endif %}>
+                        {% if spec.key == 'monthly_fee' %}
+                            {% if student.monthly_fee %}
                             <span class="text-success fw-bold">Rs. {{ "{:,.0f}".format(student.monthly_fee) }}</span>
-                        {% else %}
+                            {% else %}
                             <span class="text-danger small">Not Set</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% set dues = (dues_map or {}).get(student.id, 0) %}
-                        {% if dues and dues > 0 %}
-                        <span class="badge bg-danger-subtle text-danger-emphasis border" title="Pending dues (live from fee ledger)">Dues: Rs {{ '{:,.0f}'.format(dues) }}</span>
+                            {% endif %}
+                        {% elif spec.key == 'dues' %}
+                            {% set dues = (dues_map or {}).get(student.id, 0) %}
+                            {% if dues and dues > 0 %}
+                            <span class="badge bg-danger-subtle text-danger-emphasis border" title="Pending dues (live from fee ledger)">Rs {{ '{:,.0f}'.format(dues) }}</span>
+                            {% else %}
+                            <span class="text-muted small">—</span>
+                            {% endif %}
+                        {% elif spec.key == 'status' %}
+                            <span class="badge bg-light text-dark border">{{ student.status }}</span>
+                        {% elif spec.key == 'guardian_phone' %}
+                            <span class="text-muted small">{{ student.guardian_phone }}</span>
+                        {% elif spec.key == 'is_active' %}
+                            {% if student.is_active %}
+                            <span class="badge bg-success-subtle text-success-emphasis border">Active</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Archived</span>
+                            {% endif %}
                         {% else %}
-                        <span class="text-muted small">—</span>
+                            <span class="{{ 'col-inner' if spec.truncate else '' }}">{{ cell_text }}</span>
                         {% endif %}
                     </td>
-                    <td class="text-muted small">{{ student.guardian_phone }}</td>
-                    <td class="text-end pe-3">
+                    {% endif %}
+                    {% endfor %}
+                    <td class="text-end pe-3 {{ actions_col_class }}" data-col="actions">
                         <a class="btn btn-sm btn-outline-secondary me-1" href="{{ url_for('main.export_student_id_cards', student_id=student.id) }}" title="Download ID card">
                             <i class="fas fa-id-card"></i>
                         </a>
@@ -211,13 +255,13 @@
                         </a>
                         <button class="btn btn-sm btn-outline-primary me-1"
                                 data-bs-toggle="modal"
-                                data-bs-target="#editStudentModal{{ student.id }}" title="Edit">
+                                data-bs-target="#editStudentModal{{ student.id }}" title="Edit" aria-label="Edit">
                             <i class="fas fa-edit"></i>
                         </button>
                         {% if student.is_active %}
                         <button class="btn btn-sm btn-outline-danger"
                                 data-bs-toggle="modal"
-                                data-bs-target="#deleteStudentModal{{ student.id }}" title="Archive / Status Change">
+                                data-bs-target="#deleteStudentModal{{ student.id }}" title="Archive / Status Change" aria-label="Archive / Status Change">
                             <i class="fas fa-trash"></i>
                         </button>
                         {% endif %}
@@ -228,7 +272,7 @@
                 <div class="modal fade" id="editStudentModal{{ student.id }}" tabindex="-1" aria-hidden="true">
                     <div class="modal-dialog modal-lg modal-dialog-centered">
                         <div class="modal-content">
-                                <form action="{{ url_for('main.edit_student', id=student.id) }}" method="POST"
+                                <form action="{{ url_for('main.edit_student', id=student.id) }}" method="POST" enctype="multipart/form-data"
                                     data-student-sponsor-form
                                   class="roll-assist-form" data-autofill="0">
                                 <div class="modal-header bg-primary text-white">
@@ -238,6 +282,7 @@
                                 <div class="modal-body text-start">
                                     <div class="row g-3">
                                     <div class="col-12"><h6 class="border-bottom pb-2 mb-0"><i class="fas fa-user-graduate me-2 text-primary"></i>Personal &amp; Guardian Information</h6></div>
+                                    {{ photo_field('student', student) }}
                                     <div class="col-md-6">
                                         <label class="form-label">Class</label>
                                         <select class="form-select" name="class_id" data-roll-assist="class" required>
@@ -414,17 +459,18 @@
 <div class="modal fade" id="addStudentModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg overflow-hidden">
-            <form action="{{ url_for('main.add_student') }}" method="POST" class="roll-assist-form" data-autofill="1" data-student-sponsor-form>
+            <form action="{{ url_for('main.add_student') }}" method="POST" enctype="multipart/form-data" class="roll-assist-form" data-autofill="1" data-student-sponsor-form>
                 <div class="modal-header px-4 py-3 text-white" style="background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%); border: none;">
                     <div>
                         <p class="mb-1 small text-uppercase text-white-50 fw-bold" style="letter-spacing: 0.08em;">Admission</p>
-                        <h5 class="modal-title mb-0"><i class="fas fa-user-plus me-2"></i>Add New Student</h5>
+                        <h5 class="modal-title mb-0"><i class="fas fa-user-plus me-2"></i>Add Student</h5>
                     </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-4 bg-light">
                     <div class="row g-3">
                         <div class="col-12"><h6 class="border-bottom pb-2 mb-0"><i class="fas fa-user-graduate me-2 text-primary"></i>Personal &amp; Guardian Information</h6></div>
+                        {{ photo_field('student') }}
                         <div class="col-md-6">
                             <label class="form-label fw-bold small text-muted">Class</label>
                             <select class="form-select" name="class_id" id="add_student_class"
@@ -546,14 +592,19 @@
                 </div>
                 <div class="modal-body text-start">
                     <div class="alert alert-info small mb-3">
-                        <strong>Required columns (exact names):</strong><br>
-                        <code>Roll Number, Student Name, Father Name, Class, Section, Guardian Phone, Address</code><br><br>
-                        <strong>Tips:</strong>
+                        <strong>Easiest way:</strong> download the template below, fill one student per row, then upload it here.<br><br>
+                        <strong>Mandatory columns</strong> (red in the template):<br>
+                        <code>Student Name, Father Name, Class, Guardian Phone, Address</code><br>
+                        <strong>Optional columns:</strong>
+                        <code>Roll Number, Section, Gender, Date of Birth, Admission No, Admission Date, Sponsor Type, Sponsor CNIC, Monthly Fee, Discount Type, Discount Value</code>
+                        and any custom fields set up in Settings.<br><br>
+                        <strong>Good to know:</strong>
                         <ul class="mb-0 mt-1">
-                            <li>Class must match exactly — e.g. <code>Class 5</code> not <code>5</code></li>
-                            <li>Section is optional — leave blank if not used</li>
-                            <li>Roll Number must be a whole number; each class numbers from <strong>{{ first_roll_number }}</strong></li>
-                            <li>Students whose Roll Number already exists in the same class will be skipped</li>
+                            <li>A row with a mandatory value missing is <strong>skipped</strong> and reported &mdash; nothing incomplete is saved</li>
+                            <li>Class must match an existing class exactly &mdash; e.g. <code>Class 5</code> not <code>5</code></li>
+                            <li><strong>Roll Number is optional:</strong> leave it blank and the next free number in the class is given automatically (each class starts at <strong>{{ first_roll_number }}</strong>)</li>
+                            <li>Existing students are <strong>never overwritten</strong>. Rows are skipped if the Roll Number is already used in that class, the Admission No already exists, or the same student (name + father name + class) is already registered</li>
+                            <li>After the import you see exactly which rows were skipped and why</li>
                             <li>Supports <strong>.xlsx</strong> and <strong>.csv</strong></li>
                         </ul>
                     </div>
@@ -851,4 +902,5 @@ if (cascadeModal) {
     });
 }
 </script>
+{{ photo_script() }}
 {% endblock %}

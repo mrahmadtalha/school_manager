@@ -11,7 +11,9 @@ from app.models.expense    import (Expense, ExpenseCategory, EXPENSE_PAYMENT_MET
 from app.models.payroll    import StaffPayroll
 from app.models.fees       import (FeeRecordModel, FeeTransaction, TXN_TYPES,
                                    TXN_CHARGE, TXN_PAYMENT, TXN_ADJUSTMENT, TXN_LABELS)
-from app.models.settings   import SystemSettingModel, SchoolSettings
+from app.models.settings   import (SystemSettingModel, SchoolSettings,
+                                   get_holiday_ranges, set_holiday_ranges,
+                                   get_school_closure_days)
 from app.models.admin      import (AdminUser, GuardianStudentLink, ROLES, ROLE_ADMIN,
                                    ROLE_TEACHER, ROLE_PARENT, ROLE_OWNER,
                                    ROLE_ACCOUNTANT, ROLE_LABELS)

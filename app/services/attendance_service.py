@@ -43,6 +43,10 @@ def evaluate_checkin_attendance(status, checkin_time, settings=None):
 def build_student_attendance_summary(class_id, start_date, end_date):
     """
     Computes attendance summary and day-by-day matrix for students of a given class.
+
+    Days when the school is closed (weekends, custom days off, configured
+    holiday/vacation ranges) are never shown as attendance days, even if a
+    record was wrongly recorded on them.
     """
     class_obj = ClassModel.query.get_or_404(class_id)
     students = StudentModel.query.filter_by(is_active=True, class_id=class_id).all()
@@ -62,7 +66,11 @@ def build_student_attendance_summary(class_id, start_date, end_date):
         (r.target_id, r.date): r.late_minutes
         for r in records if r.late_minutes is not None
     }
-    taken_dates = sorted(set(r.date for r in records))
+    # Only keep records taken on real school days; wrongly-recorded entries
+    # on weekends/holidays must not appear as attendance days.
+    taken_dates = sorted(set(
+        r.date for r in records if r.date in all_dates
+    ))
     active_dates = taken_dates if taken_dates else all_dates
     
     matrix_data = []
@@ -110,9 +118,85 @@ def build_student_attendance_summary(class_id, start_date, end_date):
         'kpi_stats': kpi_stats
     }
 
+def build_school_attendance_summary(start_date, end_date):
+    """
+    Computes the attendance summary for ALL active students in the school,
+    grouped with a per-student class reference for the whole-school view.
+    """
+    settings = SchoolSettings.query.first() or type('DefaultSettings', (), {'weekend_off': True, 'custom_off_days': ''})()
+    all_dates = get_school_working_days(start_date, end_date, settings)
+
+    students = StudentModel.query.filter_by(is_active=True).all()
+    class_lookup = {c.id: c for c in ClassModel.query.all()}
+
+    records = AttendanceModel.query.filter(
+        AttendanceModel.target_type == 'student',
+        AttendanceModel.date >= start_date,
+        AttendanceModel.date <= end_date
+    ).all()
+
+    attendance_lookup = {(r.target_id, r.date): r.status for r in records}
+    late_minutes_lookup = {
+        (r.target_id, r.date): r.late_minutes
+        for r in records if r.late_minutes is not None
+    }
+    taken_dates = sorted(set(
+        r.date for r in records if r.date in all_dates
+    ))
+    active_dates = taken_dates if taken_dates else all_dates
+
+    matrix_data = []
+    for idx, s in enumerate(students, 1):
+        row = {'sr': idx, 'student': s, 'daily_status': {}, 'daily_late_minutes': {}}
+        for d in active_dates:
+            row['daily_status'][d] = attendance_lookup.get((s.id, d), '—')
+            row['daily_late_minutes'][d] = late_minutes_lookup.get((s.id, d))
+        p_count = sum(1 for v in row['daily_status'].values() if v == 'Present')
+        a_count = sum(1 for v in row['daily_status'].values() if v == 'Absent')
+        l_count = sum(1 for v in row['daily_status'].values() if v == 'Late')
+        taken = sum(1 for v in row['daily_status'].values() if v != '—')
+        row['p_count'] = p_count
+        row['a_count'] = a_count
+        row['l_count'] = l_count
+        row['total_late_minutes'] = sum(
+            minutes or 0 for d, minutes in row['daily_late_minutes'].items()
+            if row['daily_status'].get(d) == 'Late')
+        row['percentage'] = round((p_count / taken) * 100, 1) if taken > 0 else 0
+        row['is_at_risk'] = bool(taken > 0 and row['percentage'] < 75.0)
+        matrix_data.append(row)
+
+    total_students = len(students)
+    percentages = [row['percentage'] for row in matrix_data if len(taken_dates) > 0]
+    avg_percentage = round(sum(percentages) / len(percentages), 1) if percentages else 0
+    perfect_count = sum(1 for row in matrix_data if row['percentage'] == 100.0 and len(taken_dates) > 0)
+    at_risk_count = sum(1 for row in matrix_data if row['is_at_risk'])
+
+    kpi_stats = {
+        'total_students': total_students,
+        'avg_percentage': avg_percentage,
+        'perfect_count': perfect_count,
+        'at_risk_count': at_risk_count,
+        'days_recorded': len(taken_dates)
+    }
+
+    return {
+        'class_obj': None,
+        'classes': class_lookup,
+        'students': students,
+        'dates_list': active_dates,
+        'taken_dates': taken_dates,
+        'attendance_lookup': attendance_lookup,
+        'late_minutes_lookup': late_minutes_lookup,
+        'matrix_data': matrix_data,
+        'kpi_stats': kpi_stats
+    }
+
+
 def build_teacher_attendance_summary(start_date, end_date):
     """
     Computes attendance summary and day-by-day matrix for all active teachers.
+
+    Non-school days (weekends, custom days off, holiday ranges) are excluded.
     """
     teachers = TeacherModel.query.filter_by(is_active=True).all()
     settings = SchoolSettings.query.first() or type('DefaultSettings', (), {'weekend_off': True, 'custom_off_days': ''})()
@@ -130,7 +214,10 @@ def build_teacher_attendance_summary(start_date, end_date):
         (r.target_id, r.date): r.late_minutes
         for r in records if r.late_minutes is not None
     }
-    taken_dates = sorted(set(r.date for r in records))
+    # Teacher records taken on non-school days are excluded from the matrix.
+    taken_dates = sorted(set(
+        r.date for r in records if r.date in all_dates
+    ))
     active_dates = taken_dates if taken_dates else []
 
     matrix_data = []

@@ -11,6 +11,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from app.models import SchoolSettings
+from app.services import photos
 
 NAVY = (0.09, 0.16, 0.29)
 GOLD = (0.72, 0.55, 0.22)
@@ -45,9 +46,20 @@ def school_branding(app_root=None):
     email = school.email if school and school.email else ''
     logo_path = ''
     if school and school.logo_filename and app_root:
-        candidate = os.path.join(app_root, 'static', school.logo_filename)
-        if os.path.isfile(candidate):
-            logo_path = candidate
+        # Installed products keep the install directory read-only: the
+        # uploaded logo lives in the per-school data folder first.
+        try:
+            from flask import current_app
+            candidate = os.path.join(current_app.config['DATA_DIR'],
+                                     'uploads', school.logo_filename)
+            if os.path.isfile(candidate):
+                logo_path = candidate
+        except Exception:  # no app context (scripts): fall back to static
+            pass
+        if not logo_path:
+            candidate = os.path.join(app_root, 'static', school.logo_filename)
+            if os.path.isfile(candidate):
+                logo_path = candidate
     return {
         'name': name,
         'tagline': tagline,
@@ -115,6 +127,24 @@ def _draw_initials_badge(c, name, x, y, size):
     c.drawCentredString(x + size / 2, y + size / 2 - 4, initials)
 
 
+def _draw_photo(c, path, x, y, size):
+    """Draw a real photo (square crop, rounded corners). False if unusable."""
+    image = photos.square_image(path, 400)
+    if image is None:
+        return False
+    c.saveState()
+    try:
+        clip = c.beginPath()
+        clip.roundRect(x, y, size, size, 2)
+        c.clipPath(clip, stroke=0, fill=0)
+        c.drawImage(ImageReader(image), x, y, width=size, height=size)
+        return True
+    except Exception:
+        return False
+    finally:
+        c.restoreState()
+
+
 def _draw_id_card(c, x, y, person, school, session):
     c.saveState()
     c.setLineWidth(1.4)
@@ -150,7 +180,9 @@ def _draw_id_card(c, x, y, person, school, session):
     _set_stroke(c, (0.78, 0.82, 0.89))
     _set_fill(c, LIGHT)
     c.roundRect(photo_x, photo_y, photo_size, photo_size, 2, fill=1, stroke=1)
-    _draw_initials_badge(c, person['name'], photo_x + 1.5 * mm, photo_y + 1.5 * mm, photo_size - 3 * mm)
+    # Optional photo: real picture when one exists, otherwise the initials placeholder.
+    if not _draw_photo(c, person.get('photo_path'), photo_x, photo_y, photo_size):
+        _draw_initials_badge(c, person['name'], photo_x + 1.5 * mm, photo_y + 1.5 * mm, photo_size - 3 * mm)
 
     info_x = photo_x + photo_size + 3 * mm
     info_w = CARD_W - (info_x - x) - 18 * mm
@@ -192,6 +224,7 @@ def student_card_payload(student):
         'name': student.student_name,
         'role_label': 'STUDENT IDENTITY CARD',
         'badge': f'ID {student.roll_number}',
+        'photo_path': photos.photo_path('student', getattr(student, 'photo_filename', None)),
         'qr': f'STUDENT|{student.roll_number}|{student.student_name}',
         'rows': [
             ('Roll No', student.roll_number),
@@ -208,6 +241,7 @@ def teacher_card_payload(teacher):
         'name': teacher.teacher_name,
         'role_label': 'STAFF IDENTITY CARD',
         'badge': f'STAFF {teacher.teacher_id_str}',
+        'photo_path': photos.photo_path('teacher', getattr(teacher, 'photo_filename', None)),
         'qr': f'TEACHER|{teacher.teacher_id_str}|{teacher.teacher_name}',
         'rows': [
             ('Staff ID', teacher.teacher_id_str),

@@ -1,0 +1,98 @@
+{#
+  Shared helpers for the optional student / teacher profile picture.
+
+  Import:      {% from "_photo_macro.html" import photo_field, avatar, photo_script %}
+
+  Edit form:   photo_field('student', student)   (shows current photo + Remove checkbox)
+  Add form:    photo_field('student')            (no photo yet, no Remove checkbox)
+  Thumbnail:   avatar('student', student, 36)    (round photo, or initials placeholder)
+  Script:      photo_script()                    (call once per page that uses photo_field)
+
+  The upload input is always optional. "Remove photo" is a checkbox that posts
+  remove_photo=1 (edit forms only).
+#}
+
+{% macro photo_url(kind, obj) -%}
+{%- if obj and obj.photo_filename -%}
+{{ url_for('main.' ~ kind ~ '_photo', id=obj.id, v=obj.photo_filename) }}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro avatar(kind, obj, size=36, extra_class='') -%}
+{% set url = photo_url(kind, obj) | trim %}
+{% set label = (obj.student_name if kind == 'student' else obj.teacher_name) if obj else '' %}
+{% set initials = (label.split()[:2] | map('first') | join('') | upper) if label else '?' %}
+{% if url %}
+<img src="{{ url }}" alt="{{ label }}" loading="lazy"
+     class="rounded-circle border {{ extra_class }}"
+     style="width:{{ size }}px;height:{{ size }}px;object-fit:cover;object-position:center 25%;flex:0 0 auto;">
+{% else %}
+<span class="rounded-circle border d-inline-flex align-items-center justify-content-center bg-light text-secondary fw-bold {{ extra_class }}"
+      style="width:{{ size }}px;height:{{ size }}px;font-size:{{ (size * 0.38) | round | int }}px;flex:0 0 auto;">{{ initials or '?' }}</span>
+{% endif %}
+{%- endmacro %}
+
+{% macro photo_field(kind, obj=None, label='Profile Photo') -%}
+{% set url = photo_url(kind, obj) | trim %}
+<div class="col-12" data-photo-field>
+  <label class="form-label fw-bold small text-muted">{{ label }} <span class="text-muted fw-normal">(optional)</span></label>
+  <div class="d-flex align-items-center gap-3 flex-wrap">
+    <div class="position-relative" style="width:72px;height:72px;">
+      <img data-photo-preview src="{{ url }}" alt="Photo preview"
+           class="rounded-circle border" data-original="{{ url }}"
+           style="width:72px;height:72px;object-fit:cover;object-position:center 25%;{% if not url %}display:none;{% endif %}">
+      <span data-photo-placeholder class="rounded-circle border d-flex align-items-center justify-content-center bg-light text-secondary"
+            style="width:72px;height:72px;font-size:1.6rem;{% if url %}display:none;{% endif %}"><i class="fas fa-user"></i></span>
+    </div>
+    <div class="flex-grow-1">
+      <input type="file" class="form-control form-control-sm" name="photo" data-photo-input
+             accept="image/png,image/jpeg,image/webp,image/gif,image/bmp">
+      <div class="form-text">JPG, PNG or WEBP, up to 5 MB. You can leave this empty.</div>
+      {% if obj is not none %}
+      <div class="form-check mt-1" data-photo-remove-wrap {% if not url %}style="display:none;"{% endif %}>
+        <input class="form-check-input" type="checkbox" name="remove_photo" value="1" data-photo-remove id="rm_{{ kind }}_{{ obj.id if obj else 'new' }}">
+        <label class="form-check-label small text-danger" for="rm_{{ kind }}_{{ obj.id if obj else 'new' }}">Remove current photo</label>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro photo_script() -%}
+<script>
+(function () {
+  document.querySelectorAll('[data-photo-field]').forEach(function (box) {
+    if (box.dataset.photoReady) return;
+    box.dataset.photoReady = '1';
+    var input = box.querySelector('[data-photo-input]');
+    var preview = box.querySelector('[data-photo-preview]');
+    var holder = box.querySelector('[data-photo-placeholder]');
+    var remove = box.querySelector('[data-photo-remove]');
+    var removeWrap = box.querySelector('[data-photo-remove-wrap]');
+    function show(src) {
+      if (src) { preview.src = src; preview.style.display = ''; holder.style.display = 'none'; }
+      else { preview.removeAttribute('src'); preview.style.display = 'none'; holder.style.display = ''; }
+    }
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      if (!file) { show(remove && remove.checked ? '' : preview.dataset.original); return; }
+      if (file.size > 5 * 1024 * 1024) {
+        window.SchoolUI.toast('Photo is too large (maximum 5 MB).', 'warning');
+        input.value = '';
+        show(remove && remove.checked ? '' : preview.dataset.original);
+        return;
+      }
+      if (remove) remove.checked = false;
+      show(URL.createObjectURL(file));
+    });
+    if (remove) {
+      remove.addEventListener('change', function () {
+        if (remove.checked) { input.value = ''; show(''); }
+        else { show(preview.dataset.original); }
+      });
+    }
+  });
+})();
+</script>
+{%- endmacro %}

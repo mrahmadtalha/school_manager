@@ -146,6 +146,26 @@ def clear_stale_whatsapp_session(force=False):
     return True
 
 
+def whatsapp_launch_plan(node_only=False):
+    """Decide how to launch the optional WhatsApp bridge.
+
+    Returns ``('start', command)`` or ``('skip', reason)``.  The bridge is an
+    OPTIONAL component (see app/services/whatsapp_bridge.py): a missing folder
+    or Node runtime must produce a clear message, never a crash.
+    """
+    if not NODE_SERVICE_SCRIPT.is_file():
+        return ('skip', 'WhatsApp bridge not installed (whatsapp-service/ missing) — '
+                        'the app runs fine without it; skipping.')
+    node = shutil.which('node') or os.environ.get('WHATSAPP_NODE_PATH')
+    if not node:
+        return ('skip', 'Node.js not found on PATH — the WhatsApp bridge cannot start. '
+                        'The app runs fine without it; skipping.')
+    if not (NODE_SERVICE_DIR / 'node_modules').is_dir():
+        return ('skip', 'whatsapp-service/node_modules missing — run "npm install" inside '
+                        'whatsapp-service/ to enable WhatsApp sending; skipping for now.')
+    return ('start', [node, str(NODE_SERVICE_SCRIPT)])
+
+
 def main():
     parser = argparse.ArgumentParser(description='Run the Flask app and WhatsApp service together.')
     parser.add_argument('--flask-only', action='store_true', help='Start only Flask app')
@@ -176,11 +196,17 @@ def main():
                 raise RuntimeError('Flask failed to start correctly.')
 
         if not args.flask_only:
-            if is_port_in_use(3001):
-                clear_stale_port(3001)
-            clear_stale_whatsapp_session(force=args.reset_whatsapp_session)
-            node_proc = start_process('WhatsApp', ['node', str(NODE_SERVICE_SCRIPT)], NODE_SERVICE_DIR)
-            processes.append(('WhatsApp', node_proc))
+            action, detail = whatsapp_launch_plan(node_only=args.node_only)
+            if action == 'skip':
+                print(detail)
+                if args.node_only:
+                    raise RuntimeError(detail)
+            else:
+                if is_port_in_use(3001):
+                    clear_stale_port(3001)
+                clear_stale_whatsapp_session(force=args.reset_whatsapp_session)
+                node_proc = start_process('WhatsApp', detail, NODE_SERVICE_DIR)
+                processes.append(('WhatsApp', node_proc))
 
         for name, proc in processes:
             if proc.poll() is None:
@@ -196,8 +222,14 @@ def main():
                 print(f"WhatsApp exited with code {node_proc.returncode}; restarting it...")
                 if is_port_in_use(3001):
                     clear_stale_port(3001)
-                node_proc = start_process('WhatsApp', ['node', str(NODE_SERVICE_SCRIPT)], NODE_SERVICE_DIR)
-                processes[-1] = ('WhatsApp', node_proc)
+                action, detail = whatsapp_launch_plan()
+                if action == 'start':
+                    node_proc = start_process('WhatsApp', detail, NODE_SERVICE_DIR)
+                    processes[-1] = ('WhatsApp', node_proc)
+                else:
+                    print(detail)
+                    node_proc = None
+                    processes[:] = [entry for entry in processes if entry[0] != 'WhatsApp']
     except (KeyboardInterrupt, RuntimeError) as exc:
         if isinstance(exc, RuntimeError):
             print(f'Startup error: {exc}')

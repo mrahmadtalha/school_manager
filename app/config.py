@@ -7,8 +7,8 @@ app at an isolated database.
 Secret key resolution order:
 
 1. ``SECRET_KEY`` / ``APP_SECRET_KEY`` environment variable.
-2. A randomly generated key persisted to ``instance/.secret_key`` (development
-   and test only) so a clean checkout still starts.
+2. A randomly generated key persisted to ``<data dir>/.secret_key``
+   (development and test only) so a clean checkout still starts.
 3. ``RuntimeError`` in production - a production deployment must supply its own
    secret and must never silently generate one.
 """
@@ -17,11 +17,10 @@ import os
 import secrets
 import sys
 from datetime import timedelta
-from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-INSTANCE_DIR = BASE_DIR / 'instance'
-DEV_SECRET_FILE = INSTANCE_DIR / '.secret_key'
+from app.user_data import BASE_DIR, data_root
+
+DEV_SECRET_NAME = '.secret_key'
 
 DEFAULT_DEV_PORT = 5000
 DEFAULT_PROD_PORT = 8000
@@ -48,11 +47,11 @@ def _int(name, default):
 
 
 def _database_uri():
-    """Resolve the database URI, defaulting to <project>/instance/school.db."""
+    """Resolve the database URI, defaulting to <data dir>/school.db."""
     explicit = (os.environ.get('DATABASE_URL') or '').strip()
     if explicit:
         return explicit
-    return 'sqlite:///' + (INSTANCE_DIR / 'school.db').as_posix()
+    return 'sqlite:///' + (data_root() / 'school.db').as_posix()
 
 
 def _resolve_secret_key(app_env, allow_generated_dev_key=True):
@@ -69,17 +68,18 @@ def _resolve_secret_key(app_env, allow_generated_dev_key=True):
     if not allow_generated_dev_key:
         raise RuntimeError('SECRET_KEY is required for this configuration.')
 
-    INSTANCE_DIR.mkdir(parents=True, exist_ok=True)
-    if DEV_SECRET_FILE.exists():
-        stored = DEV_SECRET_FILE.read_text(encoding='utf-8').strip()
+    secret_file = data_root() / DEV_SECRET_NAME
+    secret_file.parent.mkdir(parents=True, exist_ok=True)
+    if secret_file.exists():
+        stored = secret_file.read_text(encoding='utf-8').strip()
         if stored:
             return stored
 
     generated = secrets.token_urlsafe(48)
-    DEV_SECRET_FILE.write_text(generated, encoding='utf-8')
+    secret_file.write_text(generated, encoding='utf-8')
     print(
         'WARNING: SECRET_KEY was not set. Generated a local development key at '
-        f'{DEV_SECRET_FILE} (git-ignored). Set SECRET_KEY for any shared or '
+        f'{secret_file} (git-ignored). Set SECRET_KEY for any shared or '
         'production deployment.'
     )
     return generated
@@ -94,6 +94,7 @@ def get_config():
         'APP_ENV': app_env,
         'DEBUG': _flag('FLASK_DEBUG', False),
         'TESTING': _flag('TESTING', False),
+        'DATA_DIR': str(data_root()),
         'SECRET_KEY': _resolve_secret_key(app_env),
         'SQLALCHEMY_DATABASE_URI': _database_uri(),
         'SQLALCHEMY_TRACK_MODIFICATIONS': False,
@@ -106,9 +107,13 @@ def get_config():
         'LOGIN_MESSAGE_CATEGORY': 'warning',
         'HOST': os.environ.get('HOST', '127.0.0.1'),
         'PORT': _int('PORT', DEFAULT_PROD_PORT if production else DEFAULT_DEV_PORT),
-        # WhatsApp bridge (optional Node service)
+        # WhatsApp bridge (optional Node service - see app/services/whatsapp_bridge.py)
         'WHATSAPP_NODE_URL': (os.environ.get('WHATSAPP_NODE_URL') or 'http://127.0.0.1:3001').rstrip('/'),
         'WHATSAPP_BRIDGE_TOKEN': (os.environ.get('WHATSAPP_BRIDGE_TOKEN') or '').strip(),
+        # Where the optional bridge component is installed, and which Node
+        # runtime to use (the installer ships a private Node with the bridge).
+        'WHATSAPP_BRIDGE_DIR': (os.environ.get('WHATSAPP_BRIDGE_DIR') or None),
+        'WHATSAPP_NODE_PATH': (os.environ.get('WHATSAPP_NODE_PATH') or None),
         # Login throttling (in-process; see README known limitations)
         'LOGIN_MAX_ATTEMPTS': _int('LOGIN_MAX_ATTEMPTS', 5),
         'LOGIN_LOCKOUT_SECONDS': _int('LOGIN_LOCKOUT_SECONDS', 300),

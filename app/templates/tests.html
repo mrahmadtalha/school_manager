@@ -9,7 +9,7 @@
     </div>
     <div class="btn-toolbar gap-2">
         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTestModal">
-            <i class="fas fa-plus me-1"></i> New Test
+            <i class="fas fa-plus me-1"></i> Add Test
         </button>
         <button class="btn btn-outline-dark btn-sm" data-bs-toggle="modal" data-bs-target="#addTestTypeModal">
             <i class="fas fa-tags me-1"></i> Test Categories
@@ -19,14 +19,6 @@
 
 {% set exam_active = 'tests' %}
 {% include '_exam_module_switch.html' %}
-
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show">
-      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  {% endfor %}{% endif %}
-{% endwith %}
 
 {% if term_exams_count %}
 <div class="alert alert-light border d-flex flex-wrap justify-content-between align-items-center gap-2 small py-2 mb-3">
@@ -139,7 +131,7 @@
                             data-date="{{ exam.date.isoformat() if exam.date else '' }}"
                             data-class-id="{{ exam.class_id }}"
                             data-class-name="{{ exam.class_info.name if exam.class_info else '' }}"
-                            title="Delete this test batch">
+                            title="Delete this test batch" aria-label="{{ exam.title }}">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -157,13 +149,13 @@
 {% else %}
 <div class="text-center py-5">
     <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
-    <p class="text-muted fs-5">No tests yet. Click <strong>New Test</strong> to create one.</p>
+    <p class="text-muted fs-5">No tests yet. Click <strong>Add Test</strong> to create one.</p>
 </div>
 {% endif %}
 
 <!-- ===== MODALS ===== -->
 
-<!-- Create New Test -->
+<!-- Create Add Test -->
 <div class="modal fade" id="addTestModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg overflow-hidden">
@@ -171,7 +163,7 @@
                 <div class="modal-header px-4 py-3 text-white" style="background: linear-gradient(135deg, #0f172a 0%, #4338ca 100%); border: none;">
                     <div>
                         <p class="mb-1 small text-uppercase text-white-50 fw-bold" style="letter-spacing: 0.08em;">Assessment</p>
-                        <h5 class="modal-title mb-0"><i class="fas fa-clipboard-list me-2"></i>Create New Test</h5>
+                        <h5 class="modal-title mb-0"><i class="fas fa-clipboard-list me-2"></i>Create Add Test</h5>
                     </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -340,10 +332,10 @@
                             </td>
                             <td class="text-end">{{ '{:,.0f}'.format(t.default_marks) if t.default_marks else '100 (default)' }}</td>
                             <td class="text-end">
-                                <button class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#editTT{{ t.id }}">
+                                <button class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#editTT{{ t.id }}" aria-label="Edit">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteTT{{ t.id }}">
+                                <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteTT{{ t.id }}" aria-label="Delete">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </td>
@@ -390,7 +382,7 @@
                     </div>
                 </div>
                 <div class="modal-footer py-2">
-                    <button type="submit" class="btn btn-primary btn-sm">Update</button>
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>Save</button>
                 </div>
             </form>
         </div>
@@ -527,7 +519,7 @@ function selectAllSubjects(checked) {
 
 function applyMarksToAll() {
     var value = document.getElementById('bulkMarksValue').value;
-    if (value === '') { alert('Enter a marks value first.'); return; }
+    if (value === '') { window.SchoolUI.toast('Enter a marks value first.', 'warning'); return; }
     document.querySelectorAll('.subject-row').forEach(function (row) {
         if (row.style.display === 'none') return;
         var input = row.querySelector('.subject-marks');

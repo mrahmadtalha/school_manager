@@ -18,12 +18,15 @@ from app.routes import main
 from app.services import attendance_export as exporter
 from app.services.attendance_service import (
     build_student_attendance_summary,
+    build_school_attendance_summary,
     build_teacher_attendance_summary,
     save_student_attendance,
     save_teacher_attendance,
     set_attendance_lock_status,
     get_daily_student_attendance,
-    get_daily_teacher_attendance
+    get_daily_teacher_attendance,
+    get_daily_teacher_attendance_details,
+    get_daily_student_late_minutes
 )
 
 # ==========================================
@@ -196,30 +199,92 @@ def attendance_summary():
     
     start_date_str = request.args.get('start_date', default_start)
     end_date_str = request.args.get('end_date', default_end)
+    class_arg = request.args.get('class_id', '')
     selected_class_id = request.args.get('class_id', type=int)
     
     classes = ClassModel.query.all()
-    if not selected_class_id and classes:
-        return redirect(url_for('main.attendance_summary',
-                                class_id=classes[0].id,
-                                start_date=start_date_str,
-                                end_date=end_date_str))
+    # "all" is the whole-school student filter; anything else needs a class.
+    whole_school = (str(class_arg).strip().lower() == 'all')
+    if not whole_school and not selected_class_id:
+        if classes:
+            return redirect(url_for('main.attendance_summary',
+                                    class_id=classes[0].id,
+                                    start_date=start_date_str,
+                                    end_date=end_date_str))
+        whole_school = True
 
     start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
     end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
 
-    summary = build_student_attendance_summary(selected_class_id, start_date, end_date) if selected_class_id else {
-        'dates_list': [], 'matrix_data': []
-    }
+    if whole_school:
+        summary = build_school_attendance_summary(start_date, end_date)
+        export_class_id = 'all'
+        scope_label = 'Whole School'
+    elif selected_class_id:
+        summary = build_student_attendance_summary(selected_class_id, start_date, end_date)
+        export_class_id = selected_class_id
+        scope_label = getattr(summary.get('class_obj'), 'name', '') or 'Class'
+    else:
+        summary = {'dates_list': [], 'matrix_data': [], 'kpi_stats': {}}
+        export_class_id = None
+        scope_label = 'Class'
 
     return render_template('attendance_summary.html',
                            classes=classes,
                            selected_class_id=selected_class_id,
+                           whole_school=whole_school,
+                           export_class_id=export_class_id,
+                           scope_label=scope_label,
+                           class_names={c.id: c.name for c in classes},
                            start_date=start_date_str,
                            end_date=end_date_str,
-                           dates_list=summary['dates_list'],
-                           matrix_data=summary['matrix_data'],
+                           dates_list=summary.get('dates_list', []),
+                           matrix_data=summary.get('matrix_data', []),
                            stats=summary.get('kpi_stats', {}))
+
+
+def _resolve_summary_request():
+    """Shared resolution of the summary export query string.
+
+    Returns (mode, summary, start_date, end_date, redirect_response).
+    ``class_id=all`` means the whole-school student filter.
+    """
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    class_arg = request.args.get('class_id', '')
+    selected_class_id = request.args.get('class_id', type=int)
+    mode = request.args.get('mode', 'student')
+
+    if not start_date_str or not end_date_str:
+        return None, None, None, None, redirect(url_for('main.attendance_summary'))
+
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+
+    if mode == 'teacher':
+        summary = build_teacher_attendance_summary(start_date, end_date)
+        summary['kpi_stats'] = summary.get('kpi_stats', {})
+        return 'teacher', summary, start_date, end_date, None
+
+    if str(class_arg).strip().lower() == 'all':
+        summary = build_school_attendance_summary(start_date, end_date)
+        return 'school', summary, start_date, end_date, None
+
+    if not selected_class_id:
+        return None, None, None, None, redirect(url_for('main.attendance_summary'))
+
+    summary = build_student_attendance_summary(selected_class_id, start_date, end_date)
+    summary['kpi_stats'] = summary.get('kpi_stats', {})
+    return 'class', summary, start_date, end_date, None
+
+
+def _summary_export_scope(mode, summary):
+    """Human-readable scope name used in download filenames."""
+    if mode == 'school':
+        return 'Whole_School'
+    if mode == 'teacher':
+        return 'All_Teachers'
+    return getattr(summary.get('class_obj'), 'name', 'Class') or 'Class'
 
 
 # ==========================================
@@ -233,8 +298,11 @@ def export_class_attendance_pdf(class_id):
     selected_date = request.args.get('date', date.today().strftime('%Y-%m-%d'))
     attendance_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
     attendance_map, late_time_map = get_daily_student_attendance(class_id, attendance_date)
+    late_minutes_map = get_daily_student_late_minutes(class_id, attendance_date)
     
-    pdf_buffer = exporter.generate_class_attendance_pdf(class_obj, students, selected_date, attendance_map, late_time_map)
+    pdf_buffer = exporter.generate_class_attendance_pdf(
+        class_obj, students, selected_date, attendance_map, late_time_map,
+        late_minutes_map)
     return send_file(pdf_buffer, mimetype='application/pdf', as_attachment=True, 
                      download_name=f'attendance_sheet_{class_obj.name}_{selected_date}.pdf')
 
@@ -246,8 +314,11 @@ def export_class_attendance_excel(class_id):
     selected_date = request.args.get('date', date.today().strftime('%Y-%m-%d'))
     attendance_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
     attendance_map, late_time_map = get_daily_student_attendance(class_id, attendance_date)
+    late_minutes_map = get_daily_student_late_minutes(class_id, attendance_date)
     
-    excel_buffer = exporter.generate_class_attendance_excel(class_obj, students, attendance_map, late_time_map)
+    excel_buffer = exporter.generate_class_attendance_excel(
+        class_obj, students, attendance_map, late_time_map, late_minutes_map,
+        selected_date)
     return send_file(excel_buffer, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
                      as_attachment=True, download_name=f'attendance_sheet_{class_obj.name}_{selected_date}.xlsx')
 
@@ -259,8 +330,11 @@ def export_class_attendance_csv(class_id):
     selected_date = request.args.get('date', date.today().strftime('%Y-%m-%d'))
     attendance_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
     attendance_map, late_time_map = get_daily_student_attendance(class_id, attendance_date)
+    late_minutes_map = get_daily_student_late_minutes(class_id, attendance_date)
     
-    csv_data = exporter.generate_class_attendance_csv(students, attendance_map, late_time_map)
+    csv_data = exporter.generate_class_attendance_csv(
+        class_obj, students, attendance_map, late_time_map, late_minutes_map,
+        selected_date)
     return Response(csv_data, mimetype="text/csv", 
                     headers={"Content-Disposition": f"attachment;filename=attendance_sheet_{class_obj.name}_{selected_date}.csv"})
 
@@ -275,8 +349,10 @@ def export_teacher_attendance_pdf():
     selected_date = request.args.get('date', date.today().strftime('%Y-%m-%d'))
     attendance_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
     attendance_map = get_daily_teacher_attendance(attendance_date)
+    late_time_map, late_minutes_map = get_daily_teacher_attendance_details(attendance_date)
     
-    pdf_buffer = exporter.generate_teacher_attendance_pdf(teachers, selected_date, attendance_map)
+    pdf_buffer = exporter.generate_teacher_attendance_pdf(
+        teachers, selected_date, attendance_map, late_time_map, late_minutes_map)
     return send_file(pdf_buffer, mimetype='application/pdf', as_attachment=True, 
                      download_name=f'teacher_attendance_sheet_{selected_date}.pdf')
 
@@ -287,8 +363,10 @@ def export_teacher_attendance_excel():
     selected_date = request.args.get('date', date.today().strftime('%Y-%m-%d'))
     attendance_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
     attendance_map = get_daily_teacher_attendance(attendance_date)
+    late_time_map, late_minutes_map = get_daily_teacher_attendance_details(attendance_date)
     
-    excel_buffer = exporter.generate_teacher_attendance_excel(teachers, attendance_map)
+    excel_buffer = exporter.generate_teacher_attendance_excel(
+        teachers, attendance_map, late_time_map, late_minutes_map, selected_date)
     return send_file(excel_buffer, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
                      as_attachment=True, download_name=f'teacher_attendance_sheet_{selected_date}.xlsx')
 
@@ -299,8 +377,10 @@ def export_teacher_attendance_csv():
     selected_date = request.args.get('date', date.today().strftime('%Y-%m-%d'))
     attendance_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
     attendance_map = get_daily_teacher_attendance(attendance_date)
+    late_time_map, late_minutes_map = get_daily_teacher_attendance_details(attendance_date)
     
-    csv_data = exporter.generate_teacher_attendance_csv(teachers, attendance_map)
+    csv_data = exporter.generate_teacher_attendance_csv(
+        teachers, attendance_map, late_time_map, late_minutes_map, selected_date)
     return Response(csv_data, mimetype="text/csv", 
                     headers={"Content-Disposition": f"attachment;filename=teacher_attendance_sheet_{selected_date}.csv"})
 
@@ -311,74 +391,79 @@ def export_teacher_attendance_csv():
 
 @main.route('/attendance/summary/export/excel', methods=['GET'])
 def export_attendance_summary_excel():
-    start_date_str = request.args.get('start_date')
-    end_date_str = request.args.get('end_date')
-    selected_class_id = request.args.get('class_id', type=int)
-    
-    if not selected_class_id or not start_date_str or not end_date_str:
-        return redirect(url_for('main.attendance_summary'))
-        
-    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-    
-    summary = build_student_attendance_summary(selected_class_id, start_date, end_date)
-    excel_buffer = exporter.generate_summary_excel(
-        summary['class_obj'], summary['students'], summary['taken_dates'], summary['attendance_lookup']
-    )
-    
+    mode, summary, start_date, end_date, redirect_response = _resolve_summary_request()
+    if redirect_response:
+        return redirect_response
+
+    scope = _summary_export_scope(mode, summary)
+    excel_buffer = exporter.generate_summary_excel(summary, start_date, end_date, mode)
     return send_file(
         excel_buffer, 
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
         as_attachment=True, 
-        download_name=f"attendance_summary_{summary['class_obj'].name}_{start_date}_to_{end_date}.xlsx"
+        download_name=f"attendance_summary_{scope}_{start_date}_to_{end_date}.xlsx"
     )
 
 
 @main.route('/attendance/summary/export/csv', methods=['GET'])
 def export_attendance_summary_csv():
-    start_date_str = request.args.get('start_date')
-    end_date_str = request.args.get('end_date')
-    selected_class_id = request.args.get('class_id', type=int)
-    
-    if not selected_class_id or not start_date_str or not end_date_str:
-        return redirect(url_for('main.attendance_summary'))
-        
-    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-    
-    summary = build_student_attendance_summary(selected_class_id, start_date, end_date)
-    csv_data = exporter.generate_summary_csv(
-        summary['students'], summary['taken_dates'], summary['attendance_lookup']
-    )
-    
+    mode, summary, start_date, end_date, redirect_response = _resolve_summary_request()
+    if redirect_response:
+        return redirect_response
+
+    scope = _summary_export_scope(mode, summary)
+    csv_data = exporter.generate_summary_csv(summary, start_date, end_date, mode)
     return Response(
         csv_data, 
         mimetype="text/csv", 
-        headers={"Content-Disposition": f"attachment;filename=attendance_summary_{summary['class_obj'].name}_{start_date}_to_{end_date}.csv"}
+        headers={"Content-Disposition": f"attachment;filename=attendance_summary_{scope}_{start_date}_to_{end_date}.csv"}
     )
 
 
 @main.route('/attendance/summary/export/pdf', methods=['GET'])
 def export_attendance_summary_pdf():
-    start_date_str = request.args.get('start_date')
-    end_date_str = request.args.get('end_date')
-    selected_class_id = request.args.get('class_id', type=int)
-    
-    if not selected_class_id or not start_date_str or not end_date_str:
-        return redirect(url_for('main.attendance_summary'))
-        
-    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-    
-    summary = build_student_attendance_summary(selected_class_id, start_date, end_date)
-    pdf_buffer = exporter.generate_summary_pdf(
-        summary['class_obj'], summary['students'], summary['taken_dates'], summary['attendance_lookup'],
-        start_date, end_date
-    )
-    
+    mode, summary, start_date, end_date, redirect_response = _resolve_summary_request()
+    if redirect_response:
+        return redirect_response
+
+    scope = _summary_export_scope(mode, summary)
+    pdf_buffer = exporter.generate_summary_pdf(summary, start_date, end_date, mode)
     return send_file(
         pdf_buffer, 
         mimetype='application/pdf', 
         as_attachment=True, 
-        download_name=f"attendance_summary_{summary['class_obj'].name}.pdf"
+        download_name=f"attendance_summary_{scope}_{start_date}_to_{end_date}.pdf"
     )
+
+
+@main.route('/attendance/teachers/summary/export/<fmt>', methods=['GET'])
+def export_teacher_summary(fmt):
+    """Teacher summary exports with late-minute totals."""
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    if not start_date_str or not end_date_str:
+        return redirect(url_for('main.teacher_attendance_summary'))
+
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+    summary = build_teacher_attendance_summary(start_date, end_date)
+    summary['kpi_stats'] = summary.get('kpi_stats', {})
+    scope = 'All_Teachers'
+
+    if fmt == 'pdf':
+        return send_file(
+            exporter.generate_summary_pdf(summary, start_date, end_date, 'teacher'),
+            mimetype='application/pdf', as_attachment=True,
+            download_name=f'teacher_attendance_summary_{start_date}_to_{end_date}.pdf')
+    if fmt in ('excel', 'xlsx'):
+        return send_file(
+            exporter.generate_summary_excel(summary, start_date, end_date, 'teacher'),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'teacher_attendance_summary_{start_date}_to_{end_date}.xlsx')
+    if fmt == 'csv':
+        return Response(
+            exporter.generate_summary_csv(summary, start_date, end_date, 'teacher'),
+            mimetype='text/csv',
+            headers={"Content-Disposition": f"attachment;filename=teacher_attendance_summary_{scope}_{start_date}_to_{end_date}.csv"})
+    return redirect(url_for('main.teacher_attendance_summary'))

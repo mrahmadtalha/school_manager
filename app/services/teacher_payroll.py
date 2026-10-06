@@ -8,9 +8,18 @@ def _normalize_off_day_name(day_name):
 
 
 def get_school_off_days(settings):
+    """Return weekday names that are off, honouring separate Sat/Sun toggles."""
     off_days = set()
-    if getattr(settings, 'weekend_off', True):
-        off_days.update({'Saturday', 'Sunday'})
+    saturday_off = getattr(settings, 'saturday_off', None)
+    if saturday_off is None:
+        saturday_off = getattr(settings, 'weekend_off', True)
+    sunday_off = getattr(settings, 'sunday_off', None)
+    if sunday_off is None:
+        sunday_off = getattr(settings, 'weekend_off', True)
+    if saturday_off:
+        off_days.add('Saturday')
+    if sunday_off:
+        off_days.add('Sunday')
 
     custom_days = getattr(settings, 'custom_off_days', '') or ''
     for item in custom_days.split(','):
@@ -18,6 +27,32 @@ def get_school_off_days(settings):
         if day_name:
             off_days.add(day_name)
     return off_days
+
+
+def _get_holiday_ranges():
+    """Fetch holiday/vacation ranges without a circular import at module load."""
+    try:
+        from app.models.settings import get_holiday_ranges
+        return get_holiday_ranges()
+    except Exception:
+        return []
+
+
+def get_school_holidays_in_range(start_date, end_date):
+    """Return the set of configured holiday dates inside [start_date, end_date]."""
+    holidays = set()
+    for item in _get_holiday_ranges():
+        try:
+            start = datetime.strptime(str(item.get('start', '')), '%Y-%m-%d').date()
+            end = datetime.strptime(str(item.get('end', '')), '%Y-%m-%d').date()
+        except ValueError:
+            continue
+        current = max(start, start_date)
+        stop = min(end, end_date)
+        while current <= stop:
+            holidays.add(current)
+            current += __import__('datetime').timedelta(days=1)
+    return holidays
 
 
 def is_school_day(date_value, settings=None):
@@ -28,14 +63,19 @@ def is_school_day(date_value, settings=None):
     weekday_name = date_value.strftime('%A')
     if weekday_name in get_school_off_days(settings):
         return False
+    if date_value in get_school_holidays_in_range(date_value, date_value):
+        return False
     return True
 
 
 def get_school_working_days(start_date, end_date, settings=None):
     results = []
+    holidays = get_school_holidays_in_range(start_date, end_date)
     current = start_date
     while current <= end_date:
-        if is_school_day(current, settings):
+        weekday_name = current.strftime('%A')
+        if (weekday_name not in get_school_off_days(settings)
+                and current not in holidays):
             results.append(current)
         current += __import__('datetime').timedelta(days=1)
     return results

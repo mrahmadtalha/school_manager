@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Import</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-file-import text-success me-2"></i>{{ entity_label }} Import Result</h1>
+        <p class="text-muted small mb-0">{{ result.total_rows }} row(s) were read from your file.</p>
+    </div>
+    <a href="{{ back_url }}" class="btn btn-secondary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i> Back to {{ entity_plural }}
+    </a>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body text-center">
+            <div class="display-6 fw-bold text-success">{{ result.added_count }}</div>
+            <div class="small text-muted">{{ entity_label|lower }}(s) added</div>
+        </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body text-center">
+            <div class="display-6 fw-bold {% if result.skipped_count %}text-danger{% else %}text-muted{% endif %}">{{ result.skipped_count }}</div>
+            <div class="small text-muted">row(s) skipped</div>
+        </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body text-center">
+            <div class="display-6 fw-bold text-warning">{{ result.count('duplicate') }}</div>
+            <div class="small text-muted">duplicate(s) blocked</div>
+        </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body text-center">
+            <div class="display-6 fw-bold text-danger">{{ result.count('missing') + result.count('invalid') }}</div>
+            <div class="small text-muted">missing / incorrect data</div>
+        </div></div>
+    </div>
+</div>
+
+{% if result.added_count and not result.skipped_count %}
+<div class="alert alert-success"><i class="fas fa-check-circle me-1"></i>
+    All rows were imported successfully.</div>
+{% elif not result.added_count %}
+<div class="alert alert-warning"><i class="fas fa-exclamation-triangle me-1"></i>
+    Nothing was imported. Please fix the problems listed below and upload the file again.</div>
+{% else %}
+<div class="alert alert-info"><i class="fas fa-info-circle me-1"></i>
+    The correct rows were imported. The skipped rows below were <strong>not</strong> saved &mdash;
+    fix them in your file and import again (rows that were already imported will simply be reported as duplicates).</div>
+{% endif %}
+
+{% if result.example_rows %}
+<div class="alert alert-secondary small"><i class="fas fa-lightbulb me-1"></i>
+    The unchanged example row from the template was ignored.</div>
+{% endif %}
+
+{% if result.ignored_columns %}
+<div class="alert alert-secondary small"><i class="fas fa-columns me-1"></i>
+    These columns are not used and were ignored: <strong>{{ result.ignored_columns|join(', ') }}</strong>.</div>
+{% endif %}
+
+{% if result.skipped %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white fw-bold"><i class="fas fa-ban text-danger me-1"></i> Skipped rows ({{ result.skipped_count }})</div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr><th class="ps-3" style="width:80px;">Row</th><th style="width:220px;">Name</th>
+                    <th style="width:130px;">Problem</th><th>What to fix</th></tr>
+            </thead>
+            <tbody>
+            {% for item in result.skipped %}
+                <tr>
+                    <td class="ps-3 fw-bold">{{ item.row }}</td>
+                    <td>{{ item.name }}</td>
+                    <td>
+                        {% if item.type == 'duplicate' %}<span class="badge bg-warning text-dark">Duplicate</span>
+                        {% elif item.type == 'missing' %}<span class="badge bg-danger">Missing data</span>
+                        {% else %}<span class="badge bg-secondary">Incorrect data</span>{% endif %}
+                    </td>
+                    <td class="small">{{ item.reason }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer bg-white small text-muted">
+        &ldquo;Row&rdquo; is the row number you see in Excel (row 1 holds the column headings).
+    </div>
+</div>
+{% endif %}
+
+{% if result.warnings %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white fw-bold"><i class="fas fa-exclamation-circle text-warning me-1"></i> Imported, but please check ({{ result.warnings|length }})</div>
+    <ul class="list-group list-group-flush small">
+        {% for item in result.warnings %}
+        <li class="list-group-item"><strong>Row {{ item.row }} &mdash; {{ item.name }}:</strong> {{ item.message }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if result.added %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white fw-bold"><i class="fas fa-check text-success me-1"></i> Added ({{ result.added_count }})</div>
+    <ul class="list-group list-group-flush small" style="max-height:320px; overflow:auto;">
+        {% for row, label in result.added %}
+        <li class="list-group-item"><span class="text-muted">Row {{ row }}</span> &mdash; {{ label }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<div class="d-flex gap-2 mb-5">
+    <a href="{{ back_url }}" class="btn btn-primary"><i class="fas fa-list me-1"></i> Go to {{ entity_plural }}</a>
+    <a href="{{ template_url }}" class="btn btn-outline-primary"><i class="fas fa-download me-1"></i> Download template again</a>
+</div>
+{% endblock %}

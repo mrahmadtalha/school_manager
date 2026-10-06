@@ -13,17 +13,6 @@
     </div>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
-
 <!-- Filter Card -->
 <div class="card shadow-sm mb-4 border-0 analytics-panel">
     <div class="card-body">
@@ -71,31 +60,61 @@
     </div>
 </div>
 
-<!-- Bulk class fee update -->
-<div class="card shadow-sm mb-4 border-0">
-    <div class="card-body">
-        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-            <div>
-                <h5 class="mb-1 text-dark"><i class="fas fa-layer-group me-2 text-primary"></i>Set Monthly Fee for Entire Class <i class="fas fa-circle-info ms-1 text-secondary" data-bs-toggle="tooltip" title="Bulk update: changes the fee on ALL existing student records in this class, and syncs the standard fee used for new admissions."></i></h5>
-                <p class="text-muted mb-0 small">Apply one fee to every active student in the selected class. This also updates the class standard fee (Classes page) used for new admissions. <b class="text-danger-emphasis">Bulk-updates ALL existing student records.</b></p>
-            </div>
-            <form method="POST" action="{{ url_for('main.bulk_update_class_fees') }}" class="row g-2 align-items-end" id="bulk-fee-form">
+<!-- Monthly charges are posted explicitly (never on page load) -->
+{% if pending_charges %}
+<div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+    <div>
+        <i class="fas fa-file-invoice-dollar me-1"></i>
+        <strong>{{ pending_charges }}</strong> student(s) have no fee charge posted for
+        <strong>{{ month_year }}</strong> yet. Generating charges is a deliberate billing
+        action &mdash; it posts the monthly fee to each student's ledger.
+    </div>
+    <form method="POST" action="{{ url_for('main.generate_monthly_charges') }}" class="d-flex gap-2">
+        <input type="hidden" name="month_year" value="{{ month_year }}">
+        {% if selected_class_id %}<input type="hidden" name="class_id" value="{{ selected_class_id }}">{% endif %}
+        <button type="submit" class="btn btn-primary btn-sm text-nowrap">
+            <i class="fas fa-bolt me-1"></i> Generate monthly charges
+        </button>
+    </form>
+</div>
+{% endif %}
+
+<!-- Bulk class fee update (opens in a popup) -->
+<div class="mb-4">
+    <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#bulkClassFeeModal"
+            title="Bulk update: changes the fee on ALL existing student records in this class, and syncs the standard fee used for new admissions.">
+        <i class="fas fa-layer-group me-2"></i>Set Monthly Fee for Entire Class
+    </button>
+</div>
+
+<div class="modal fade" id="bulkClassFeeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <form method="POST" action="{{ url_for('main.bulk_update_class_fees') }}" id="bulk-fee-form">
                 <input type="hidden" name="confirm_bulk_update" id="confirm_bulk_update" value="no">
-                <div class="col-auto">
-                    <label class="form-label fw-bold small text-muted mb-1">Class</label>
-                    <select class="form-select" name="class_id" data-class-fee="class" required>
-                        {% for c in classes %}
-                        <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
-                        {% endfor %}
-                    </select>
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title"><i class="fas fa-layer-group me-2"></i>Set Monthly Fee for Entire Class</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="col-auto">
-                    <label class="form-label fw-bold small text-muted mb-1">Monthly Fee (PKR)</label>
-                    <input type="number" step="0.01" min="0" class="form-control" name="monthly_fee"
-                           data-class-fee="fee" placeholder="e.g. 3500"
-                           value="{{ selected_class_fee if selected_class_fee is not none else '' }}" required>
+                <div class="modal-body text-start">
+                    <p class="text-muted small">Apply one fee to every active student in the selected class. This also updates the class standard fee (Classes page) used for new admissions. <b class="text-danger-emphasis">Bulk-updates ALL existing student records.</b></p>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-muted mb-1">Class</label>
+                        <select class="form-select" name="class_id" data-class-fee="class" required>
+                            {% for c in classes %}
+                            <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label fw-bold small text-muted mb-1">Monthly Fee (PKR)</label>
+                        <input type="number" step="0.01" min="0" class="form-control" name="monthly_fee"
+                               data-class-fee="fee" placeholder="e.g. 3500"
+                               value="{{ selected_class_fee if selected_class_fee is not none else '' }}" required>
+                    </div>
                 </div>
-                <div class="col-auto">
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i> Apply to Class</button>
                 </div>
             </form>
@@ -220,6 +239,11 @@
                         <div class="modal-content">
                             <form action="{{ url_for('main.pay_fee', student_id=row.student.id) }}" method="POST">
                                 <input type="hidden" name="month_year" value="{{ month_year }}">
+                                {# Carry the current list filters so "Back to Fees" on
+                                   it can restore this exact filtered view. #}
+                                {% for field, value in return_filters.items() %}
+                                <input type="hidden" name="{{ field }}" value="{{ value }}">
+                                {% endfor %}
                                 <div class="modal-header bg-dark text-white">
                                     <h5 class="modal-title">
                                         <i class="fas fa-cash-register me-2"></i>Collect Fee: {{ row.student.student_name }}
@@ -301,7 +325,10 @@
                                         <div class="col-6">
                                             <label class="form-label fw-bold">Reference / Slip No</label>
                                             <input type="text" class="form-control" name="reference"
-                                                   placeholder="e.g. SLIP-20261002-0001" value="">
+                                                   maxlength="80" autocomplete="off"
+                                                   placeholder="e.g. SLIP-20261002-0001"
+                                                   value="{{ suggested_reference }}">
+                                            <div class="form-text">Filled in automatically. You can change it, but each number can only be used once.</div>
                                         </div>
                                     </div>
 
@@ -355,8 +382,8 @@ function setFull(id) {
     var due = getDue(id);
     var previousPaid = getCurrentPaid(id);
     var remaining = Math.max(due - previousPaid, 0);
-    if (due <= 0) { alert('Please enter the Monthly Due amount first.'); return; }
-    if (remaining <= 0) { alert('This student already has no remaining dues for this month.'); return; }
+    if (due <= 0) { window.SchoolUI.toast('Please enter the Monthly Due amount first.', 'warning'); return; }
+    if (remaining <= 0) { window.SchoolUI.toast('This student already has no remaining dues for this month.', 'warning'); return; }
     document.getElementById('paid_' + id).value = remaining.toFixed(2);
     updateBalance(id);
 }
@@ -364,8 +391,8 @@ function setHalf(id) {
     var due = getDue(id);
     var previousPaid = getCurrentPaid(id);
     var remaining = Math.max(due - previousPaid, 0);
-    if (due <= 0) { alert('Please enter the Monthly Due amount first.'); return; }
-    if (remaining <= 0) { alert('This student already has no remaining dues for this month.'); return; }
+    if (due <= 0) { window.SchoolUI.toast('Please enter the Monthly Due amount first.', 'warning'); return; }
+    if (remaining <= 0) { window.SchoolUI.toast('This student already has no remaining dues for this month.', 'warning'); return; }
     document.getElementById('paid_' + id).value = Math.min(remaining / 2, remaining).toFixed(2);
     updateBalance(id);
 }
@@ -414,15 +441,11 @@ var classFeeByClass = {{ class_fee_by_class|tojson }};
 (function () {
     var form = document.querySelector('form[action="{{ url_for('main.bulk_update_class_fees') }}"]');
     if (!form) return;
-    form.addEventListener('submit', function (event) {
-        var confirmInput = document.getElementById('confirm_bulk_update');
-        if (!confirmInput || confirmInput.value === 'yes') return;
-        if (!confirm('Are you sure you want to update monthly fees for ALL active students in this class?')) {
-            event.preventDefault();
-            return;
-        }
-        confirmInput.value = 'yes';
-    });
+    // The confirmation is declarative (data-confirm), so it shows the app's
+    // styled dialog instead of the browser's own.
+    form.dataset.confirm = 'Are you sure you want to update monthly fees for ALL active students in this class?';
+    form.dataset.confirmOk = 'Update all fees';
+    if (window.SchoolUI) window.SchoolUI.wire();
     var classSelect = form.querySelector('[data-class-fee="class"]');
     var feeInput = form.querySelector('[data-class-fee="fee"]');
     if (!classSelect || !feeInput) return;

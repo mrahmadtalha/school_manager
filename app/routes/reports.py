@@ -28,6 +28,7 @@ from app.models import (
     FeeTransaction, StaffPayroll, TermExam
 )
 from app.routes import main
+from app.services.marks import ABSENT_LABEL, mark_is_absent
 
 
 # ==========================================
@@ -191,18 +192,21 @@ def _hub_academic_chart(filters):
                 'label': subj.name if subj else 'Unknown', 'test_ids': set(), 'max': 0.0})
             col['test_ids'].add(t.id)
             col['max'] += float(t.total_marks or 0)
+        marks_by_test = {t.id: float(t.total_marks or 0) for t in class_tests}
         for col in subject_cols.values():
             pcts = []
             for row in matrix_data:
                 obtained = 0.0
+                sat_max = 0.0
                 seen = False
                 for tid in col['test_ids']:
                     val = row['scores'].get(tid)
                     if val is not None:
                         obtained += val
+                        sat_max += marks_by_test.get(tid, 0.0)
                         seen = True
-                if seen and col['max'] > 0:
-                    pcts.append(obtained / col['max'] * 100)
+                if seen and sat_max > 0:
+                    pcts.append(obtained / sat_max * 100)
             labels.append(col['label'])
             values.append(round(sum(pcts) / len(pcts), 1) if pcts else 0)
     else:
@@ -450,7 +454,7 @@ def _position_export_rows(class_id, test_type=''):
     for row in matrix_data:
         student = row['student']
         rows.append({
-            'rank': row['rank'],
+            'rank': row['rank_label'],
             'roll': student.roll_number if student.roll_number is not None else '—',
             'name': student.student_name or '',
             'obtained': row['total_obtained'],
@@ -886,12 +890,14 @@ def hub_export_broad_sheet(fmt):
                     obtained += value
                     has_marks = True
             if not has_marks:
-                line.append('')
+                line.append(ABSENT_LABEL
+                            if col['test_ids'] and all(row['absent'].get(t) for t in col['test_ids'])
+                            else '')
             else:
                 number = float(obtained)
                 line.append(int(number) if number.is_integer() else round(number, 1))
         line += [row['total_obtained'], row['total_max'], row['percentage'],
-                 row['overall_grade'], row['rank'], row['status'],
+                 row['overall_grade'], row['rank_label'], row['status'],
                  remarks_map.get(student.id, '') or '']
         data.append(line)
 
@@ -986,7 +992,12 @@ def _class_results_evaluation(class_id, test_type=''):
 
     Returns (test_types, class_tests, matrix_data, marks_map). Each matrix row
     carries scores/grades per test, totals, percentage, overall grade,
-    pass/fail status and a competition rank by total marks obtained.
+    pass/fail status and a competition rank.
+
+    A paper marked Absent is left out of the student's total, maximum,
+    percentage, grade and rank (``row['absent']`` flags those papers); they are
+    judged only on the papers they sat.  A student absent from every paper has
+    status ``Absent`` and no rank.
     """
     from app.models.settings import calculate_grade
 
@@ -1003,12 +1014,20 @@ def _class_results_evaluation(class_id, test_type=''):
 
     matrix_data = []
     for s in students:
-        student_row = {'student': s, 'scores': {}, 'grades': {}}
+        student_row = {'student': s, 'scores': {}, 'grades': {}, 'absent': {}}
         total_obtained = 0.0
         total_max = 0.0
+        absent_count = 0
 
         for t in class_tests:
             m = marks_map.get((s.id, t.id))
+            if mark_is_absent(m):
+                # Absent: not scored, and its maximum is not held against them.
+                student_row['scores'][t.id] = None
+                student_row['grades'][t.id] = None
+                student_row['absent'][t.id] = True
+                absent_count += 1
+                continue
             if m:
                 student_row['scores'][t.id] = m.marks_obtained
                 student_row['grades'][t.id] = m.grade
@@ -1018,29 +1037,53 @@ def _class_results_evaluation(class_id, test_type=''):
                 student_row['grades'][t.id] = None
             total_max += t.total_marks
 
+        all_absent = bool(absent_count and absent_count == len(class_tests))
         overall_pct = (total_obtained / total_max * 100) if total_max > 0 else 0.0
-        ov_grade = calculate_grade(overall_pct) if total_max > 0 else 'N/A'
+        if all_absent:
+            ov_grade = ABSENT_LABEL
+        else:
+            ov_grade = calculate_grade(overall_pct) if total_max > 0 else 'N/A'
         is_pass = bool(total_max > 0 and ov_grade != 'F')
 
         student_row['total_obtained'] = total_obtained
         student_row['total_max'] = total_max
+        student_row['absent_count'] = absent_count
+        student_row['all_absent'] = all_absent
         student_row['percentage'] = round(overall_pct, 1)
         student_row['overall_grade'] = ov_grade
         student_row['is_pass'] = is_pass
-        student_row['status'] = 'Pass' if is_pass else ('Fail' if total_max > 0 else 'N/A')
+        if all_absent:
+            student_row['status'] = 'Absent'
+        else:
+            student_row['status'] = 'Pass' if is_pass else ('Fail' if total_max > 0 else 'N/A')
         matrix_data.append(student_row)
 
-    # Rank by total marks obtained; students on equal totals share the position.
-    matrix_data.sort(key=lambda x: x['total_obtained'], reverse=True)
-    rank = 0
-    prev_total = None
-    for i, row in enumerate(matrix_data, 1):
-        if prev_total is None or row['total_obtained'] != prev_total:
-            rank = i
-            prev_total = row['total_obtained']
-        row['rank'] = rank
+    # Rank by percentage on the papers actually sat, so a student who missed a
+    # paper is not pushed down for marks they could not earn.  (With no absences
+    # every student has the same maximum, so this orders exactly as ranking by
+    # total marks did.)  Equal results share the position; all-absent students
+    # come last and have no rank.
+    ranked = [r for r in matrix_data if not r['all_absent']]
+    unranked = [r for r in matrix_data if r['all_absent']]
 
-    return test_types, class_tests, matrix_data, marks_map
+    def _standing(r):
+        return (r['total_obtained'] / r['total_max']) if r['total_max'] > 0 else 0.0
+
+    ranked.sort(key=_standing, reverse=True)
+    rank = 0
+    prev_standing = None
+    for i, row in enumerate(ranked, 1):
+        standing = _standing(row)
+        if prev_standing is None or standing != prev_standing:
+            rank = i
+            prev_standing = standing
+        row['rank'] = rank
+        row['rank_label'] = str(rank)
+    for row in unranked:
+        row['rank'] = None
+        row['rank_label'] = '—'
+
+    return test_types, class_tests, ranked + unranked, marks_map
 
 
 def _class_results_summary(matrix_data, class_tests):
@@ -1179,7 +1222,7 @@ def student_report_card_pdf(student_id):
                 'announce_display': _format_result_date(announce_value),
                 'status': row['status'],
                 'overall_grade': row['overall_grade'],
-                'rank': row['rank'],
+                'rank': row['rank_label'],
                 'total_students': len(matrix_data),
                 'percentage': row['percentage'],
                 'total_obtained': row['total_obtained'],
@@ -1194,7 +1237,8 @@ def student_report_card_pdf(student_id):
     
     output = io.BytesIO()
     doc = SimpleDocTemplate(output, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
-    story = _build_student_report_story(student, marks, current_app.root_path, evaluation=evaluation)
+    story = [_fit_report_on_one_page(
+        doc, _build_student_report_story(student, marks, current_app.root_path, evaluation=evaluation))]
     doc.build(story)
     output.seek(0)
     
@@ -1223,7 +1267,8 @@ def export_all_report_cards_pdf():
         return redirect(url_for('main.class_results_matrix'))
 
     class_obj = ClassModel.query.get_or_404(selected_class_id)
-    students  = StudentModel.query.filter_by(is_active=True, class_id=selected_class_id).all()
+    students  = (StudentModel.query.filter_by(is_active=True, class_id=selected_class_id)
+                 .order_by(StudentModel.roll_number).all())
 
     _, class_tests, matrix_data, marks_map = _class_results_evaluation(selected_class_id, test_type)
     remarks_map = _load_result_remarks(selected_class_id, test_type, session_value)
@@ -1247,7 +1292,7 @@ def export_all_report_cards_pdf():
                 'announce_display': announce_display,
                 'status': row['status'],
                 'overall_grade': row['overall_grade'],
-                'rank': row['rank'],
+                'rank': row['rank_label'],
                 'total_students': len(matrix_data),
                 'percentage': row['percentage'],
                 'total_obtained': row['total_obtained'],
@@ -1257,9 +1302,11 @@ def export_all_report_cards_pdf():
         marks = [marks_map[(student.id, t.id)] for t in class_tests
                  if (student.id, t.id) in marks_map]
         
-        story.extend(_build_student_report_story(student, marks, current_app.root_path,
-                                                 evaluation=evaluation))
-        
+        # Each student's card is fitted onto exactly one page (see helper above).
+        story.append(_fit_report_on_one_page(
+            doc, _build_student_report_story(student, marks, current_app.root_path,
+                                             evaluation=evaluation)))
+
         if si < len(students) - 1:
             story.append(PageBreak())
 
@@ -1388,7 +1435,9 @@ def _build_class_tabulation_doc(output, class_obj, subject_cols, matrix_data, su
                     obtained += val
                     has_marks = True
             if not has_marks:
-                line.append('—')
+                line.append(ABSENT_LABEL
+                            if col['test_ids'] and all(row['absent'].get(t) for t in col['test_ids'])
+                            else '—')
             else:
                 obtained = int(obtained) if float(obtained).is_integer() else round(obtained, 1)
                 line.append(str(obtained))
@@ -1396,8 +1445,11 @@ def _build_class_tabulation_doc(output, class_obj, subject_cols, matrix_data, su
         total_mx = row['total_max']
         total_ob_s = int(total_ob) if float(total_ob).is_integer() else round(total_ob, 1)
         total_mx_s = int(total_mx) if float(total_mx).is_integer() else round(total_mx, 1)
-        line += ['%s / %s' % (total_ob_s, total_mx_s), '%s%%' % row['percentage'],
-                 str(row['rank'])]
+        if row['all_absent']:
+            line += ['—', '—', '—']
+        else:
+            line += ['%s / %s' % (total_ob_s, total_mx_s), '%s%%' % row['percentage'],
+                     row['rank_label']]
         data.append(line)
 
     name_w, total_w, pct_w, pos_w = 116, 56, 34, 26
@@ -1442,6 +1494,19 @@ def _build_class_tabulation_doc(output, class_obj, subject_cols, matrix_data, su
                            ParagraphStyle('CG', parent=styles['Normal'], fontSize=7.5,
                                           alignment=1, textColor=colors.HexColor('#94a3b8'))))
     doc.build(story)
+
+
+def _fit_report_on_one_page(doc, story):
+    """Wrap one student's report so it can never run past a single page.
+
+    A report that already fits is left exactly as it was; a longer one (many
+    marks) is scaled down just enough to fit. Because the result is a single
+    flowable no taller than the page, a bulk PDF always has one page per student
+    and no stray or blank pages.
+    """
+    from reportlab.platypus import KeepInFrame
+    return KeepInFrame(doc.width - 12, doc.height - 12, story,
+                       mode='shrink', hAlign='CENTER', vAlign='TOP')
 
 
 def _build_student_report_story(student, marks, root_path, evaluation=None):
@@ -1509,15 +1574,28 @@ def _build_student_report_story(student, marks, root_path, evaluation=None):
         [Paragraph("<b>Father's Name:</b>", detail_style), Paragraph(student.father_name, detail_style),
          Paragraph("<b>Class:</b>", detail_style), Paragraph(student.class_info.name if student.class_info else 'N/A', detail_style)]
     ]
-    details_table = Table(details_data, colWidths=[90, 180, 90, 180])
-    details_table.setStyle(TableStyle([
+    # Optional student photo: an extra column only when a picture exists.
+    from app.services import photos as _photos
+    photo_buffer = _photos.square_image_buffer(
+        _photos.photo_path('student', getattr(student, 'photo_filename', None)))
+    detail_widths = [90, 180, 90, 180]
+    if photo_buffer:
+        detail_widths = [85, 150, 85, 150, 70]
+        details_data[0].append(Image(photo_buffer, width=56, height=56))
+        details_data[1].append('')
+    details_table = Table(details_data, colWidths=detail_widths)
+    details_style = [
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f7fafc')),
         ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#cbd5e0')),
         ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#edf2f7')),
         ('TOPPADDING', (0, 0), (-1, -1), 8),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
         ('LEFTPADDING', (0, 0), (-1, -1), 10),
-    ]))
+    ]
+    if photo_buffer:
+        details_style += [('SPAN', (4, 0), (4, 1)), ('VALIGN', (4, 0), (4, 1), 'MIDDLE'),
+                          ('ALIGN', (4, 0), (4, 1), 'CENTER')]
+    details_table.setStyle(TableStyle(details_style))
     story.append(details_table)
     story.append(Spacer(1, 20))
     
@@ -1529,6 +1607,7 @@ def _build_student_report_story(student, marks, root_path, evaluation=None):
     
     total_ob = 0.0
     total_mx = 0.0
+    absent_papers = 0
     
     table_style_commands = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2b6cb0')), # Blue header
@@ -1562,19 +1641,26 @@ def _build_student_report_story(student, marks, root_path, evaluation=None):
         for m in group_marks:
             t = m.test_info
             subj_name = t.subject_info.name if t.subject_info else 'N/A'
-            table_data.append([
-                str(subj_name),
-                str(t.test_type),
-                str(t.total_marks),
-                str(m.marks_obtained),
-                f"{m.percentage}%",
-                str(m.grade)
-            ])
+            if m.is_absent:
+                # Absent: shown as ABS and left out of the totals below.
+                table_data.append([
+                    str(subj_name), str(t.test_type), str(t.total_marks),
+                    ABSENT_LABEL, '—', ABSENT_LABEL,
+                ])
+                absent_papers += 1
+            else:
+                table_data.append([
+                    str(subj_name),
+                    str(t.test_type),
+                    str(t.total_marks),
+                    str(m.marks_obtained),
+                    f"{m.percentage}%",
+                    str(m.grade)
+                ])
+                total_ob += m.marks_obtained
+                total_mx += t.total_marks
             bg_color = colors.HexColor('#ffffff') if current_row % 2 == 0 else colors.HexColor('#fcfcfc')
             table_style_commands.append(('BACKGROUND', (0, current_row), (-1, current_row), bg_color))
-            
-            total_ob += m.marks_obtained
-            total_mx += t.total_marks
             current_row += 1
             
     if len(table_data) == 1:
@@ -1583,7 +1669,10 @@ def _build_student_report_story(student, marks, root_path, evaluation=None):
         current_row += 1
     else:
         overall_pct = (total_ob / total_mx * 100) if total_mx > 0 else 0.0
-        table_data.append(['TOTAL / OVERALL', '', f'{total_mx}', f'{total_ob}', f'{round(overall_pct, 1)}%', ''])
+        if total_mx > 0:
+            table_data.append(['TOTAL / OVERALL', '', f'{total_mx}', f'{total_ob}', f'{round(overall_pct, 1)}%', ''])
+        else:
+            table_data.append(['TOTAL / OVERALL', '', '—', '—', '—', ABSENT_LABEL])
         table_style_commands.extend([
             ('SPAN', (0, current_row), (1, current_row)),
             ('BACKGROUND', (0, current_row), (-1, current_row), colors.HexColor('#2d3748')),
@@ -1594,6 +1683,13 @@ def _build_student_report_story(student, marks, root_path, evaluation=None):
     t = Table(table_data, colWidths=[150, 70, 70, 70, 80, 60])
     t.setStyle(TableStyle(table_style_commands))
     story.append(t)
+    if absent_papers:
+        story.append(Spacer(1, 4))
+        story.append(Paragraph(
+            'ABS = absent. %d paper(s) marked absent are not included in the total, '
+            'percentage, grade or class rank.' % absent_papers,
+            ParagraphStyle('AbsNote', parent=styles['Normal'], fontSize=8,
+                           textColor=colors.HexColor('#92400e'))))
     
     if evaluation:
         eval_style = ParagraphStyle('EvalCell', parent=styles['Normal'], fontSize=10,
@@ -1654,9 +1750,12 @@ def export_class_results_excel():
         total_mx = 0.0
         for t in class_tests:
             m = marks_map.get((s.id, t.id))
-            score_str = f"{m.marks_obtained} ({m.grade})" if m else "-"
             subj_name = t.subject_info.name if t.subject_info else 'Unknown'
             col_name = f"{t.test_title} - {subj_name} ({t.test_type})"
+            if mark_is_absent(m):
+                row[col_name] = ABSENT_LABEL      # left out of totals
+                continue
+            score_str = f"{m.marks_obtained} ({m.grade})" if m else "-"
             row[col_name] = score_str
             if m: total_ob += m.marks_obtained
             total_mx += t.total_marks
@@ -1704,6 +1803,9 @@ def export_class_results_csv():
         total_mx = 0.0
         for t in class_tests:
             m = marks_map.get((s.id, t.id))
+            if mark_is_absent(m):
+                row.append(ABSENT_LABEL)          # left out of totals
+                continue
             row.append(f"{m.marks_obtained} ({m.grade})" if m else "-")
             if m: total_ob += m.marks_obtained
             total_mx += t.total_marks

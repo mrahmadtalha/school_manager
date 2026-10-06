@@ -12,9 +12,11 @@ def _fee_records(app, student_id, month=MONTH):
     return FeeRecordModel.query.filter_by(student_id=student_id, month_year=month).first()
 
 
-def test_viewing_fees_creates_the_monthly_charge(admin_client, app, seed):
-    response = admin_client.get(f'/fees?class_id={seed["class_id"]}&month_year={MONTH}')
-    assert response.status_code == 200
+def test_generating_charges_creates_the_monthly_charge(admin_client, app, seed):
+    response = admin_client.post('/fees/generate-charges', data={
+        'month_year': MONTH, 'class_id': str(seed['class_id']),
+    }, follow_redirects=False)
+    assert response.status_code == 302
 
     with app.app_context():
         charges = FeeTransaction.query.filter_by(student_id=seed['student_id'],
@@ -89,7 +91,9 @@ def test_reconciliation_reports_no_discrepancy_for_consistent_data(admin_client,
 
 def test_reconciliation_detects_a_tampered_summary(admin_client, app, seed):
     student_id = seed['student_id']
-    admin_client.get(f'/fees?class_id={seed["class_id"]}&month_year={MONTH}')
+    admin_client.post('/fees/generate-charges', data={
+        'month_year': MONTH, 'class_id': str(seed['class_id']),
+    }, follow_redirects=False)
 
     with app.app_context():
         record = _fee_records(app, student_id)
@@ -114,7 +118,9 @@ def test_reconciliation_detects_a_tampered_summary(admin_client, app, seed):
 def test_ledger_totals_span_multiple_months(admin_client, app, seed):
     student_id = seed['student_id']
     for month in (MONTH, OTHER_MONTH):
-        admin_client.get(f'/fees?class_id={seed["class_id"]}&month_year={month}')
+        admin_client.post('/fees/generate-charges', data={
+            'month_year': month, 'class_id': str(seed['class_id']),
+        }, follow_redirects=False)
 
     with app.app_context():
         charged, paid = ledger_totals(student_id)

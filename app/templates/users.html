@@ -41,14 +41,6 @@
     </div>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show">
-      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  {% endfor %}{% endif %}
-{% endwith %}
-
 <div class="row g-3 mb-4">
     <div class="col-6 col-xl-3">
         <div class="ustat u-blue">
@@ -138,13 +130,13 @@
                     <td class="text-end pe-4">
                         <div class="d-inline-flex gap-1 align-items-center">
                             <button class="btn btn-sm btn-outline-primary u-action-btn" data-bs-toggle="modal"
-                                    data-bs-target="#editUserModal{{ user.id }}" title="Edit user">
+                                    data-bs-target="#editUserModal{{ user.id }}" title="Edit user" aria-label="Edit user">
                                 <i class="fas fa-pen"></i>
                             </button>
                             {% if user.is_parent %}
                             <button class="btn btn-sm btn-outline-info u-action-btn" data-bs-toggle="modal"
                                     data-bs-target="#linkChildrenModal{{ user.id }}"
-                                    title="Edit linked children">
+                                    title="Edit linked children" aria-label="Edit linked children">
                                 <i class="fas fa-child"></i>
                             </button>
                             {% endif %}
@@ -158,13 +150,13 @@
                             </form>
                             {% if user.role != 'admin' %}
                             <button class="btn btn-sm btn-outline-warning u-action-btn" data-bs-toggle="modal"
-                                    data-bs-target="#resetPassModal{{ user.id }}" title="Reset password">
+                                    data-bs-target="#resetPassModal{{ user.id }}" title="Reset password" aria-label="Reset password">
                                 <i class="fas fa-key"></i>
                             </button>
                             {% else %}
                             <span class="d-inline-block" tabindex="0" data-bs-toggle="tooltip"
                                   title="Admin passwords are changed via the 'Change Password' menu.">
-                                <button class="btn btn-sm btn-outline-secondary u-action-btn" type="button" disabled style="opacity:.45;">
+                                <button class="btn btn-sm btn-outline-secondary u-action-btn" type="button" disabled style="opacity:.45;" aria-label="Password">
                                     <i class="fas fa-key"></i>
                                 </button>
                             </span>
@@ -315,7 +307,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary fw-bold px-4"><i class="fas fa-save me-1"></i>Save Changes</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4"><i class="fas fa-save me-1"></i>Save</button>
                 </div>
             </form>
         </div>

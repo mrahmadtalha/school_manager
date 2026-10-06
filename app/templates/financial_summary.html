@@ -2,15 +2,19 @@
 {% block content %}
 
 <!-- Header -->
-<div class="d-flex flex-wrap justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom gap-2">
-    <h1 class="h2 fw-bold text-dark mb-0"><i class="fas fa-chart-line text-primary me-2"></i>Financial Overview</h1>
-    <div class="d-flex align-items-center gap-2 flex-wrap">
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Finance</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-chart-line text-primary me-2"></i>Financial Overview</h1>
+        <p class="text-muted small mb-0">Monthly fee collection against payroll and expenses, with period comparison.</p>
+    </div>
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
         <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary', month=prev_month) }}" title="Previous month">
             <i class="fas fa-chevron-left"></i>
         </a>
         <form method="get" action="{{ url_for('main.financials_summary') }}" class="d-flex gap-2">
             <input type="month" class="form-control form-control-sm" name="month" value="{{ month }}" style="width: 175px;">
-            <button class="btn btn-primary btn-sm">Go</button>
+            <button class="btn btn-primary btn-sm">Show</button>
         </form>
         <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary', month=next_month) }}" title="Next month">
             <i class="fas fa-chevron-right"></i>
@@ -23,14 +27,6 @@
         </a>
     </div>
 </div>
-
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show">
-      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  {% endfor %}{% endif %}
-{% endwith %}
 
 <!-- Metric cards -->
 <div class="row g-3 mb-3">
@@ -63,6 +59,181 @@
         </div></div>
     </div>
 </div>
+
+<!-- Compare periods: pick what to see side by side -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-primary text-white fw-bold border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span><i class="fas fa-scale-balanced me-2"></i>Compare periods</span>
+        <span class="small fw-normal opacity-75">Pick two or more months, whole years or sessions to see them side by side.</span>
+    </div>
+    <div class="card-body">
+        <form method="get" action="{{ url_for('main.financials_summary') }}" class="row g-3 align-items-end">
+            <div class="col-lg-7">
+                <label class="form-label small fw-bold mb-1">Quick comparisons</label>
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-sm {{ 'btn-primary' if comparison_preset == 'this_vs_last' else 'btn-outline-primary' }}"
+                       href="{{ url_for('main.financials_summary', preset='this_vs_last') }}">This month vs last month</a>
+                    <a class="btn btn-sm {{ 'btn-primary' if comparison_preset == 'this_vs_last_year' else 'btn-outline-primary' }}"
+                       href="{{ url_for('main.financials_summary', preset='this_vs_last_year') }}">This month vs same month last year</a>
+                    <a class="btn btn-sm {{ 'btn-primary' if comparison_preset == 'last_3' else 'btn-outline-primary' }}"
+                       href="{{ url_for('main.financials_summary', preset='last_3') }}">Last 3 months</a>
+                    <a class="btn btn-sm {{ 'btn-primary' if comparison_preset == 'last_6' else 'btn-outline-primary' }}"
+                       href="{{ url_for('main.financials_summary', preset='last_6') }}">Last 6 months</a>
+                    <a class="btn btn-sm {{ 'btn-primary' if comparison_preset == 'last_12' else 'btn-outline-primary' }}"
+                       href="{{ url_for('main.financials_summary', preset='last_12') }}">Last 12 months</a>
+                    <a class="btn btn-sm {{ 'btn-primary' if comparison_preset == 'this_year' else 'btn-outline-primary' }}"
+                       href="{{ url_for('main.financials_summary', preset='this_year') }}">This year</a>
+                    <a class="btn btn-sm {{ 'btn-primary' if comparison_preset == 'last_year' else 'btn-outline-primary' }}"
+                       href="{{ url_for('main.financials_summary', preset='last_year') }}">Last year</a>
+                    <a class="btn btn-sm {{ 'btn-primary' if comparison_preset == 'this_session' else 'btn-outline-primary' }}"
+                       href="{{ url_for('main.financials_summary', preset='this_session') }}">This session (Apr–Mar)</a>
+                    <a class="btn btn-sm {{ 'btn-primary' if comparison_preset == 'last_session' else 'btn-outline-primary' }}"
+                       href="{{ url_for('main.financials_summary', preset='last_session') }}">Last session</a>
+                    {% if comparison %}
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('main.financials_summary', month=month) }}">
+                        <i class="fas fa-xmark me-1"></i>Clear comparison
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-lg-5">
+                <label class="form-label small fw-bold mb-1">Or tick any months (then Apply)</label>
+                <details class="border rounded p-2" {% if comparison and not comparison_preset %}open{% endif %}>
+                    <summary class="small text-primary" style="cursor:pointer;">Choose months…</summary>
+                    <div class="row row-cols-2 row-cols-md-3 g-1 mt-2" style="max-height: 200px; overflow-y: auto;">
+                        {% set selected_keys = comparison.period_key_list %}
+                        {% for key, label in month_choices %}
+                        <div class="col">
+                            <div class="form-check small">
+                                <input class="form-check-input" type="checkbox" name="periods"
+                                       value="{{ key }}" id="per_{{ key }}"
+                                       {% if key in selected_keys %}checked{% endif %}>
+                                <label class="form-check-label" for="per_{{ key }}">{{ label }}</label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </details>
+                <div class="form-text">Up to {{ max_comparison_periods }} periods at once. Whole years and sessions can be added as buttons above.</div>
+                <button class="btn btn-dark btn-sm mt-2 w-100"><i class="fas fa-scale-balanced me-1"></i>Compare selected</button>
+            </div>
+        </form>
+        {% if comparison_message %}
+        <div class="alert alert-warning py-2 px-3 small mt-3 mb-0">{{ comparison_message }}</div>
+        {% endif %}
+    </div>
+</div>
+
+{% if comparison %}
+<!-- Comparison result -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-dark text-white fw-bold border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span><i class="fas fa-table-columns me-2"></i>Side-by-side comparison</span>
+        <div class="d-flex gap-2">
+            <a class="btn btn-sm btn-outline-light" href="{{ url_for('main.financials_export_csv', periods=comparison.period_keys) }}">
+                <i class="fas fa-file-csv me-1"></i>Export CSV
+            </a>
+            <a class="btn btn-sm btn-outline-light" href="{{ url_for('main.financials_export_pdf', periods=comparison.period_keys) }}">
+                <i class="fas fa-file-pdf me-1"></i>Export PDF
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if comparison.show_difference and comparison.highlight %}
+        {% set h = comparison.highlight[0] %}
+        <div class="alert {{ 'alert-success' if h.improved else 'alert-danger' }} py-2 px-3 mb-3">
+            <i class="fas fa-arrow-trend-{{ 'up' if h.improved else 'down' }} me-2"></i>
+            <strong>Net position {{ 'improved' if h.improved else 'dropped' }} by Rs. {{ '{:,.0f}'.format(h.change|abs) }}</strong>
+            — from Rs. {{ '{:,.0f}'.format(h.first) }} to Rs. {{ '{:,.0f}'.format(h.second) }}.
+        </div>
+        {% endif %}
+
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-3" id="comparisonTable">
+                <thead class="table-light">
+                    <tr>
+                        <th style="min-width: 190px;">Metric</th>
+                        {% for s in comparison.snapshots %}
+                        <th class="text-end text-nowrap">
+                            {{ s.label }}
+                            {% if s.month_count > 1 %}<div class="text-muted small fw-normal">{{ s.month_count }} months</div>{% endif %}
+                        </th>
+                        {% endfor %}
+                        {% if comparison.show_difference %}<th class="text-end text-nowrap">Difference</th>{% endif %}
+                        {% if comparison.totals %}<th class="text-end text-nowrap">Total</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in comparison.rows %}
+                    <tr class="{{ 'table-light fw-bold' if row.key == 'net' }}">
+                        <td>{{ row.label }}<div class="text-muted small fw-normal">{{ row.help }}</div></td>
+                        {% for value in row.amounts %}
+                        <td class="text-end {{ 'text-danger' if row.key == 'net' and value < 0 else '' }}">
+                            {{ '{:,.2f}'.format(value) }}
+                        </td>
+                        {% endfor %}
+                        {% if comparison.show_difference %}
+                        <td class="text-end text-nowrap">
+                            {% set good = (row.difference >= 0) == row.higher_is_better %}
+                            <span class="badge {{ 'bg-success-subtle text-success-emphasis' if good else 'bg-danger-subtle text-danger-emphasis' }}">
+                                <i class="fas fa-arrow-{{ 'up' if row.direction == 'up' else ('down' if row.direction == 'down' else 'right') }} me-1"></i>
+                                {{ '{:,.0f}'.format(row.difference) }}{% if row.difference_percent is not none %} ({{ row.difference_percent }}%){% endif %}
+                            </span>
+                        </td>
+                        {% endif %}
+                        {% if comparison.totals %}
+                        <td class="text-end fw-bold">{{ '{:,.2f}'.format(comparison.totals.get(row.key, 0)) }}</td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="height: 320px;"><canvas id="comparisonChart"></canvas></div>
+
+        {% set expandable = comparison.snapshots | selectattr('monthly') | list %}
+        {% if expandable %}
+        <div class="accordion accordion-flush mt-3" id="comparisonMonthly">
+            {% for s in expandable %}
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#monthly{{ loop.index }}">
+                        <span class="small fw-bold">{{ s.label }} — month by month</span>
+                    </button>
+                </h2>
+                <div id="monthly{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#comparisonMonthly">
+                    <div class="accordion-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light">
+                                    <tr><th>Month</th><th class="text-end">Fee Collections</th>
+                                        <th class="text-end">Staff Payroll</th>
+                                        <th class="text-end">Expenses</th><th class="text-end">Net</th></tr>
+                                </thead>
+                                <tbody>
+                                    {% for m in s.monthly %}
+                                    <tr class="{{ 'text-muted' if not (m.revenue or m.payroll or m.expenses) }}">
+                                        <td>{{ m.label }}</td>
+                                        <td class="text-end">{{ '{:,.0f}'.format(m.revenue) }}</td>
+                                        <td class="text-end">{{ '{:,.0f}'.format(m.payroll) }}</td>
+                                        <td class="text-end">{{ '{:,.0f}'.format(m.expenses) }}</td>
+                                        <td class="text-end fw-bold {{ 'text-danger' if m.net < 0 else '' }}">{{ '{:,.0f}'.format(m.net) }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 
 <!-- Charts -->
 <div class="row g-3 mb-3">
@@ -171,7 +342,10 @@
 </div>
 
 <script id="finData" type="application/json">{{ chart_payload|tojson }}</script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% if comparison %}
+<script id="cmpData" type="application/json">{{ comparison.chart|tojson }}</script>
+{% endif %}
+<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>
 <script>
 (function () {
     var payloadEl = document.getElementById('finData');
@@ -214,6 +388,33 @@
             plugins: { legend: { position: 'bottom' } }
         }
     });
+
+    // Comparison chart: one bar group per selected period.
+    var cmpEl = document.getElementById('cmpData');
+    var cmpCanvas = document.getElementById('comparisonChart');
+    if (cmpEl && cmpCanvas) {
+        var cmp = JSON.parse(cmpEl.textContent);
+        new Chart(cmpCanvas, {
+            type: 'bar',
+            data: {
+                labels: cmp.labels || [],
+                datasets: [
+                    { label: 'Fee Collections', data: cmp.revenue || [], backgroundColor: '#198754' },
+                    { label: 'Staff Payroll', data: cmp.payroll || [], backgroundColor: '#0d6efd' },
+                    { label: 'Expenses', data: cmp.expenses || [], backgroundColor: '#fd7e14' },
+                    { label: 'Net', data: cmp.net || [], backgroundColor: '#6f42c1' }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    title: { display: true, text: 'Selected periods compared' }
+                },
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+    }
 })();
 </script>
 

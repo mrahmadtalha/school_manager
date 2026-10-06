@@ -2,21 +2,14 @@
 {% block content %}
 <div class="container py-5">
     <div class="row justify-content-center">
-        <div class="col-lg-7">
+        <div class="col-lg-8">
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-dark text-white">
                     <h4 class="mb-0">School Setup</h4>
                 </div>
                 <div class="card-body">
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
-                            {% for category, message in messages %}
-                                <div class="alert alert-{{ category }}">{{ message }}</div>
-                            {% endfor %}
-                        {% endif %}
-                    {% endwith %}
 
-                    <form method="POST">
+                    <form method="POST" id="setup-form">
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label">Admin username</label>
@@ -50,33 +43,148 @@
                                 <label class="form-label">Email</label>
                                 <input type="email" class="form-control" name="email" placeholder="info@school.com">
                             </div>
+
                             <div class="col-md-12">
-                                <div class="form-check mt-2">
-                                    <input class="form-check-input" type="checkbox" id="dummy_data" name="dummy_data" checked>
-                                    <label class="form-check-label" for="dummy_data">
-                                        Load demo classes, sections, teachers, and students for testing
+                                <hr class="mt-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="dummy_data" name="dummy_data">
+                                    <label class="form-check-label fw-semibold" for="dummy_data">
+                                        Load demo data for testing (off by default — schools start clean)
                                     </label>
                                 </div>
                             </div>
+                        </div>
 
-                            <div class="col-md-4">
-                                <label class="form-label">Students to generate</label>
-                                <input type="number" class="form-control" name="dummy_student_count" min="0" value="60">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Teachers to generate</label>
-                                <input type="number" class="form-control" name="dummy_teacher_count" min="0" value="8">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Bulk monthly fee</label>
-                                <input type="number" step="0.01" class="form-control" name="dummy_fee" min="0" value="2500">
+                        <div id="dummy-options" class="border rounded p-3 mt-3 bg-light">
+                            <div class="row g-3">
+                                <div class="col-md-3">
+                                    <label class="form-label">Students</label>
+                                    <input type="number" class="form-control" name="dummy_student_count" id="dummy_student_count" min="0" value="60">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Teachers</label>
+                                    <input type="number" class="form-control" name="dummy_teacher_count" id="dummy_teacher_count" min="0" value="8">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Base monthly fee</label>
+                                    <input type="number" step="0.01" class="form-control" name="dummy_fee" min="0" value="2500">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Data period</label>
+                                    <select class="form-select" name="dummy_period_months" id="dummy_period_months">
+                                        <option value="1">1 month</option>
+                                        <option value="3">3 months</option>
+                                        <option value="6">6 months</option>
+                                        <option value="12" selected>1 year</option>
+                                        <option value="24">2 years</option>
+                                        <option value="60">5 years</option>
+                                        <option value="120">10 years</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-md-12">
+                                    <label class="form-label fw-semibold">What to include in the demo history</label>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="form-check">
+                                                <input class="form-check-input demo-opt" type="checkbox" id="dummy_attendance" name="dummy_attendance" checked>
+                                                <label class="form-check-label" for="dummy_attendance">Student &amp; teacher attendance (with late/leave records)</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input demo-opt" type="checkbox" id="dummy_fees" name="dummy_fees" checked>
+                                                <label class="form-check-label" for="dummy_fees">Fees (charges, payments, dues)</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input demo-opt" type="checkbox" id="dummy_expenses" name="dummy_expenses" checked>
+                                                <label class="form-check-label" for="dummy_expenses">Expenses</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input demo-opt" type="checkbox" id="dummy_tests" name="dummy_tests" checked>
+                                                <label class="form-check-label" for="dummy_tests">Class tests &amp; marks</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-check">
+                                                <input class="form-check-input demo-opt" type="checkbox" id="dummy_term_exams" name="dummy_term_exams" checked>
+                                                <label class="form-check-label" for="dummy_term_exams">Term exams &amp; results</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input demo-opt" type="checkbox" id="dummy_payroll" name="dummy_payroll" checked>
+                                                <label class="form-check-label" for="dummy_payroll">Staff payroll</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input demo-opt" type="checkbox" id="dummy_photos" name="dummy_photos">
+                                                <label class="form-check-label" for="dummy_photos">Generate dummy profile pictures (optional; photos are never required)</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-12">
+                                    <small id="seed-estimate" class="text-muted"></small>
+                                    <div id="seed-warning" class="alert alert-warning py-2 mt-2 mb-0 small d-none">
+                                        This combination generates a very large amount of historical data and
+                                        can take several minutes. The next screen will show live progress —
+                                        please keep this tab open until it finishes.
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <button type="submit" class="btn btn-primary w-100 mt-4">Finish Setup</button>
+
+                        <button type="submit" class="btn btn-primary w-100 mt-4" id="finish-btn">Finish Setup</button>
                     </form>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+    var checkbox = document.getElementById('dummy_data');
+    var panel = document.getElementById('dummy-options');
+    var estimateEl = document.getElementById('seed-estimate');
+    var warningEl = document.getElementById('seed-warning');
+    var studentsEl = document.getElementById('dummy_student_count');
+    var teachersEl = document.getElementById('dummy_teacher_count');
+    var periodEl = document.getElementById('dummy_period_months');
+
+    function syncPanel() {
+        panel.classList.toggle('d-none', !checkbox.checked);
+        estimate();
+    }
+
+    function estimate() {
+        if (!checkbox.checked) { return; }
+        var students = parseInt(studentsEl.value || '0', 10);
+        var teachers = parseInt(teachersEl.value || '0', 10);
+        var months = parseInt(periodEl.value || '1', 10);
+        var schoolDays = months * 26;
+        var attendance = (students + teachers) * schoolDays;
+        var fees = students * months * 2;
+        var marks = students * Math.max(1, Math.round(months * 3.5));
+        var total = attendance + fees + marks + students * 2 + teachers * months;
+        estimateEl.textContent = 'Approximately ' + total.toLocaleString() +
+            ' records will be generated (about ' + attendance.toLocaleString() +
+            ' attendance rows).';
+        warningEl.classList.toggle('d-none', total < 400000);
+    }
+
+    checkbox.addEventListener('change', syncPanel);
+    [studentsEl, teachersEl, periodEl].forEach(function (el) {
+        el.addEventListener('input', estimate);
+        el.addEventListener('change', estimate);
+    });
+
+    document.getElementById('setup-form').addEventListener('submit', function () {
+        var button = document.getElementById('finish-btn');
+        button.disabled = true;
+        button.textContent = checkbox.checked
+            ? 'Creating account, preparing demo data…'
+            : 'Finishing setup…';
+    });
+
+    syncPanel();
+})();
+</script>
 {% endblock %}

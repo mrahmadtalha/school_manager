@@ -7,21 +7,11 @@
         <p class="text-muted small mb-0">Manage the exam categories and classifications used across the school.</p>
     </div>
     <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTestTypeModal">
-        <i class="fas fa-plus me-1"></i> Add New Test Type
+        <i class="fas fa-plus me-1"></i> Add Test Type
     </button>
 </div>
 
 <!-- Flash Messages -->
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
 
 <div class="card shadow-sm">
     <div class="card-body table-responsive">
@@ -40,10 +30,10 @@
                     <td>{{ loop.index }}</td>
                     <td><strong>{{ t.name }}</strong></td>
                     <td class="text-end">
-                        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editTestTypeModal{{ t.id }}" title="Edit">
+                        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editTestTypeModal{{ t.id }}" title="Edit" aria-label="Edit">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteTestTypeModal{{ t.id }}" title="Delete">
+                        <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteTestTypeModal{{ t.id }}" title="Delete" aria-label="Delete">
                             <i class="fas fa-trash"></i>
                         </button>
                     </td>
@@ -62,7 +52,7 @@
                                     <input type="text" class="form-control" name="name" value="{{ t.name }}" required>
                                 </div>
                                 <div class="modal-footer py-1">
-                                    <button type="submit" class="btn btn-primary btn-sm">Update</button>
+                                    <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>Save</button>
                                 </div>
                             </form>
                         </div>

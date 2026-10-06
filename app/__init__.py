@@ -35,6 +35,7 @@ from app.license_guard import install_license_guard
 from app.security import PUBLIC_ENDPOINTS, install_role_guard
 from app.services.audit import format_local, install_audit_hooks
 from app.services.custom_fields import parse_custom_fields_json, parse_json_list
+from app.user_data import data_root, migrate_into_data_root
 
 login_manager = LoginManager()
 
@@ -45,7 +46,14 @@ logging.basicConfig(
 
 
 def create_app(config_override=None):
-    app = Flask(__name__, instance_relative_config=True)
+    # Pull anything a previous layout left behind (licence files from the old
+    # app/instance folder, data kept next a packaged exe) into the single
+    # user-data folder BEFORE anything reads or writes it.
+    migrate_into_data_root()
+
+    # instance_path == the data dir: DB, uploads, backups and the license
+    # files then share one folder (see app/user_data.py).
+    app = Flask(__name__, instance_path=str(data_root()), instance_relative_config=True)
     app.config.from_mapping(get_config())
     if config_override:
         app.config.update(config_override)
@@ -92,6 +100,10 @@ def create_app(config_override=None):
         app.jinja_env.filters['localtime'] = format_local
         app.jinja_env.filters['fromjson'] = parse_custom_fields_json
         app.jinja_env.filters['fromjsonlist'] = parse_json_list
+        # Compact table rendering: one place decides column classes/widths.
+        from app.services import record_view as _record_view
+        app.jinja_env.globals['column_classes'] = _record_view.column_css
+        app.jinja_env.globals['actions_col_class'] = _record_view.ACTIONS_COL_CLASS
         install_auto_backup(app)
 
     @login_manager.user_loader
