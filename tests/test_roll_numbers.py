@@ -1,7 +1,6 @@
 """Roll number policy: per-class integer numbering, cascade shifts, migration."""
 
 import io
-import random
 import sqlite3
 
 import pytest
@@ -172,9 +171,9 @@ def test_import_checks_roll_conflicts_per_class(admin_client, app, seed):
     _make_class(app, 'Class 2')
     csv_text = (
         'Roll Number,Student Name,Father Name,Class,Section,Guardian Phone,Address\n'
-        '1001,Dupe One,Father A,Class 1,,0300,a\n'
-        '1001,Fresh Other Class,Father B,Class 2,,0300,b\n'
-        'not-a-number,Bad Roll,Father C,Class 1,,0300,c\n'
+        '1001,Dupe One,Father A,Class 1,,03001234567,a\n'
+        '1001,Fresh Other Class,Father B,Class 2,,03001234567,b\n'
+        'not-a-number,Bad Roll,Father C,Class 1,,03001234567,c\n'
     )
 
     response = admin_client.post('/students/import', data={
@@ -198,14 +197,16 @@ def test_students_search_matches_integer_roll(admin_client):
 
 # -- seed numbering -----------------------------------------------------------
 
-def test_ensure_students_numbers_each_class_from_first(app, seed):
-    import seed_data
+def test_seed_generator_numbers_each_class_from_first(app, seed):
+    from app.services.seed_generator import SeedConfig, run_seed
 
     _make_class(app, 'Class 2')
     with app.app_context():
-        total = seed_data.ensure_students(10, 2500.0, random.Random(7))
-        assert total == 10
-
+        run_seed(SeedConfig(student_count=10, teacher_count=2, months=1,
+                            include_attendance=False, include_fees=False,
+                            include_expenses=False, include_class_tests=False,
+                            include_term_exams=False, include_payroll=False,
+                            random_seed=7))
         per_class = {}
         for student in StudentModel.query.all():
             per_class.setdefault(student.class_id, []).append(student.roll_number)

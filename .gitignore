@@ -37,3 +37,6 @@ whatsapp-service/session/
 # Local runtime artifacts
 *.bak
 *.tmp
+
+# PyArmor / PyInstaller build output (Phase 4/5)
+build/

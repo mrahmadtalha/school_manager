@@ -14,6 +14,7 @@ from app.models import (ClassModel, MessageQueue, SchoolSettings,
 from app.routes import main
 from app.routes.examinations import test_type_color
 from app.services.audit import log_action
+from app.services.marks import ABSENT_LABEL, mark_is_absent
 from app.services.term_exam_docs import (build_date_sheet_pdf,
                                          build_result_cards_pdf)
 from app.services.whatsapp_automation import (build_whatsapp_message,
@@ -386,8 +387,12 @@ def _ordinal(number):
 def build_tabulation(exam):
     """Full class tabulation: per-subject scores, totals, grade and position.
 
-    Positions use competition ranking - students with equal totals share a
+    Positions use competition ranking - students with equal results share a
     position (e.g. 1, 2, 2, 4).
+
+    A paper marked Absent is left out of the student's total, maximum,
+    percentage, grade and position: they are judged only on the papers they
+    sat.  A student absent from every paper has no grade or position.
     """
     from app.models.settings import calculate_grade
 
@@ -407,40 +412,74 @@ def build_tabulation(exam):
     filled = 0
     rows = []
     for student in students:
-        row = {'student': student, 'scores': {}, 'total_obt': 0.0}
+        row = {'student': student, 'scores': {}, 'absent': {}, 'absent_count': 0,
+               'total_obt': 0.0, 'max_marks': 0.0}
         for test in tests:
             mark = marks_map.get((student.id, test.id))
+            if mark_is_absent(mark):
+                # Recorded as absent: counts as entered, but is not scored and
+                # its maximum is not held against the student.
+                row['scores'][test.id] = None
+                row['absent'][test.id] = True
+                row['absent_count'] += 1
+                filled += 1
+                continue
             row['scores'][test.id] = mark.marks_obtained if mark else None
+            row['max_marks'] += test.total_marks or 0
             if mark is not None:
                 row['total_obt'] += mark.marks_obtained or 0
                 filled += 1
         row['total_obt'] = round(row['total_obt'], 2)
-        row['pct'] = (round(row['total_obt'] / total_max * 100, 1)
-                      if total_max else 0.0)
-        row['grade'] = calculate_grade(row['pct']) if total_max else 'N/A'
-        row['is_pass'] = bool(total_max > 0 and row['grade'] != 'F')
+        row['all_absent'] = bool(row['absent_count'] and not row['max_marks'])
+        max_marks = row['max_marks']
+        row['pct'] = (round(row['total_obt'] / max_marks * 100, 1)
+                      if max_marks else 0.0)
+        if row['all_absent']:
+            row['grade'] = ABSENT_LABEL
+        else:
+            row['grade'] = calculate_grade(row['pct']) if max_marks else 'N/A'
+        row['is_pass'] = bool(max_marks > 0 and row['grade'] != 'F')
         rows.append(row)
 
-    rows.sort(key=lambda r: r['total_obt'], reverse=True)
+    # Positions compare percentage on the papers actually sat, so a student who
+    # missed a paper is not pushed down for the marks they could not earn.
+    # (With no absences every student has the same maximum, so this orders
+    # exactly as ranking by total marks did.)  All-absent students come last
+    # and have no position.
+    ranked = [r for r in rows if not r['all_absent']]
+    unranked = [r for r in rows if r['all_absent']]
+
+    def _standing(r):
+        return (r['total_obt'] / r['max_marks']) if r['max_marks'] else 0.0
+
+    ranked.sort(key=_standing, reverse=True)
     rank = 0
     previous = None
-    for index, row in enumerate(rows, 1):
-        if previous is None or row['total_obt'] != previous:
+    for index, row in enumerate(ranked, 1):
+        key = _standing(row)
+        if previous is None or key != previous:
             rank = index
-            previous = row['total_obt']
+            previous = key
         row['rank'] = rank
         row['position'] = _ordinal(rank)
+    for row in unranked:
+        row['rank'] = None
+        row['position'] = '—'
+    rows = ranked + unranked
 
     expected = len(students) * len(tests)
+    sat = [r for r in rows if not r['all_absent']]
     pass_count = sum(1 for r in rows if r['is_pass'])
     summary = {
         'students': len(students),
+        'sat': len(sat),
         'total_max': total_max,
-        'average': (round(sum(r['pct'] for r in rows) / len(rows), 1)
-                    if rows else 0.0),
+        'absences': sum(r['absent_count'] for r in rows),
+        'average': (round(sum(r['pct'] for r in sat) / len(sat), 1)
+                    if sat else 0.0),
         'highest': rows[0]['pct'] if rows else 0.0,
         'pass_count': pass_count,
-        'pass_rate': (round(pass_count * 100.0 / len(rows), 1) if rows else 0.0),
+        'pass_rate': (round(pass_count * 100.0 / len(sat), 1) if sat else 0.0),
         'filled': filled,
         'expected': expected,
         'missing': max(0, expected - filled),
@@ -488,9 +527,12 @@ def examinations_tabulation_csv(id):
         line = [row['position'], row['student'].roll_number,
                 row['student'].student_name]
         for test in tests:
+            if row['absent'].get(test.id):
+                line.append(ABSENT_LABEL)
+                continue
             value = row['scores'].get(test.id)
             line.append('' if value is None else value)
-        line += [row['total_obt'], summary['total_max'], row['pct'], row['grade']]
+        line += [row['total_obt'], row['max_marks'], row['pct'], row['grade']]
         writer.writerow(line)
 
     log_action('export', entity_type='TermExam', entity_id=exam.id,
@@ -521,9 +563,10 @@ def examinations_tabulation_xlsx(id):
             column = '%s (%s)' % ((test.subject_info.name if test.subject_info
                                    else 'Subject'),
                                   '{:,.0f}'.format(test.total_marks or 0))
-            line[column] = row['scores'].get(test.id)
+            line[column] = (ABSENT_LABEL if row['absent'].get(test.id)
+                            else row['scores'].get(test.id))
         line['Total Obtained'] = row['total_obt']
-        line['Total Max'] = summary['total_max']
+        line['Total Max'] = row['max_marks']
         line['Percentage'] = row['pct']
         line['Grade'] = row['grade']
         data.append(line)
@@ -621,9 +664,13 @@ def _build_tabulation_pdf(exam, tests, rows, summary, root_path=None):
                  str(student.roll_number if student.roll_number is not None else '—'),
                  Paragraph(escape(student.student_name or ''), name_style)]
         for test in tests:
-            cells.append(fmt_num(row['scores'].get(test.id)))
-        cells += [fmt_num(row['total_obt']), fmt_num(summary['total_max']),
-                  '%g%%' % row['pct'], row['grade']]
+            cells.append(ABSENT_LABEL if row['absent'].get(test.id)
+                         else fmt_num(row['scores'].get(test.id)))
+        if row['all_absent']:
+            cells += ['—', '—', '—', ABSENT_LABEL]
+        else:
+            cells += [fmt_num(row['total_obt']), fmt_num(row['max_marks']),
+                      '%g%%' % row['pct'], row['grade']]
         body.append(cells)
     if len(body) == 1:
         body.append(['No students for this exam.'] + [''] * (len(headers) - 1))
@@ -660,7 +707,7 @@ def _build_tabulation_pdf(exam, tests, rows, summary, root_path=None):
     story.append(Paragraph(
         'Class Average: <b>%g%%</b> &nbsp;&middot;&nbsp; Passed: <b>%d / %d (%g%%)</b> '
         '&nbsp;&middot;&nbsp; Marks filled: <b>%d / %d</b>'
-        % (summary['average'], summary['pass_count'], summary['students'],
+        % (summary['average'], summary['pass_count'], summary['sat'],
            summary['pass_rate'], summary['filled'], summary['expected']),
         ParagraphStyle('TF', parent=styles['Normal'], fontSize=9, alignment=1,
                        textColor=colors.HexColor('#2d3748'))))
@@ -696,7 +743,10 @@ def _result_cards(exam):
         for test in tests:
             subject_name = (test.subject_info.name if test.subject_info else '—')
             score = row['scores'].get(test.id)
-            if score is None:
+            if row['absent'].get(test.id):
+                subject_rows.append((subject_name, test.total_marks or 0,
+                                     ABSENT_LABEL, None, ABSENT_LABEL))
+            elif score is None:
                 subject_rows.append((subject_name, test.total_marks or 0,
                                      None, None, None))
             else:
@@ -707,8 +757,10 @@ def _result_cards(exam):
             'student': row['student'],
             'position': row['position'],
             'subject_rows': subject_rows,
+            'absent_count': row['absent_count'],
+            'all_absent': row['all_absent'],
             'total_obt': row['total_obt'],
-            'total_max': summary['total_max'],
+            'total_max': row['max_marks'],
             'pct': row['pct'],
             'grade': row['grade'],
             'remark': remarks.get(row['student'].id, ''),
@@ -792,6 +844,9 @@ def examinations_publish(id):
                                                          'sent')))
                         .first())
             if existing:
+                skipped += 1
+                continue
+            if card['all_absent']:
                 skipped += 1
                 continue
             message = build_whatsapp_message('result', {

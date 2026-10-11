@@ -6,7 +6,7 @@
     <h1 class="h2 fw-bold mb-0"><i class="fas fa-calendar-alt text-primary me-2"></i>Date Sheet</h1>
     <div class="d-flex gap-2 flex-wrap">
         <a href="{{ url_for('main.examinations_date_sheet_pdf', id=exam.id) }}" class="btn btn-outline-danger btn-sm">
-            <i class="fas fa-file-pdf me-1"></i> Download PDF
+            <i class="fas fa-file-pdf me-1"></i> Export PDF
         </a>
         <a href="{{ url_for('main.examinations_detail', id=exam.id) }}" class="btn btn-outline-secondary btn-sm">
             <i class="fas fa-arrow-left me-1"></i> Back to Exam
@@ -17,14 +17,6 @@
     </div>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show no-print">
-      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  {% endfor %}{% endif %}
-{% endwith %}
-
 <!-- Date sheet card -->
 <div class="row justify-content-center">
 <div class="col-md-10">
@@ -33,7 +25,7 @@
     <!-- School Header -->
     <div class="card-header bg-dark text-white text-center py-4">
         {% if school and school.logo_filename %}
-        <img src="{{ url_for('static', filename=school.logo_filename) }}"
+        <img src="{{ url_for('main.brand_logo') }}"
              alt="Logo" style="max-height:55px;" class="mb-2 d-block mx-auto">
         {% else %}
         <i class="fas fa-school fa-2x text-warning mb-2 d-block"></i>

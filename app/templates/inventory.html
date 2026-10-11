@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Finance</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-boxes-stacked text-primary me-2"></i>Inventory &amp; Sales</h1>
+        <p class="text-muted small mb-0">Uniforms, books and stationery sold to students. Stock purchases are not expenses — cost becomes Cost of Goods Sold when items sell.</p>
+    </div>
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary') }}">
+            <i class="fas fa-arrow-left me-1"></i>Financial Overview
+        </a>
+    </div>
+</div>
+
+{% if low_stock %}
+<div class="alert alert-warning d-flex align-items-center gap-2 py-2">
+    <i class="fas fa-triangle-exclamation"></i>
+    <div><strong>Low stock:</strong>
+        {% for p in low_stock %}{{ p.name }} — {{ p.stock_qty }} left (min {{ p.min_stock_qty }}){% if not loop.last %}; {% endif %}{% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <h2 class="h6 fw-bold text-uppercase text-muted mb-3">Add product</h2>
+            <form method="post" action="{{ url_for('main.inventory_product_add') }}" class="row g-2">
+                <div class="col-12">
+                    <label class="form-label small fw-bold mb-1">Name</label>
+                    <input type="text" class="form-control form-control-sm" name="name" maxlength="120" placeholder="e.g. School Shirt" required>
+                </div>
+                <div class="col-7">
+                    <label class="form-label small fw-bold mb-1">Category</label>
+                    <input type="text" class="form-control form-control-sm" name="category" maxlength="80" value="Uniform" list="productCategories">
+                    <datalist id="productCategories">
+                        <option>Uniform</option><option>Books</option><option>Stationery</option><option>Bags</option><option>Other</option>
+                    </datalist>
+                </div>
+                <div class="col-5">
+                    <label class="form-label small fw-bold mb-1">Selling price (PKR)</label>
+                    <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="sale_price" required>
+                </div>
+                <div class="col-7">
+                    <label class="form-label small fw-bold mb-1">Supplier (optional)</label>
+                    <input type="text" class="form-control form-control-sm" name="supplier" maxlength="120">
+                </div>
+                <div class="col-5">
+                    <label class="form-label small fw-bold mb-1">Min stock (alert at)</label>
+                    <input type="number" min="0" class="form-control form-control-sm" name="min_stock" value="5">
+                </div>
+                <div class="col-12 d-grid">
+                    <button class="btn btn-primary btn-sm">Add product</button>
+                </div>
+            </form>
+        </div></div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <h2 class="h6 fw-bold text-uppercase text-muted mb-3">Record purchase (stock in)</h2>
+            <form method="post" action="{{ url_for('main.inventory_purchase') }}" class="row g-2">
+                <div class="col-12">
+                    <label class="form-label small fw-bold mb-1">Product</label>
+                    <select class="form-select form-select-sm" name="product_id" required>
+                        {% for p in products if p.is_active %}
+                        <option value="{{ p.id }}">{{ p.name }} (stock {{ p.stock_qty }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-4">
+                    <label class="form-label small fw-bold mb-1">Quantity</label>
+                    <input type="number" min="1" class="form-control form-control-sm" name="quantity" required>
+                </div>
+                <div class="col-4">
+                    <label class="form-label small fw-bold mb-1">Unit cost (PKR)</label>
+                    <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" name="unit_cost" required>
+                </div>
+                <div class="col-4">
+                    <label class="form-label small fw-bold mb-1">Date</label>
+                    <input type="date" class="form-control form-control-sm" name="purchase_date" value="{{ today.strftime('%Y-%m-%d') }}" required>
+                </div>
+                <div class="col-12 d-grid">
+                    <button class="btn btn-outline-primary btn-sm">Add stock</button>
+                </div>
+            </form>
+            <p class="text-muted small mb-0 mt-2">Buying stock moves money out as a purchase payment — it is never counted as an expense. Weighted-average cost updates automatically.</p>
+        </div></div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <h2 class="h6 fw-bold text-uppercase text-muted mb-3">Record sale</h2>
+            <form method="post" action="{{ url_for('main.inventory_sell') }}" class="row g-2">
+                <div class="col-12">
+                    <label class="form-label small fw-bold mb-1">Product</label>
+                    <select class="form-select form-select-sm" name="product_id" required>
+                        {% for p in products if p.is_active %}
+                        <option value="{{ p.id }}">{{ p.name }} — Rs. {{ '{:,.2f}'.format(p.sale_price_paisa / 100.0) }} (stock {{ p.stock_qty }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-4">
+                    <label class="form-label small fw-bold mb-1">Quantity</label>
+                    <input type="number" min="1" class="form-control form-control-sm" name="quantity" required>
+                </div>
+                <div class="col-4">
+                    <label class="form-label small fw-bold mb-1">Date</label>
+                    <input type="date" class="form-control form-control-sm" name="sale_date" value="{{ today.strftime('%Y-%m-%d') }}" required>
+                </div>
+                <div class="col-4">
+                    <label class="form-label small fw-bold mb-1">Note</label>
+                    <input type="text" class="form-control form-control-sm" name="note" maxlength="200" placeholder="optional">
+                </div>
+                <div class="col-12 d-grid">
+                    <button class="btn btn-success btn-sm">Sell</button>
+                </div>
+            </form>
+            <p class="text-muted small mb-0 mt-2">The sale snapshots the current selling price and cost — later price changes never alter past sales.</p>
+        </div></div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 pt-3"><h2 class="h6 fw-bold mb-0">Products</h2></div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-sm table-striped align-middle mb-0">
+                    <thead class="table-light"><tr>
+                        <th class="ps-3">Product</th><th>Category</th>
+                        <th class="text-end">Sale price</th><th class="text-end">Avg cost</th>
+                        <th class="text-end">Stock</th><th class="text-end pe-3">Action</th>
+                    </tr></thead>
+                    <tbody>
+                        {% for p in products %}
+                        <tr class="{% if not p.is_active %}text-decoration-line-through text-muted{% endif %}">
+                            <td class="ps-3">{{ p.name }}{% if p.stock_qty <= p.min_stock_qty and p.min_stock_qty > 0 %} <span class="badge bg-warning text-dark">low</span>{% endif %}</td>
+                            <td class="small">{{ p.category }}</td>
+                            <td class="text-end">{{ '{:,.2f}'.format(p.sale_price_paisa / 100.0) }}</td>
+                            <td class="text-end">{{ '{:,.2f}'.format(p.cost_paisa / 100.0) }}</td>
+                            <td class="text-end fw-bold">{{ p.stock_qty }}</td>
+                            <td class="text-end pe-3">
+                                {% if p.is_active %}
+                                <form method="post" action="{{ url_for('main.inventory_product_toggle', product_id=p.id) }}" class="d-inline">
+                                    <button class="btn btn-sm btn-outline-secondary">Retire</button>
+                                </form>
+                                {% else %}
+                                <form method="post" action="{{ url_for('main.inventory_product_toggle', product_id=p.id) }}" class="d-inline">
+                                    <button class="btn btn-sm btn-outline-secondary">Restore</button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-center text-muted py-4">No products yet — add your first product above.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white border-0 pt-3"><h2 class="h6 fw-bold mb-0">Recent sales</h2></div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-sm table-striped align-middle mb-0">
+                    <thead class="table-light"><tr>
+                        <th class="ps-3">Date</th><th>Product</th><th class="text-end">Qty</th>
+                        <th class="text-end">Sales</th><th class="text-end">Cost</th>
+                        <th class="text-end pe-3">Profit</th>
+                    </tr></thead>
+                    <tbody>
+                        {% for s in sales %}
+                        <tr>
+                            <td class="ps-3">{{ s.sale_date.strftime('%d %b %Y') }}</td>
+                            <td class="small">{{ s.product.name }}</td>
+                            <td class="text-end">{{ s.quantity }}</td>
+                            <td class="text-end">{{ '{:,.2f}'.format(s.total_price_paisa / 100.0) }}</td>
+                            <td class="text-end text-muted">{{ '{:,.2f}'.format(s.total_cost_paisa / 100.0) }}</td>
+                            <td class="text-end fw-bold text-success">{{ '{:,.2f}'.format(s.gross_profit_paisa / 100.0) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-center text-muted py-4">No sales recorded yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-0 pt-3"><h2 class="h6 fw-bold mb-0">Recent purchases</h2></div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-sm table-striped align-middle mb-0">
+                    <thead class="table-light"><tr>
+                        <th class="ps-3">Date</th><th>Product</th><th class="text-end">Qty</th>
+                        <th class="text-end">Unit cost</th><th class="text-end pe-3">Total</th>
+                    </tr></thead>
+                    <tbody>
+                        {% for pu in purchases %}
+                        <tr>
+                            <td class="ps-3">{{ pu.purchase_date.strftime('%d %b %Y') }}</td>
+                            <td class="small">{{ pu.product.name }}</td>
+                            <td class="text-end">{{ pu.quantity }}</td>
+                            <td class="text-end">{{ '{:,.2f}'.format(pu.unit_cost_paisa / 100.0) }}</td>
+                            <td class="text-end fw-bold">{{ '{:,.2f}'.format(pu.total_cost_paisa / 100.0) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted py-4">No purchases recorded yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -7,13 +7,13 @@ instead of taking the whole dashboard down.
 """
 import logging
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from sqlalchemy import func
 
 from app.database import db
 from app.models import (AttendanceModel, ClassModel, Expense, FeeRecordModel,
-                        FeeTransaction, SchoolSettings, StaffPayroll,
+                        SchoolSettings,
                         StudentEnrollment, StudentModel, STUDENT_STATUS_LABELS,
                         SubjectModel, TeacherModel, TestModel)
 
@@ -100,16 +100,16 @@ def fee_overview():
     month = current_month()
     # NOTE: scalar two-argument max() is SQLite syntax (this app is SQLite-only).
     row = (db.session.query(
-                func.coalesce(func.sum(FeeRecordModel.amount_due), 0.0),
-                func.coalesce(func.sum(FeeRecordModel.amount_paid), 0.0),
+                func.coalesce(func.sum(FeeRecordModel.amount_due_paisa), 0.0),
+                func.coalesce(func.sum(FeeRecordModel.amount_paid_paisa), 0.0),
                 func.coalesce(func.sum(func.max(
-                    FeeRecordModel.amount_due - FeeRecordModel.amount_paid, 0)), 0.0),
+                    FeeRecordModel.amount_due_paisa - FeeRecordModel.amount_paid_paisa, 0)), 0.0),
                 func.coalesce(func.sum(func.max(
-                    FeeRecordModel.amount_paid - FeeRecordModel.amount_due, 0)), 0.0),
+                    FeeRecordModel.amount_paid_paisa - FeeRecordModel.amount_due_paisa, 0)), 0.0),
            )
            .filter(FeeRecordModel.month_year == month)
            .one())
-    billed, collected, balance, advance = (float(value or 0) for value in row)
+    billed, collected, balance, advance = (float(value or 0) / 100.0 for value in row)
     settled = billed - balance
     return {
         'month': month,
@@ -130,10 +130,11 @@ def expense_overview():
     prev_start = prev_end.replace(day=1)
 
     def total_between(start_day, end_day):
-        value = (db.session.query(func.coalesce(func.sum(Expense.amount), 0.0))
-                 .filter(Expense.date >= start_day, Expense.date <= end_day)
+        value = (db.session.query(func.coalesce(func.sum(Expense.amount_paisa), 0))
+                 .filter(Expense.is_void.is_(False),
+                         Expense.date >= start_day, Expense.date <= end_day)
                  .scalar())
-        return round(float(value or 0), 2)
+        return round(float(value or 0) / 100.0, 2)
 
     current_total = total_between(start, next_month - timedelta(days=1))
     prev_total = total_between(prev_start, prev_end)
@@ -145,63 +146,82 @@ def expense_overview():
     }
 
 
+def operating_book():
+    """The 8.1 operating view for the current month (inventory enabled only).
+
+    Revenue (fees + other income + sales) minus Salaries, Operating Expenses
+    and Cost of Goods Sold — an estimate, clearly separate from Net Cash
+    Position, which stays untouched above it.
+    """
+    from flask import current_app
+    if not current_app.config.get('FEATURE_INVENTORY_SALES', False):
+        return None
+    from app.services.financial_summary import month_snapshot
+    from app.services.payroll_service import current_month_key
+    snap = month_snapshot(current_month_key())
+    return {
+        'month': snap['label'],
+        'revenue': snap['cash_in'],
+        'cogs': snap.get('sales_cogs', 0.0),
+        'salaries': snap.get('salaries_paid', 0.0),
+        'operating_expenses': snap.get('other_expenses', 0.0),
+        'operating_position': snap.get('operating_position', 0.0),
+    }
+
+
 def account_book():
-    """Month + session net results and a 6-month series (3 grouped queries)."""
-    from app.services.financial_summary import short_label
+    """Month + session net results and a 6-month series.
+
+    Delegates to the same period engine as /financials/summary so every
+    dashboard figure matches it exactly: cash basis (Cash In − Cash Out),
+    salaries counted once via the Salaries expense rows, payroll accrual
+    kept separate and never mixed into net.
+    """
+    from app.services.financial_summary import (
+        _window_totals, period_descriptor, period_snapshot)
     from app.services.payroll_service import recent_month_keys
 
     today = date.today()
     session_start = _academic_session_start(today)
-    session_key = session_start.strftime('%Y-%m')
+    session_key = 'session:%d' % session_start.year
     current_key = '%04d-%02d' % (today.year, today.month)
     months6 = recent_month_keys(current_key, 6)
 
     first_key = months6[0]
-    series_start = min(session_start,
+    window_start = min(session_start,
                        date(int(first_key[:4]), int(first_key[5:7]), 1))
-    series_start_dt = datetime.combine(series_start, datetime.min.time())
+    # Same window the summary uses for the session, so future-dated rows
+    # cannot make the dashboard and the summary disagree.
+    session_period = period_descriptor(session_key)
+    window_end = session_period['end'] if session_period else today
 
-    revenue_rows = (db.session.query(
-            func.strftime('%Y-%m', FeeTransaction.created_at),
-            func.coalesce(func.sum(FeeTransaction.amount), 0.0))
-        .filter(FeeTransaction.txn_type == 'payment',
-                FeeTransaction.is_void.is_(False),
-                FeeTransaction.created_at >= series_start_dt)
-        .group_by(func.strftime('%Y-%m', FeeTransaction.created_at)).all())
-    revenue_by_month = {key: round(float(value or 0), 2)
-                        for key, value in revenue_rows}
-
-    expense_rows = (db.session.query(
-            func.strftime('%Y-%m', Expense.date),
-            func.coalesce(func.sum(Expense.amount), 0.0))
-        .filter(Expense.date >= series_start)
-        .group_by(func.strftime('%Y-%m', Expense.date)).all())
-    expense_by_month = {key: round(float(value or 0), 2)
-                        for key, value in expense_rows}
-
-    payroll_rows = (db.session.query(
-            StaffPayroll.month_year,
-            func.coalesce(func.sum(StaffPayroll.net_salary), 0.0))
-        .filter(StaffPayroll.month_year >= series_start.strftime('%Y-%m'))
-        .group_by(StaffPayroll.month_year).all())
-    payroll_by_month = {key: round(float(value or 0), 2)
-                        for key, value in payroll_rows}
+    window = _window_totals(window_start, window_end)
+    revenue, expenses, payroll = (window['revenue'], window['expenses'],
+                                  window['payroll'])
+    other_income = window['other_income']
+    sales = window['sales_revenue']
+    sales_cogs = window['sales_cogs']
+    purchases = window['purchases']
 
     series = []
     for key in months6:
-        revenue = revenue_by_month.get(key, 0.0)
-        costs = round(expense_by_month.get(key, 0.0)
-                      + payroll_by_month.get(key, 0.0), 2)
-        series.append({'month': key, 'label': short_label(key),
-                       'revenue': revenue, 'costs': costs,
-                       'net': round(revenue - costs, 2)})
+        period = period_descriptor(key)
+        if not period:
+            continue
+        snap = period_snapshot(period, revenue, expenses, payroll,
+                               other_income=other_income, sales=sales,
+                               sales_cogs=sales_cogs, purchases=purchases)
+        series.append({'month': key, 'label': snap['short_label'],
+                       'revenue': snap['cash_in'], 'costs': snap['cash_out'],
+                       'net': snap['net']})
 
-    session_revenue = sum(v for k, v in revenue_by_month.items() if k >= session_key)
-    session_expenses = sum(v for k, v in expense_by_month.items() if k >= session_key)
-    session_payroll = sum(v for k, v in payroll_by_month.items() if k >= session_key)
+    session_snap = (period_snapshot(session_period, revenue, expenses, payroll,
+                                    other_income=other_income, sales=sales,
+                                    sales_cogs=sales_cogs, purchases=purchases)
+                    if session_period else None)
     return {
         'month_net': series[-1]['net'] if series else 0.0,
-        'session_net': round(session_revenue - session_expenses - session_payroll, 2),
+        'session_net': session_snap['net'] if session_snap else 0.0,
         'series': series,
         'session_label': current_session_label(),
         'current_key': current_key,
@@ -366,6 +386,7 @@ def build_context(is_admin):
         context['fees'] = _safe(fee_overview)
         context['expenses'] = _safe(expense_overview)
         context['account_book'] = _safe(account_book)
+        context['operating_book'] = _safe(operating_book)
         if context['account_book']:
             context['chart_payload'] = {'series': context['account_book']['series']}
     return context

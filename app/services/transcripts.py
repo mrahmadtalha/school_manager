@@ -10,7 +10,9 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 from app.models import AttendanceModel, StudentMarkModel
 from app.models.settings import calculate_grade
+from app.services import photos
 from app.services.id_documents import school_branding
+from app.services.marks import ABSENT_LABEL
 
 STATUS_LABELS = {
     'enrolled': 'Enrolled',
@@ -71,6 +73,22 @@ def _attendance_line(student_id, enrollment):
     return 'Attendance: %d/%d days present (incl. late) — %.1f%%' % (present, len(records), pct)
 
 
+def _logo_flowable(path, max_size):
+    """Aspect-correct school logo flowable, or None when missing/unreadable."""
+    if not path:
+        return None
+    try:
+        from reportlab.lib.utils import ImageReader
+        from reportlab.platypus import Image as PdfImage
+        width, height = ImageReader(path).getSize()
+        if not width or not height:
+            return None
+        scale = min(max_size / float(width), max_size / float(height))
+        return PdfImage(path, width=width * scale, height=height * scale)
+    except Exception:
+        return None
+
+
 def build_transcript_pdf(student, enrollments, marks, root_path=None):
     school = school_branding(root_path)
     styles = getSampleStyleSheet()
@@ -89,18 +107,42 @@ def build_transcript_pdf(student, enrollments, marks, root_path=None):
                                  textColor=colors.HexColor('#475569'))
 
     story = []
-    story.append(Paragraph(escape(str(school['name'])), title_style))
-    story.append(Paragraph('CUMULATIVE ACADEMIC TRANSCRIPT', sub_style))
+    heading = [Paragraph(escape(str(school['name'])), title_style),
+               Paragraph('CUMULATIVE ACADEMIC TRANSCRIPT', sub_style)]
     tail = ' | '.join([p for p in (school.get('address') or '', school.get('phone') or '') if p])
     if tail:
-        story.append(Paragraph(escape(tail), sub_style))
+        heading.append(Paragraph(escape(tail), sub_style))
+
+    logo = _logo_flowable(school.get('logo_path'), 64)
+    if logo is not None:
+        # School logo on the left, school name/title centred beside it.
+        header = Table([[logo, heading, '']], colWidths=[74, None, 74])
+        header.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                                    ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+                                    ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                                    ('RIGHTPADDING', (0, 0), (-1, -1), 0)]))
+        story.append(header)
+    else:
+        story.extend(heading)
 
     status_label = STATUS_LABELS.get(student.status or 'enrolled', 'Enrolled')
     info = ('%s — s/o %s | Current Class: %s | Roll No: %s | Status: %s'
             % (student.student_name, student.father_name,
                student.class_info.name if student.class_info else '—',
                student.roll_number, status_label))
-    story.append(Paragraph(escape(info), info_style))
+    photo_buffer = photos.square_image_buffer(photos.photo_path('student', student.photo_filename))
+    if photo_buffer:
+        # Optional photo: shown beside the student details only when one exists.
+        from reportlab.platypus import Image as PdfImage
+        header = Table([[Paragraph(escape(info), info_style), PdfImage(photo_buffer, width=62, height=62)]],
+                       colWidths=[None, 70])
+        header.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                                    ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+                                    ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                                    ('RIGHTPADDING', (0, 0), (-1, -1), 0)]))
+        story.append(header)
+    else:
+        story.append(Paragraph(escape(info), info_style))
     story.append(Spacer(1, 8))
 
     table_header = ['Subject', 'Test', 'Type', 'Date', 'Max', 'Obtained', '%', 'Grade']
@@ -112,16 +154,19 @@ def build_transcript_pdf(student, enrollments, marks, root_path=None):
         mx = 0.0
         for m in sorted(section_marks, key=lambda x: (x.test_info.test_date, x.test_info.test_title)):
             t = m.test_info
+            absent = bool(m.is_absent)
             data.append([
                 t.subject_info.name if t.subject_info else '—',
                 t.test_title or '—',
                 t.test_type or '—',
                 t.test_date.strftime('%d %b %Y') if t.test_date else '—',
                 '%g' % (t.total_marks or 0),
-                '%g' % (m.marks_obtained or 0),
-                ('%.1f%%' % m.percentage) if m.percentage is not None else '—',
-                m.grade or '—',
+                ABSENT_LABEL if absent else '%g' % (m.marks_obtained or 0),
+                '—' if absent else (('%.1f%%' % m.percentage) if m.percentage is not None else '—'),
+                ABSENT_LABEL if absent else (m.grade or '—'),
             ])
+            if absent:
+                continue          # absent papers are left out of the totals
             obt += m.marks_obtained or 0.0
             mx += t.total_marks or 0.0
         total_row = None
@@ -176,8 +221,9 @@ def build_transcript_pdf(student, enrollments, marks, root_path=None):
         story.append(Spacer(1, 10))
 
     if marks:
-        obt = sum((m.marks_obtained or 0.0) for m in marks)
-        mx = sum((m.test_info.total_marks or 0.0) for m in marks if m.test_info)
+        sat = [m for m in marks if not m.is_absent]
+        obt = sum((m.marks_obtained or 0.0) for m in sat)
+        mx = sum((m.test_info.total_marks or 0.0) for m in sat if m.test_info)
         if mx > 0:
             pct = obt / mx * 100
             overall = 'Overall: %g / %g (%.1f%%) — Grade %s' % (obt, mx, pct, calculate_grade(pct))

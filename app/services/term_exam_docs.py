@@ -199,11 +199,15 @@ def build_result_cards_pdf(exam, cards, root_path=None):
         data = [header]
         for label, subject_max, obtained, pct, grade in card['subject_rows']:
             data.append([label, money(subject_max),
-                         ('—' if obtained is None else money(obtained)),
+                         ('—' if obtained is None else
+                          obtained if isinstance(obtained, str) else money(obtained)),
                          ('—' if pct is None else '%.1f%%' % pct),
                          grade or '—'])
-        data.append(['Total', money(card['total_max']), money(card['total_obt']),
-                     '%.1f%%' % card['pct'], card['grade'] or '—'])
+        if card.get('all_absent'):
+            data.append(['Total', '—', '—', '—', card['grade'] or '—'])
+        else:
+            data.append(['Total', money(card['total_max']), money(card['total_obt']),
+                         '%.1f%%' % card['pct'], card['grade'] or '—'])
         table = Table(data, colWidths=[190, 82, 110, 90, 80], repeatRows=1)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f2937')),
@@ -220,6 +224,11 @@ def build_result_cards_pdf(exam, cards, root_path=None):
             ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#eef2f7')),
         ]))
         story.append(table)
+        if card.get('absent_count') and not card.get('all_absent'):
+            story.append(Paragraph(
+                'Absent in %d subject(s) &mdash; those papers are not included in the '
+                'total, percentage, grade or position.' % card['absent_count'],
+                warn_style))
 
         if card.get('remark'):
             story.append(Spacer(1, 8))

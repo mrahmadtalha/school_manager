@@ -12,16 +12,6 @@
 </div>
 
 <!-- Flash Messages -->
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
 
 {% if students %}
 <!-- Fast entry toolbar -->
@@ -61,8 +51,9 @@
             <button type="button" class="btn btn-sm btn-outline-secondary" onclick="quickFill(75)">75%</button>
             <button type="button" class="btn btn-sm btn-outline-secondary" onclick="quickFill(50)">50%</button>
             <button type="button" class="btn btn-sm btn-outline-secondary" onclick="quickFill(25)">25%</button>
+            <button type="button" class="btn btn-sm btn-warning" onclick="quickAbsent()" title="Mark the focused cell as Absent (same as typing A)">Absent</button>
             <button type="button" class="btn btn-sm btn-outline-dark" onclick="quickClear()">Clear</button>
-            <span class="text-muted small ms-2">Blank cells are skipped when saving — use them for absentees.</span>
+            <span class="text-muted small ms-2">Type <strong>A</strong> for a student who was absent (left out of totals and grade, not counted as a fail). Blank = not entered yet and is skipped when saving.</span>
         </div>
     </div>
 </div>
@@ -95,19 +86,20 @@
                         <td>{{ student.student_name }}</td>
                         {% for test in tests %}
                         <td>
-                            <input type="number" step="0.5" min="0" max="{{ test.total_marks }}"
+                            <input type="text" inputmode="text" autocomplete="off" max="{{ test.total_marks }}"
                                    class="form-control form-control-sm mx-auto" style="max-width: 100px;"
                                    name="marks_{{ student.id }}_{{ test.id }}"
                                    id="marks_{{ student.id }}_{{ test.id }}"
                                    value="{{ existing_marks.get(student.id, {}).get(test.id, '') }}"
-                                   placeholder="0 – {{ test.total_marks }}"
-                                   oninput="validateMark(this, {{ test.total_marks }})">
+                                   placeholder="0 – {{ test.total_marks }} or A"
+                                   oninput="validateMark(this, {{ test.total_marks }})"
+                                   onblur="normalizeAbsent(this)">
                             <div class="invalid-feedback text-center small" id="err_{{ student.id }}_{{ test.id }}"></div>
                         </td>
                         {% endfor %}
                         <td class="text-center">
                             <button type="button" class="btn btn-sm btn-outline-secondary" title="Fill empty cells in this row with the toolbar value"
-                                    onclick="fillRow(this)">
+                                    onclick="fillRow(this)" aria-label="Fill empty cells in this row with the toolbar value">
                                 <i class="fas fa-arrow-right"></i>
                             </button>
                         </td>
@@ -134,18 +126,39 @@
     </div>
 </form>
 
+<style>
+    input.mark-absent { background: #fff3cd; font-weight: 700; text-align: center; letter-spacing: .05em; }
+</style>
 <script>
+function isAbsentText(text) {
+    var t = String(text).trim().toLowerCase();
+    return t === 'a' || t === 'abs' || t === 'absent';
+}
+
+function normalizeAbsent(input) {
+    if (isAbsentText(input.value)) { input.value = 'A'; }
+    validateMark(input, parseFloat(input.getAttribute('max')));
+    updateProgress();
+}
+
 function validateMark(input, max) {
-    var val = parseFloat(input.value);
+    var text = input.value.trim();
     var errEl = document.getElementById('err_' + input.id.replace('marks_', ''));
-    if (input.value === '') {
+    input.classList.remove('mark-absent');
+    if (text === '') {
         input.classList.remove('is-invalid', 'is-valid');
         if (errEl) errEl.textContent = '';
         return true;
     }
+    if (isAbsentText(text)) {
+        input.classList.remove('is-invalid'); input.classList.add('is-valid', 'mark-absent');
+        if (errEl) errEl.textContent = '';
+        return true;
+    }
+    var val = /^\d+(\.\d+)?$/.test(text) ? parseFloat(text) : NaN;
     if (isNaN(val) || val < 0) {
         input.classList.add('is-invalid'); input.classList.remove('is-valid');
-        if (errEl) errEl.textContent = '0 - ' + max;
+        if (errEl) errEl.textContent = '0 - ' + max + ' or A';
         return false;
     }
     if (val > max) {
@@ -175,7 +188,7 @@ document.querySelector('form').addEventListener('submit', function (e) {
             var alert = document.createElement('div');
             alert.id = 'validationAlert';
             alert.className = 'alert alert-danger alert-dismissible fade show';
-            alert.innerHTML = '<strong>Fix the errors below</strong> — one or more marks exceed their allowed maximum.' +
+            alert.innerHTML = '<strong>Fix the errors below</strong> — one or more marks are invalid or exceed their allowed maximum (type A for absent).' +
                 '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
             document.querySelector('form').prepend(alert);
         }
@@ -210,7 +223,7 @@ function setCell(input, value) {
 
 function toolbarValue() {
     var raw = document.getElementById('fillValue').value;
-    if (raw === '') { alert('Enter a fill value first (top-left of the toolbar).'); return null; }
+    if (raw === '') { window.SchoolUI.toast('Enter a fill value first (top-left of the toolbar).', 'warning'); return null; }
     return raw;
 }
 
@@ -243,20 +256,26 @@ function fillRow(button) {
 }
 
 function quickFill(percent) {
-    if (!lastFocusedCell || lastFocusedCell.disabled) { alert('Click a marks cell first, then use the quick fill.'); return; }
+    if (!lastFocusedCell || lastFocusedCell.disabled) { window.SchoolUI.toast('Click a marks cell first, then use the quick fill.', 'warning'); return; }
     var max = parseFloat(lastFocusedCell.getAttribute('max')) || 0;
     var value = Math.round(max * percent / 100 * 2) / 2;   // nearest 0.5
     setCell(lastFocusedCell, value);
 }
 
+function quickAbsent() {
+    if (!lastFocusedCell || lastFocusedCell.disabled) { window.SchoolUI.toast('Click a marks cell first, then press Absent.', 'warning'); return; }
+    setCell(lastFocusedCell, 'A');
+}
+
 function quickClear() {
-    if (!lastFocusedCell || lastFocusedCell.disabled) { alert('Click a marks cell first.'); return; }
+    if (!lastFocusedCell || lastFocusedCell.disabled) { window.SchoolUI.toast('Click a marks cell first.', 'warning'); return; }
     setCell(lastFocusedCell, '');
 }
 
 document.addEventListener('DOMContentLoaded', function () {
     allMarkInputs().forEach(function (inp) {
         inp.addEventListener('focus', function () { lastFocusedCell = this; });
+        validateMark(inp, parseFloat(inp.getAttribute('max')));
     });
     updateProgress();
 });

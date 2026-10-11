@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Finance</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-wallet text-primary me-2"></i>Other Income</h1>
+        <p class="text-muted small mb-0">Money the school receives besides fees — canteen, events, trips, certificates.</p>
+    </div>
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary') }}">
+            <i class="fas fa-arrow-left me-1"></i>Financial Overview
+        </a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.other_income_page', month=prev_month) }}"><i class="fas fa-chevron-left"></i></a>
+        <form method="get" action="{{ url_for('main.other_income_page') }}" class="d-flex gap-2">
+            <input type="month" class="form-control form-control-sm" name="month" value="{{ month }}" style="width: 160px;">
+            <button class="btn btn-primary btn-sm">Show</button>
+        </form>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.other_income_page', month=next_month) }}"><i class="fas fa-chevron-right"></i></a>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase fw-bold">Other Income — {{ month_label }} <span class="badge bg-dark ms-1">CASH</span></div>
+            <div class="h4 fw-bold mb-1 text-success">Rs. {{ '{:,.2f}'.format(total) }}</div>
+            <div class="text-muted small">included in Cash In and Net Position on the Financial Overview</div>
+        </div></div>
+    </div>
+    <div class="col-md-8">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <form method="post" action="{{ url_for('main.other_income_add') }}" class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold mb-1">Category</label>
+                    <select class="form-select form-select-sm" name="category_id" required>
+                        {% for category in categories %}
+                        <option value="{{ category.id }}">{{ category.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold mb-1">Amount (PKR)</label>
+                    <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" name="amount" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold mb-1">Date</label>
+                    <input type="date" class="form-control form-control-sm" name="income_date" value="{{ today.strftime('%Y-%m-%d') }}" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold mb-1">Description</label>
+                    <input type="text" class="form-control form-control-sm" name="description" maxlength="200" placeholder="optional">
+                </div>
+                <div class="col-md-1 d-grid">
+                    <button class="btn btn-success btn-sm">Save</button>
+                </div>
+            </form>
+            <form method="post" action="{{ url_for('main.other_income_category_add') }}" class="row g-2 align-items-end mt-2 border-top pt-2">
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold mb-1">New category</label>
+                    <input type="text" class="form-control form-control-sm" name="name" maxlength="80" placeholder="e.g. Transport fines" required>
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button class="btn btn-outline-secondary btn-sm">Add category</button>
+                </div>
+            </form>
+        </div></div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0 table-responsive">
+        <table class="table table-sm table-striped align-middle mb-0">
+            <thead class="table-light"><tr>
+                <th class="ps-3">Date</th><th>Category</th><th>Description</th>
+                <th class="text-end">Amount (Rs.)</th><th>Recorded by</th>
+                <th class="text-end pe-3">Action</th>
+            </tr></thead>
+            <tbody>
+                {% for row in rows %}
+                <tr class="{% if row.is_void %}text-decoration-line-through text-muted{% endif %}">
+                    <td class="ps-3">{{ row.income_date.strftime('%d %b %Y') }}</td>
+                    <td>{{ row.category.name if row.category else '—' }}</td>
+                    <td class="small text-muted">{{ row.description or '' }}</td>
+                    <td class="text-end fw-bold">{{ '{:,.2f}'.format(row.amount) }}</td>
+                    <td class="small">{{ row.created_by_name or 'system' }}</td>
+                    <td class="text-end pe-3">
+                        {% if not row.is_void %}
+                        <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal"
+                                data-bs-target="#voidIncome{{ row.id }}">Void</button>
+                        {% else %}
+                        <span class="badge bg-secondary" title="{{ row.void_reason or '' }}">voided</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center text-muted py-4">No other income recorded for {{ month_label }}.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% for row in rows %}
+{% if not row.is_void %}
+<div class="modal fade" id="voidIncome{{ row.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <form method="post" action="{{ url_for('main.other_income_void', row_id=row.id) }}">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title">Void this income record?</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-2">{{ row.income_date.strftime('%d %b %Y') }} · {{ row.category.name if row.category else '' }} · Rs. {{ '{:,.2f}'.format(row.amount) }}</p>
+                    <label class="form-label fw-bold">Reason (required)</label>
+                    <input type="text" class="form-control" name="reason" maxlength="255" required>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger btn-sm">Void record</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+{% endblock %}

@@ -356,19 +356,45 @@ def test_read_only_lockout_blocks_writes_but_not_reads(licensed_app_factory, key
     assert backup.status_code == 302
 
 
-def test_backstop_blocks_get_pages_that_write(licensed_app_factory, keypair, clock):
-    """/fees creates charge rows on GET for a month not yet opened."""
+def test_expired_school_can_view_fees_but_generation_is_blocked(licensed_app_factory, keypair, clock):
+    """An expired school can VIEW /fees for any month, but no rows are created.
+
+    The fees page used to create the month's charge rows on GET, which both
+    locked expired schools out of the page and made a page load write data.
+    Charges are now posted explicitly via POST /fees/generate-charges, which
+    stays blocked while read-only.
+    """
     application = licensed_app_factory()
     seed = application.config['SEED_DATA']
     _expire(application, keypair, clock)
     client = application.test_client()
     login(client, 'admin', ADMIN_PASSWORD)
 
-    from app.models import FeeRecordModel
+    from app.models import FeeRecordModel, FeeTransaction
     response = client.get('/fees?class_id=%d&month_year=August 2027' % seed['class_id'])
-    assert response.status_code == 403
+    assert response.status_code == 200                       # viewing stays possible
     with application.app_context():
         assert FeeRecordModel.query.filter_by(month_year='August 2027').count() == 0
+        assert FeeTransaction.query.filter_by(month_year='August 2027').count() == 0
+
+    # The explicit billing action is still a write: blocked while read-only.
+    blocked = client.post('/fees/generate-charges', data={'month_year': 'August 2027'})
+    assert blocked.status_code == 403
+    with application.app_context():
+        assert FeeTransaction.query.filter_by(month_year='August 2027').count() == 0
+
+
+def test_read_only_school_can_still_exit_the_software(licensed_app_factory, keypair, clock):
+    """Closing the app must always stay possible, even while locked."""
+    application = licensed_app_factory()
+    _expire(application, keypair, clock)
+    client = application.test_client()
+    login(client, 'admin', ADMIN_PASSWORD)
+    response = client.post('/shutdown')
+    assert response.status_code == 200
+    assert 'School Manager is closing' in response.get_data(as_text=True)
+    with application.app_context():
+        assert application.extensions.get('shutdown_requested') is True
 
 
 def test_teacher_sees_read_only_banner_without_license_details(licensed_app_factory, keypair, clock):

@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fee Payment Receipt</title>
+    
+    <!-- Bootstrap 5 CSS (vendored - offline first) -->
+    <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
+    <!-- FontAwesome for Icons (vendored - offline first) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}">
+    <!-- Fonts: system stack, no web font download (offline first) -->
+
+    <style>
+        :root {
+            --font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+            --bg-body: #f1f5f9;
+            --text-main: #334155;
+            --text-muted: #64748b;
+            --heading-color: #0f172a;
+            --primary-color: #2563eb;
+            --success-color: #10b981;
+            --border-color: #e2e8f0;
+            --logo-gold: #f59e0b;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 2rem 1rem;
+        }
+
+        .receipt-container {
+            background-color: #ffffff;
+            width: 100%;
+            max-width: 850px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Header Styles */
+        .receipt-header {
+            text-align: center;
+            padding: 2.5rem 2rem 1.5rem;
+            border-bottom: 2px dashed var(--border-color);
+        }
+
+        .school-logo {
+            font-size: 2.5rem;
+            color: var(--logo-gold);
+            margin-bottom: 0.5rem;
+        }
+
+        .school-name {
+            font-weight: 800;
+            font-size: 1.75rem;
+            color: var(--heading-color);
+            margin-bottom: 0.25rem;
+            letter-spacing: -0.025em;
+        }
+
+        .school-tagline {
+            color: var(--primary-color);
+            font-weight: 500;
+            font-size: 0.95rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .school-contact {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        /* Title & Stamp */
+        .receipt-title-bar {
+            padding: 1.5rem 2rem;
+            position: relative;
+            text-align: center;
+        }
+
+        .receipt-title {
+            font-weight: 800;
+            font-size: 1.5rem;
+            color: var(--heading-color);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin: 0;
+        }
+
+        .paid-stamp {
+            position: absolute;
+            top: 50%;
+            right: 2rem;
+            transform: translateY(-50%) rotate(-5deg);
+            border: 3px solid var(--success-color);
+            color: var(--success-color);
+            font-weight: 800;
+            font-size: 1.5rem;
+            padding: 0.25rem 1rem;
+            border-radius: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            opacity: 0.9;
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+            pointer-events: none;
+        }
+
+        /* Body & Columns */
+        .receipt-body {
+            padding: 0 2rem 2rem;
+        }
+
+        .section-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 1.25rem;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.85rem;
+            border-bottom: 1px solid #f8fafc;
+            padding-bottom: 0.4rem;
+        }
+
+        .detail-row:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .detail-label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .detail-value {
+            font-weight: 600;
+            color: var(--heading-color);
+            font-size: 0.95rem;
+            text-align: right;
+        }
+        
+        .highlight-value {
+            color: var(--success-color);
+            font-weight: 800;
+            font-size: 1.1rem;
+        }
+
+        /* Column Divider */
+        .col-divider {
+            border-right: 1px solid var(--border-color);
+        }
+        @media (max-width: 767px) {
+            .col-divider {
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+                margin-bottom: 1.5rem;
+                padding-bottom: 1.5rem;
+            }
+            .paid-stamp {
+                position: static;
+                transform: rotate(-5deg);
+                display: inline-block;
+                margin-top: 1rem;
+            }
+        }
+
+        /* Footer Summary */
+        .receipt-footer {
+            background-color: #f8fafc;
+            border-top: 2px solid var(--primary-color);
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .total-label {
+            color: var(--primary-color);
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+
+        .total-amount {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--heading-color);
+            line-height: 1.2;
+            margin-bottom: 0.25rem;
+        }
+        
+        .total-month {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-bottom: 1.5rem;
+        }
+
+        .remaining-dues {
+            display: inline-block;
+            background-color: #fff1f2;
+            color: #be123c;
+            padding: 0.5rem 1.25rem;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            border: 1px solid #fecdd3;
+        }
+
+        .remaining-dues span {
+            font-weight: 800;
+        }
+
+        /* Action Buttons */
+        .action-buttons {
+            margin-top: 1.5rem;
+            text-align: center;
+        }
+
+        /* Print Media Query */
+        @media print {
+            body {
+                background-color: #ffffff;
+                padding: 0;
+            }
+            .receipt-container {
+                box-shadow: none;
+                max-width: 100%;
+                border: 1px solid var(--border-color);
+                border-radius: 0;
+            }
+            .action-buttons {
+                display: none !important;
+            }
+            /* Force print colors */
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div>
+        <div class="receipt-container">
+            
+            <!-- Header -->
+            <div class="receipt-header">
+                <i class="fas fa-school school-logo"></i>
+                <h1 class="school-name">Ahmad School System</h1>
+                <div class="school-tagline">Knowledge · Discipline · Character</div>
+                <div class="school-contact">
+                    <span><i class="fas fa-map-marker-alt me-1"></i> Sakhi Sarwar</span>
+                    <span><i class="fas fa-phone-alt me-1"></i> 03361124412</span>
+                </div>
+            </div>
+
+            <!-- Title & Stamp -->
+            <div class="receipt-title-bar">
+                <h2 class="receipt-title">Fee Payment Receipt</h2>
+                <div class="paid-stamp">PAID</div>
+            </div>
+
+            <!-- Details Body -->
+            <div class="receipt-body">
+                <div class="row">
+                    
+                    <!-- Left Column: Student Details -->
+                    <div class="col-md-6 col-divider pe-md-4">
+                        <div class="section-title">Student Details</div>
+                        
+                        <div class="detail-row">
+                            <span class="detail-label">Name</span>
+                            <span class="detail-value">Maryam Butt</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Father</span>
+                            <span class="detail-value">Sheikh Hussain Butt</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Roll No</span>
+                            <span class="detail-value">1005</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Class</span>
+                            <span class="detail-value">Playgroup</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Phone</span>
+                            <span class="detail-value">+92 334 9016035</span>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Payment Details -->
+                    <div class="col-md-6 ps-md-4">
+                        <div class="section-title">Payment Details</div>
+                        
+                        <div class="detail-row">
+                            <span class="detail-label">Month</span>
+                            <span class="detail-value">October 2026</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Date</span>
+                            <span class="detail-value">07 Oct 2026</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Reference / Slip No</span>
+                            <span class="detail-value">SLIP-20261007-0011</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Monthly Due</span>
+                            <span class="detail-value">Rs. 2400</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Amount Paid</span>
+                            <span class="detail-value highlight-value">Rs. 2400</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Remarks</span>
+                            <span class="detail-value text-muted fw-normal">None</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Footer Summary -->
+            <div class="receipt-footer">
+                <div class="total-label">Total Amount Paid</div>
+                <div class="total-amount">Rs. 2400</div>
+                <div class="total-month">October 2026</div>
+                
+                <div class="remaining-dues">
+                    <i class="fas fa-exclamation-circle me-1"></i>
+                    Total remaining dues (all months): <span>Rs. 120.00</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Action Buttons (Hidden on Print) -->
+        <div class="action-buttons">
+            <button class="btn btn-primary rounded-pill px-4 shadow-sm" onclick="window.print()">
+                <i class="fas fa-print me-2"></i> Print Receipt
+            </button>
+        </div>
+    </div>
+
+</body>
+</html>

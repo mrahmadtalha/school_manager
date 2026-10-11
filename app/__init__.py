@@ -4,11 +4,14 @@ from flask import Flask, jsonify, redirect, render_template, request, url_for
 from flask_login import LoginManager, current_user
 
 from app.bootstrap import (
+    backfill_financial_v2,
     create_default_admin,
     ensure_school_settings,
     inject_school_settings,
     install_auto_backup,
+    link_subjects_to_library,
     migrate_admin_schema,
+
     migrate_attendance_schema,
     migrate_automation_schema,
     migrate_class_integrity_schema,
@@ -23,11 +26,18 @@ from app.bootstrap import (
     migrate_student_fee_schema,
     migrate_student_roll_schema,
     migrate_student_status_schema,
+    migrate_subject_library_schema,
+    migrate_financial_v2_schema,
+    migrate_payment_apply_month,
+    migrate_timetable_section_schema,
+    migrate_timetable_redesign_schema,
     migrate_teacher_profile_schema,
     migrate_teacher_schema,
+    drop_timetable_draft_table,
     migrate_timetable_schema,
     migrate_user_teacher_link_schema,
     register_blueprints,
+    seed_teaching_assignments,
 )
 from app.config import get_config
 from app.database import db
@@ -35,6 +45,7 @@ from app.license_guard import install_license_guard
 from app.security import PUBLIC_ENDPOINTS, install_role_guard
 from app.services.audit import format_local, install_audit_hooks
 from app.services.custom_fields import parse_custom_fields_json, parse_json_list
+from app.user_data import data_root, migrate_into_data_root
 
 login_manager = LoginManager()
 
@@ -45,7 +56,14 @@ logging.basicConfig(
 
 
 def create_app(config_override=None):
-    app = Flask(__name__, instance_relative_config=True)
+    # Pull anything a previous layout left behind (licence files from the old
+    # app/instance folder, data kept next a packaged exe) into the single
+    # user-data folder BEFORE anything reads or writes it.
+    migrate_into_data_root()
+
+    # instance_path == the data dir: DB, uploads, backups and the license
+    # files then share one folder (see app/user_data.py).
+    app = Flask(__name__, instance_path=str(data_root()), instance_relative_config=True)
     app.config.from_mapping(get_config())
     if config_override:
         app.config.update(config_override)
@@ -66,6 +84,12 @@ def create_app(config_override=None):
         from app.models import AdminUser  # noqa: F401  (ensures models are imported)
 
         db.create_all()
+        # Financial v2 rebuilds the money tables (paisa + cash dates) and must
+        # run before any ORM query touches them.
+        migrate_financial_v2_schema(app)
+        # Adds fee_transactions.apply_month and stamps legacy rows once; must
+        # run before the backfill so derived allocations keep the legacy order.
+        migrate_payment_apply_month(app)
         migrate_dashboard_schema(app)
         migrate_test_schema(app)
         migrate_term_exam_schema(app)
@@ -73,6 +97,7 @@ def create_app(config_override=None):
         migrate_teacher_profile_schema(app)
         migrate_class_integrity_schema(app)
         migrate_timetable_schema(app)
+        drop_timetable_draft_table(app)
         migrate_user_teacher_link_schema(app)
         migrate_admin_schema(app)
         migrate_attendance_schema(app)
@@ -85,6 +110,15 @@ def create_app(config_override=None):
         migrate_student_status_schema(app)
         migrate_student_enrollments(app)
         migrate_expense_schema(app)
+        migrate_subject_library_schema(app)
+        migrate_timetable_section_schema(app)
+        migrate_timetable_redesign_schema(app)
+        link_subjects_to_library()
+        seed_teaching_assignments()
+        backfill_financial_v2()
+        # NOTE: allocation repair is deliberately NOT run here.  It writes to the
+        # ledger, so it is only ever triggered by an explicit action on the Fee
+        # Reconciliation page (see app/routes/fees.py).
         register_blueprints(app)
         create_default_admin()
         ensure_school_settings()
@@ -92,6 +126,22 @@ def create_app(config_override=None):
         app.jinja_env.filters['localtime'] = format_local
         app.jinja_env.filters['fromjson'] = parse_custom_fields_json
         app.jinja_env.filters['fromjsonlist'] = parse_json_list
+
+        def pretty_time_short(value):
+            """'08:15' -> '8:15', '13:00' -> '1:00' — the compact 12-hour
+            form used on the timetable headers (no AM/PM, like the reference)."""
+            from app.services.timetable import clean_time
+            value = clean_time(value)
+            if not value:
+                return value or ''
+            hours, minutes = value.split(':')
+            return '%d:%s' % (int(hours) % 12 or 12, minutes)
+
+        app.jinja_env.filters['pretty_time_short'] = pretty_time_short
+        # Compact table rendering: one place decides column classes/widths.
+        from app.services import record_view as _record_view
+        app.jinja_env.globals['column_classes'] = _record_view.column_css
+        app.jinja_env.globals['actions_col_class'] = _record_view.ACTIONS_COL_CLASS
         install_auto_backup(app)
 
     @login_manager.user_loader

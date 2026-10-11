@@ -35,6 +35,7 @@ class StudentModel(db.Model):
     admission_number = db.Column(db.String(40), nullable=True)  # Optional admission/registration no
     admission_date = db.Column(db.Date, nullable=True)          # Optional date of admission
     custom_fields_data = db.Column(db.Text, nullable=True) # JSON string of custom fields
+    photo_filename = db.Column(db.String(120), nullable=True)  # Optional profile picture (see app/services/photos.py)
     class_fee = db.Column(db.Float, nullable=True)        # Fee for the class at admission (before discount)
     discount_type = db.Column(db.String(20), nullable=True)  # 'percentage' or 'fixed'
     discount_value = db.Column(db.Float, nullable=True)   # Discount value (percent or PKR amount)

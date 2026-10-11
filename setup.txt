@@ -62,7 +62,13 @@ School Manager Setup Guide
      - address
      - phone
      - email
-     - optional checkbox to load dummy data
+     - optional demo data with advanced options:
+       - number of students and teachers
+       - data period: 1 month, 3 months, 6 months, 1 year, 2 years, 5 years or 10 years
+       - which areas to include: attendance, fees, expenses, class tests,
+         term exams/results, staff payroll, optional dummy profile pictures
+       - generation runs in the background with a live progress screen;
+         large datasets (e.g. 500 students x 10 years) can take several minutes
 
 8. Start the app normally
    - From the project root:

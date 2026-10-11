@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_photo_macro.html" import avatar %}
 {% block content %}
 <style>
     .student-report-shell {
@@ -84,7 +85,9 @@
 <div class="student-report-shell">
     {% set status_colors = {'enrolled': 'success', 'slc_issued': 'warning', 'graduated': 'info', 'struck_off': 'danger'} %}
     <div class="report-hero d-flex justify-content-between flex-wrap align-items-center gap-3">
-        <div>
+        <div class="d-flex align-items-center gap-3">
+            {% if student.photo_filename %}{{ avatar('student', student, 84, 'border-3 border-white') }}{% endif %}
+            <div>
             <p class="mb-2 text-white-50 text-uppercase small fw-semibold">Student Profile Hub</p>
             <h1 class="h2 fw-bold text-white mb-2"><i class="fas fa-user-check me-2"></i>{{ student.student_name }}</h1>
             <div class="d-flex flex-wrap gap-2 align-items-center small">
@@ -95,6 +98,7 @@
                 </span>
                 {% if student.date_of_birth %}<span class="text-white-50">DOB: {{ student.date_of_birth.strftime('%d %b %Y') }}</span>{% endif %}
                 {% if student.admission_number %}<span class="text-white-50">Adm #: {{ student.admission_number }}</span>{% endif %}
+            </div>
             </div>
         </div>
         <div class="d-flex flex-wrap gap-2">
@@ -125,9 +129,15 @@
         <div class="col-md-3">
             <div class="report-stat bg-white">
                 <div>
+                    {% if summary.attendance_total %}
                     <div class="value text-primary">{{ summary.attendance_pct }}%</div>
                     <div class="label text-muted">Attendance</div>
                     <div class="small text-muted">{{ summary.present_count }}/{{ summary.attendance_total }} days</div>
+                    {% else %}
+                    <div class="value text-muted">&mdash;</div>
+                    <div class="label text-muted">Attendance</div>
+                    <div class="small text-muted">No attendance recorded yet</div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -164,9 +174,15 @@
         <div class="col-md-3">
             <div class="report-stat bg-white">
                 <div>
+                    {% if summary.has_results %}
                     <div class="value text-info">{{ summary.overall_percentage }}%</div>
                     <div class="label text-muted">Overall (all marks)</div>
                     <div class="small text-muted">Grade {{ summary.overall_grade }}</div>
+                    {% else %}
+                    <div class="value text-muted">—</div>
+                    <div class="label text-muted">Overall (all marks)</div>
+                    <div class="small text-muted">No test/exam taken yet</div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -223,7 +239,7 @@
                                 <div class="col-6"><strong>Admission No:</strong><br>{{ student.admission_number or '—' }}</div>
                                 <div class="col-6"><strong>Admission Date:</strong><br>{{ student.admission_date.strftime('%d %b %Y') if student.admission_date else '—' }}</div>
                                 <div class="col-6"><strong>Monthly Fee:</strong><br>PKR {{ '{:,.0f}'.format(student.monthly_fee or 0) }}</div>
-                                <div class="col-6"><strong>Best Test:</strong><br>{{ summary.best_test }}</div>
+                                <div class="col-6"><strong>Best Test:</strong><br>{{ summary.best_test or '—' }}</div>
                                 <div class="col-12"><strong>Address:</strong><br>{{ student.address }}</div>
                                 {% if not student.is_active %}
                                 <div class="col-12">
@@ -347,9 +363,15 @@
                                     <td class="ps-3 fw-bold">{{ tr.exam.name }}</td>
                                     <td>{{ tr.exam.exam_type }}</td>
                                     <td class="small text-muted">{{ tr.exam.start_date.strftime('%d %b %Y') if tr.exam.start_date else '—' }}</td>
-                                    <td>{{ '%g'|format(tr.row.total_obt) }}/{{ tr.total_max|int }}</td>
+                                    {% if tr.row.all_absent %}
+                                    <td class="text-muted">—</td>
+                                    <td class="text-muted">—</td>
+                                    <td><span class="grade-badge">ABS</span></td>
+                                    {% else %}
+                                    <td>{{ '%g'|format(tr.row.total_obt) }}/{{ tr.row.max_marks|int }}{% if tr.row.absent_count %} <small class="text-muted">(absent in {{ tr.row.absent_count }})</small>{% endif %}</td>
                                     <td>{{ tr.row.pct }}%</td>
                                     <td><span class="grade-badge">{{ tr.row.grade }}</span></td>
+                                    {% endif %}
                                     <td>
                                         {% if tr.row.rank == 1 %}<span class="medal" style="background:#d4af37;">🥇 {{ tr.row.position }}</span>
                                         {% elif tr.row.rank == 2 %}<span class="medal" style="background:#9ca3af;">🥈 {{ tr.row.position }}</span>
@@ -379,7 +401,7 @@
                     <h6 class="mb-0"><i class="fas fa-file-alt me-2"></i>Result Card — All Marks</h6>
                     <div class="d-flex gap-2">
                         <a class="btn btn-light btn-sm" href="{{ url_for('main.student_report_pdf', id=student.id) }}" target="_blank">
-                            <i class="fas fa-file-pdf me-1"></i> Download PDF
+                            <i class="fas fa-file-pdf me-1"></i> Export PDF
                         </a>
                     </div>
                 </div>
@@ -404,9 +426,15 @@
                                     <td>{{ mark.test_info.test_type if mark.test_info else 'N/A' }}</td>
                                     <td>{{ mark.test_info.subject_info.name if mark.test_info and mark.test_info.subject_info else 'N/A' }}</td>
                                     <td>{{ mark.test_info.test_date if mark.test_info else 'N/A' }}</td>
+                                    {% if mark.is_absent %}
+                                    <td><span class="badge bg-warning text-dark">ABS</span></td>
+                                    <td>—</td>
+                                    <td><span class="grade-badge">ABS</span></td>
+                                    {% else %}
                                     <td>{{ mark.marks_obtained }}</td>
                                     <td>{{ mark.percentage if mark.percentage is not none else '—' }}%</td>
                                     <td><span class="grade-badge">{{ mark.grade or '—' }}</span></td>
+                                    {% endif %}
                                 </tr>
                                 {% else %}
                                 <tr><td colspan="7" class="text-center text-muted py-4">No test results yet.</td></tr>
@@ -513,17 +541,17 @@
                             </a>
                         </div>
                         <div class="col-md-4">
-                            <a class="btn btn-outline-warning w-100 py-3" href="{{ url_for('main.documents_hub', student_id=student.id, cert_type='leaving') }}">
+                            <a class="btn btn-outline-warning w-100 py-3" href="{{ url_for('main.export_certificates', student_id=student.id, cert_type='leaving') }}">
                                 <i class="fas fa-door-open me-1"></i> School Leaving Certificate
                             </a>
                         </div>
                         <div class="col-md-4">
-                            <a class="btn btn-outline-secondary w-100 py-3" href="{{ url_for('main.documents_hub', student_id=student.id, cert_type='character') }}">
+                            <a class="btn btn-outline-secondary w-100 py-3" href="{{ url_for('main.export_certificates', student_id=student.id, cert_type='character') }}">
                                 <i class="fas fa-certificate me-1"></i> Character Certificate
                             </a>
                         </div>
                         <div class="col-md-4">
-                            <a class="btn btn-outline-secondary w-100 py-3" href="{{ url_for('main.documents_hub', student_id=student.id, cert_type='bonafide') }}">
+                            <a class="btn btn-outline-secondary w-100 py-3" href="{{ url_for('main.export_certificates', student_id=student.id, cert_type='bonafide') }}">
                                 <i class="fas fa-certificate me-1"></i> Bonafide / Studentship
                             </a>
                         </div>

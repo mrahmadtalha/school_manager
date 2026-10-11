@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-dark text-white">
+                    <h4 class="mb-0">Generating Demo Data</h4>
+                </div>
+                <div class="card-body text-center py-4">
+
+                    <div id="running-view">
+                        <div class="spinner-border text-primary mb-3" role="status">
+                            <span class="visually-hidden">Loading…</span>
+                        </div>
+                        <h5 id="stage-label" class="mb-3">Preparing…</h5>
+                        <div class="progress" style="height: 1.4rem;">
+                            <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                 role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100">0%</div>
+                        </div>
+                        <p class="text-muted small mt-3 mb-0">
+                            Large demo datasets can take a few minutes. Please keep this tab open.
+                        </p>
+                    </div>
+
+                    <div id="done-view" class="d-none">
+                        <div class="display-4 text-success mb-2">✓</div>
+                        <h5 class="mb-3">Demo data generated successfully</h5>
+                        <ul id="summary-list" class="list-group list-group-flush text-start mb-3 small"></ul>
+                        <a href="{{ url_for('auth.login') }}" class="btn btn-primary w-100">Go to Login</a>
+                    </div>
+
+                    <div id="error-view" class="d-none">
+                        <div class="display-4 text-danger mb-2">✗</div>
+                        <h5 class="mb-3">Demo data generation failed</h5>
+                        <p id="error-message" class="text-danger small"></p>
+                        <p class="text-muted small">Your admin account was created — you can continue to login,
+                            but demo data may be incomplete.</p>
+                        <a href="{{ url_for('auth.login') }}" class="btn btn-primary w-100">Go to Login Anyway</a>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var runningView = document.getElementById('running-view');
+    var doneView = document.getElementById('done-view');
+    var errorView = document.getElementById('error-view');
+    var stageLabel = document.getElementById('stage-label');
+    var progressBar = document.getElementById('progress-bar');
+    var summaryList = document.getElementById('summary-list');
+    var errorMessage = document.getElementById('error-message');
+
+    var SUMMARY_LABELS = {
+        students: 'Students',
+        teachers: 'Teachers',
+        attendance_rows: 'Attendance records',
+        fee_records: 'Monthly fee summaries',
+        fee_transactions: 'Fee transactions',
+        expenses: 'Expenses',
+        class_tests: 'Class tests',
+        class_test_marks: 'Class test marks',
+        term_exams: 'Term exams',
+        term_exam_tests: 'Term exam papers',
+        term_exam_marks: 'Term exam marks',
+        payroll_rows: 'Payroll records',
+        photos: 'Generated profile pictures'
+    };
+
+    function show(view) {
+        runningView.classList.add('d-none');
+        doneView.classList.add('d-none');
+        errorView.classList.add('d-none');
+        view.classList.remove('d-none');
+    }
+
+    function poll() {
+        fetch('{{ url_for("auth.setup_progress_status") }}', { headers: { 'Accept': 'application/json' } })
+            .then(function (response) {
+                if (!response.ok) { throw new Error('status ' + response.status); }
+                return response.json();
+            })
+            .then(function (job) {
+                if (job.state === 'done') {
+                    stageLabel.textContent = 'Complete';
+                    progressBar.style.width = '100%';
+                    progressBar.textContent = '100%';
+                    summaryList.innerHTML = '';
+                    Object.keys(SUMMARY_LABELS).forEach(function (key) {
+                        if (job.summary && typeof job.summary[key] === 'number') {
+                            var li = document.createElement('li');
+                            li.className = 'list-group-item d-flex justify-content-between';
+                            li.innerHTML = '<span>' + SUMMARY_LABELS[key] + '</span><strong>' +
+                                job.summary[key].toLocaleString() + '</strong>';
+                            summaryList.appendChild(li);
+                        }
+                    });
+                    show(doneView);
+                } else if (job.state === 'error') {
+                    errorMessage.textContent = job.error || 'Unknown error.';
+                    show(errorView);
+                } else {
+                    stageLabel.textContent = job.stage || 'Working…';
+                    var percent = Math.max(0, Math.min(100, job.percent || 0));
+                    progressBar.style.width = percent + '%';
+                    progressBar.textContent = percent + '%';
+                    setTimeout(poll, 1500);
+                }
+            })
+            .catch(function () {
+                setTimeout(poll, 3000);  // transient server hiccup: retry
+            });
+    }
+
+    poll();
+})();
+</script>
+{% endblock %}

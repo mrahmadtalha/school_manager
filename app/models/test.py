@@ -33,6 +33,11 @@ class StudentMarkModel(db.Model):
     marks_obtained = db.Column(db.Float, nullable=False)
     percentage = db.Column(db.Float, nullable=True)
     grade = db.Column(db.String(5), nullable=True)  # A+, A, B, C, F
+    # True when the student did not sit this paper. ``marks_obtained`` is stored
+    # as 0 (the column is NOT NULL) but must be ignored everywhere: an absent
+    # paper is left out of totals, percentages, grades and positions.
+    is_absent = db.Column(db.Boolean, nullable=False, default=False,
+                          server_default=db.text('0'))
 
     student_info = db.relationship('StudentModel', backref='marks', lazy=True)
 

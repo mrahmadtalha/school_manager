@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% set money = '{:,.2f}'.format %}
+
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Finance</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-lightbulb text-primary me-2"></i>Financial Insights</h1>
+        <p class="text-muted small mb-0">Rule-based comparisons of recorded figures for {{ metrics.label }} — no estimates beyond the ones labelled as estimates.</p>
+    </div>
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary') }}">
+            <i class="fas fa-arrow-left me-1"></i>Financial Overview
+        </a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_insights', month=prev_month) }}"><i class="fas fa-chevron-left"></i></a>
+        <form method="get" action="{{ url_for('main.financials_insights') }}" class="d-flex gap-2">
+            <input type="month" class="form-control form-control-sm" name="month" value="{{ month }}" style="width: 160px;">
+            <button class="btn btn-primary btn-sm">Show</button>
+        </form>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_insights', month=next_month) }}"><i class="fas fa-chevron-right"></i></a>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase fw-bold">Collection rate</div>
+            <div class="h4 fw-bold mb-1 {{ 'text-success' if metrics.fees.rate is not none and metrics.fees.rate >= 80 else 'text-danger' }}">
+                {{ '{:,.1f}'.format(metrics.fees.rate) + '%' if metrics.fees.rate is not none else '—' }}</div>
+            <div class="text-muted small">collected Rs {{ money(metrics.fees.collected) }} of Rs {{ money(metrics.fees.expected) }} this month's charges{% if metrics.enough_history and metrics.fees.rate_change is not none %} · {{ 'up' if metrics.fees.rate_change >= 0 else 'down' }} {{ '{:,.1f}'.format(metrics.fees.rate_change | abs) }} points vs last month{% endif %}</div>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase fw-bold">Arrears recovery</div>
+            <div class="h4 fw-bold mb-1 text-success">Rs {{ money(metrics.arrears.recovered) }}</div>
+            <div class="text-muted small">older arrears recovered in {{ metrics.label }}{% if metrics.arrears.recoverable > 0 %} · Rs {{ money(metrics.arrears.recoverable) }} still recoverable{% else %} · nothing older left recoverable{% endif %}</div>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase fw-bold">Salary burden</div>
+            <div class="h4 fw-bold mb-1">{{ '{:,.1f}'.format(metrics.salary_burden.burden) + '%' if metrics.salary_burden.burden is not none else '—' }}</div>
+            <div class="text-muted small">salaries paid (Rs {{ money(metrics.salary_burden.salary) }}) as a share of Cash In (Rs {{ money(metrics.salary_burden.cash_in) }})</div>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase fw-bold">Net Position change</div>
+            <div class="h4 fw-bold mb-1 {{ 'text-success' if metrics.cash.net_change >= 0 else 'text-danger' }}">Rs {{ money(metrics.cash.net_change) }}</div>
+            <div class="text-muted small">Cash In minus Cash Out: Rs {{ money(metrics.cash.net) }} this month vs Rs {{ money(metrics.cash.prev_net) }} last month</div>
+        </div></div>
+    </div>
+</div>
+
+{% if metrics.sales %}
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase fw-bold">Sales revenue</div>
+            <div class="h4 fw-bold mb-1 text-success">Rs {{ money(metrics.sales.revenue) }}</div>
+            <div class="text-muted small">inventory sales in {{ metrics.label }} · already inside Cash In</div>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase fw-bold">Cost of goods sold</div>
+            <div class="h4 fw-bold mb-1" style="color:#fd7e14;">Rs {{ money(metrics.sales.cogs) }}</div>
+            <div class="text-muted small">cost of items actually sold</div>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase fw-bold">Estimated Net Operating Position</div>
+            <div class="h4 fw-bold mb-1 {{ 'text-success' if metrics.operating_position >= 0 else 'text-danger' }}">Rs {{ money(metrics.operating_position) }}</div>
+            <div class="text-muted small">Revenue minus Salaries, Operating Expenses and Cost of Goods Sold — an operating estimate, not money movement</div>
+        </div></div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase fw-bold">Stock purchases</div>
+            <div class="h4 fw-bold mb-1">Rs {{ money(metrics.purchases) }}</div>
+            <div class="text-muted small">part of Cash Out but not expenses — cost enters Cost of Goods Sold when items sell{% if metrics.sales.low_stock %} · <span class="text-danger fw-bold">{{ metrics.sales.low_stock | length }} item(s) low on stock</span>{% endif %}</div>
+        </div></div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-dark text-white fw-bold border-0"><i class="fas fa-file-alt me-2"></i>What changed</div>
+            <div class="card-body">
+                {% for line in insights.lines %}
+                <p class="mb-2">{{ line }}</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-primary text-white fw-bold border-0"><i class="fas fa-clipboard-check me-2"></i>Recommendations</div>
+            <div class="card-body">
+                {% if recommendations %}
+                    <ul class="mb-0 ps-3">
+                        {% for item in recommendations %}<li class="mb-2">{{ item }}</li>{% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted mb-0">Nothing needs attention for {{ metrics.label }}.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-7">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 pt-3"><h2 class="h6 fw-bold mb-0">Expense trends — {{ metrics.label }} vs previous month (salaries excluded)</h2></div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-sm table-striped align-middle mb-0">
+                    <thead class="table-light"><tr>
+                        <th class="ps-3">Category</th>
+                        <th class="text-end">{{ metrics.label }}</th>
+                        <th class="text-end">Previous</th>
+                        <th class="text-end pe-3">Change</th>
+                    </tr></thead>
+                    <tbody>
+                        {% for trend in metrics.expense_trends %}
+                        <tr>
+                            <td class="ps-3">{{ trend.name }}</td>
+                            <td class="text-end">Rs {{ money(trend.current) }}</td>
+                            <td class="text-end">Rs {{ money(trend.previous) }}</td>
+                            <td class="text-end pe-3">
+                                {% if trend.pct is none %}new this month
+                                {% elif trend.pct > 0 %}<span class="text-danger">+{{ '{:,.1f}'.format(trend.pct) }}% (Rs {{ money(trend.change) }})</span>
+                                {% elif trend.pct < 0 %}<span class="text-success">{{ '{:,.1f}'.format(trend.pct) }}% (Rs {{ money(trend.change) }})</span>
+                                {% else %}unchanged{% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-4">No expenses recorded in these months.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-5">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 pt-3"><h2 class="h6 fw-bold mb-0">Students who left — estimated monthly revenue impact</h2></div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-sm table-striped align-middle mb-0">
+                    <thead class="table-light"><tr>
+                        <th class="ps-3">Status</th><th class="text-end">Students</th>
+                        <th class="text-end pe-3">Monthly fees</th>
+                    </tr></thead>
+                    <tbody>
+                        {% for entry in metrics.left_impact.values() %}
+                        <tr>
+                            <td class="ps-3">{{ entry.label }}</td>
+                            <td class="text-end">{{ entry.count }}</td>
+                            <td class="text-end">Rs {{ money(entry.monthly) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-center text-muted py-4">No former students with a monthly fee.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-footer bg-white border-0 text-muted small">An estimate of monthly fees no longer being billed — not a loss claim.</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

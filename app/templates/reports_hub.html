@@ -294,7 +294,24 @@
                 </div>
                 <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
                     <a class="btn btn-sm btn-outline-danger" href="{{ url_for('main.expenses_export_pdf') }}">PDF</a>
+                    <a class="btn btn-sm btn-outline-success" href="{{ url_for('main.expenses_export_xlsx') }}">XLSX</a>
                     <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.expenses_export_csv') }}">CSV</a>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card hub-export-card h-100 border-0 shadow-sm">
+                <div class="card-body pb-2">
+                    <div class="d-flex align-items-start justify-content-between mb-2">
+                        <span class="hub-export-icon"><i class="fas fa-lightbulb"></i></span>
+                        <span class="badge bg-dark">Insights</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">Financial Insights</h6>
+                    <p class="text-muted small mb-2">Collection rate, arrears recovery, salary burden and expense trends with plain-language analysis.</p>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3 d-flex gap-2 flex-wrap">
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.financials_insights') }}">Open insights</a>
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('main.financials_summary') }}">Summary</a>
                 </div>
             </div>
         </div>
@@ -592,7 +609,7 @@
 </div>
 
 {% if tab == 'analytics' %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>
 <script>
 window.addEventListener('load', function () {
     function chartOptions() {

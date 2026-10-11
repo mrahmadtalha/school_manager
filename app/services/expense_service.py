@@ -4,21 +4,44 @@ import io
 from datetime import date
 
 from app.database import db
-from app.models import Expense, ExpenseCategory, DEFAULT_EXPENSE_CATEGORIES
+from app.models import (Expense, ExpenseCategory, DEFAULT_EXPENSE_CATEGORIES,
+                        RESERVED_SALARIES_CATEGORY)
 
 
 def seed_default_categories():
     """Create the default categories when the table has none. Returns count created."""
-    if ExpenseCategory.query.count() > 0:
-        return 0
     created = 0
-    for name in DEFAULT_EXPENSE_CATEGORIES:
-        if not ExpenseCategory.query.filter_by(name=name).first():
-            db.session.add(ExpenseCategory(name=name))
-            created += 1
-    if created:
+    if ExpenseCategory.query.count() == 0:
+        for name in DEFAULT_EXPENSE_CATEGORIES:
+            if not ExpenseCategory.query.filter_by(name=name).first():
+                db.session.add(ExpenseCategory(name=name))
+                created += 1
+    # The reserved Salaries category must always exist (payroll feeds it).
+    salaries = ExpenseCategory.query.filter_by(name=RESERVED_SALARIES_CATEGORY).first()
+    if salaries is None:
+        db.session.add(ExpenseCategory(name=RESERVED_SALARIES_CATEGORY, is_system=True))
+        created += 1
+    elif not salaries.is_system:
+        salaries.is_system = True
+    if created or salaries:
         db.session.commit()
     return created
+
+def ensure_salaries_category():
+    """Create/repair the system-reserved Salaries category; returns it or None."""
+    seed_default_categories()
+    return ExpenseCategory.query.filter_by(name=RESERVED_SALARIES_CATEGORY).first()
+
+def void_expense(expense, reason, actor_name=None):
+    """Void an expense with a mandatory reason; history is never deleted."""
+    from datetime import datetime
+    if expense.is_void:
+        return expense
+    expense.is_void = True
+    expense.void_reason = (reason or 'No reason recorded')[:255]
+    expense.voided_at = datetime.utcnow()
+    expense.voided_by_name = actor_name or 'system'
+    return expense
 
 
 def active_categories():
@@ -30,17 +53,20 @@ def categories_with_usage():
     """Every category plus entry count / total (for the management table)."""
     rows = []
     for category in ExpenseCategory.query.order_by(ExpenseCategory.name).all():
-        query = Expense.query.filter_by(category_id=category.id)
+        query = Expense.query.filter_by(category_id=category.id, is_void=False)
         count = query.count()
         total = query.with_entities(
-            db.func.coalesce(db.func.sum(Expense.amount), 0.0)).scalar() or 0.0
+            db.func.coalesce(db.func.sum(Expense.amount_paisa), 0)).scalar() or 0
         rows.append({'category': category, 'count': count,
-                     'total': round(float(total), 2)})
+                     'total': round(float(total) / 100.0, 2)})
     return rows
 
 
-def filter_expenses(date_from=None, date_to=None, category_id=None, search=None):
+def filter_expenses(date_from=None, date_to=None, category_id=None, search=None,
+                    include_void=False):
     query = Expense.query.join(ExpenseCategory)
+    if not include_void:
+        query = query.filter(Expense.is_void.is_(False))
     if date_from:
         query = query.filter(Expense.date >= date_from)
     if date_to:
@@ -55,6 +81,53 @@ def filter_expenses(date_from=None, date_to=None, category_id=None, search=None)
             ExpenseCategory.name.ilike(like),
         ))
     return query.order_by(Expense.date.desc(), Expense.id.desc()).all()
+
+
+# --------------------------------------------------------------------------- #
+# Recurring expenses (continue a previous month's entry)
+# --------------------------------------------------------------------------- #
+
+def month_expenses(month_year):
+    """Every expense recorded inside the given 'YYYY-MM' month, newest first."""
+    from app.services.payroll_service import month_bounds
+
+    start, end = month_bounds(month_year)
+    if start is None:
+        return []
+    return filter_expenses(date_from=start, date_to=end)
+
+
+def previous_month_expenses(month_year=None):
+    """Expenses from the month before ``month_year`` (default: this month).
+
+    Used by the "Continue previous month's expense" shortcut: the school picks
+    one of last month's entries and the Add form is pre-filled from it.
+    """
+    from app.services.payroll_service import current_month_key, shift_month
+
+    base = month_year or current_month_key()
+    previous = shift_month(base, -1)
+    return month_expenses(previous) if previous else []
+
+
+def continue_payload(expense):
+    """Form field values to pre-fill the Add form from an existing expense.
+
+    Deliberately excludes the date: a continued expense is a *new* record for
+    today, so the user re-dates it (or keeps today's date) before saving.
+    """
+    if expense is None:
+        return None
+    return {
+        'source_id': expense.id,
+        'category_id': expense.category_id,
+        'category_name': expense.category.name if expense.category else '',
+        'amount': round(float(expense.amount or 0), 2),
+        'payment_method': expense.payment_method or 'Cash',
+        'receipt_no': expense.receipt_no or '',
+        'description': expense.description or '',
+        'source_date': expense.date.isoformat() if expense.date else '',
+    }
 
 
 def summary(expenses):

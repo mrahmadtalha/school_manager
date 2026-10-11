@@ -292,13 +292,16 @@ def test_automation_hides_inactive_integration_panel(admin_client, app):
     assert 'id="qr-integration-panel"' in qr_page
     assert 'id="cloud-api-config" class="border rounded p-3 mb-3" hidden' in qr_page
 
-    with app.app_context():
-        settings = AutomationSettings.get()
-        settings.integration_method = 'cloud_api'
-        settings.whatsapp_api_token = 'saved-token'
-        settings.whatsapp_phone_number_id = '123456789'
-        settings.whatsapp_business_account_id = '987654321'
-        db.session.commit()
+    # The 'app' fixture already holds an app context, and a test-client
+    # request reuses it.  Pushing a NESTED context would commit through a
+    # different session, leaving the outer session's identity map stale and
+    # the next render showing pre-commit values.  Mutate in place instead.
+    settings = AutomationSettings.get()
+    settings.integration_method = 'cloud_api'
+    settings.whatsapp_api_token = 'saved-token'
+    settings.whatsapp_phone_number_id = '123456789'
+    settings.whatsapp_business_account_id = '987654321'
+    db.session.commit()
 
     cloud_page = admin_client.get('/automation').get_data(as_text=True)
     assert 'id="qr-integration-panel" hidden' in cloud_page

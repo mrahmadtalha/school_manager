@@ -1,16 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap align-items-center pt-3 pb-3 mb-3 border-bottom">
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
     <div>
-        <h1 class="h3 fw-bold mb-1"><i class="fas fa-clipboard-list me-2 text-primary"></i>Audit Log</h1>
+        <p class="eyebrow mb-2">System</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-clipboard-list text-primary me-2"></i>Audit Log</h1>
         <p class="text-muted small mb-0">
             Every create, edit, delete and business action, with the actor, timestamp and before/after values.
         </p>
     </div>
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
     <a class="btn btn-dark btn-sm"
        href="{{ url_for('main.audit_log_export') }}{% if request.query_string %}?{{ request.query_string.decode() }}{% endif %}">
         <i class="fas fa-file-csv me-1"></i> Export CSV
     </a>
+    </div>
 </div>
 
 <form method="GET" action="{{ url_for('main.audit_log') }}" class="card card-body shadow-sm border-0 mb-3">
@@ -57,7 +60,7 @@
         <div class="col-md-2 d-flex gap-2">
             <input type="text" class="form-control form-control-sm" name="search"
                    value="{{ filters.search or '' }}" placeholder="Search summary/user">
-            <button class="btn btn-sm btn-dark" type="submit"><i class="fas fa-filter"></i></button>
+            <button class="btn btn-sm btn-dark" type="submit" aria-label="Apply filters"><i class="fas fa-filter"></i></button>
         </div>
     </div>
 </form>

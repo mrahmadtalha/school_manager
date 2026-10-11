@@ -51,11 +51,13 @@ TEACHER_ENDPOINTS = {
     'main.export_students_excel', 'main.export_students_pdf', 'main.import_students',
     # teachers
     'main.teachers_list', 'main.add_teacher', 'main.edit_teacher', 'main.archived_teachers_list',
-    'main.teacher_profile',
+    'main.teacher_profile', 'main.student_photo', 'main.teacher_photo',
     'main.export_teachers_csv', 'main.teachers_template_excel', 'main.export_teachers_excel',
     'main.export_teachers_pdf', 'main.import_teachers',
-    # classes (read-only for teachers)
-    'main.classes_list', 'main.class_timetable',
+    # classes (read-only for teachers; the teacher-timetable views are
+    # role-aware: a teacher account only reaches its own record)
+    'main.classes_list',
+    'main.teacher_timetables', 'main.teacher_timetable',
     # attendance
     'main.teacher_attendance', 'main.teacher_attendance_summary', 'main.student_attendance',
     'main.lock_attendance', 'main.attendance_summary',
@@ -89,7 +91,8 @@ TEACHER_ENDPOINTS = {
 ACCOUNTANT_ENDPOINTS = {
     # fees - collections, vouchers, ledgers, reconciliation
     'main.fees_list', 'main.pay_fee', 'main.fee_receipt', 'main.fee_student_ledger',
-    'main.fees_reconciliation',
+    'main.fees_reconciliation', 'main.fee_txn_void', 'main.fee_payment_refund',
+    'main.expenses_void', 'main.payroll_pay', 'main.payroll_payment_void',
     # expenses - daily logger + exports (category management stays admin-only)
     'main.expenses_list', 'main.expenses_add', 'main.expenses_edit',
     'main.expenses_delete', 'main.expenses_export_csv', 'main.expenses_export_pdf',

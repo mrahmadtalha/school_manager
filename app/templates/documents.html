@@ -19,17 +19,6 @@
     </div>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
-
 <div class="row g-4">
     <div class="col-lg-6">
         <div class="card shadow-sm border-0 analytics-panel document-card">
@@ -38,10 +27,10 @@
             </div>
             <div class="card-body">
                 <p class="text-muted small">Choose a student or class. Leave both blank to print cards for all active students.</p>
-                <form method="GET" action="{{ url_for('main.export_student_id_cards') }}">
+                <form method="GET" action="{{ url_for('main.export_student_id_cards') }}" data-class-student-form>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Class <span class="text-muted fw-normal" title="Leave blank to include every class." data-bs-toggle="tooltip"><i class="fas fa-circle-info"></i></span></label>
-                        <select class="form-select" name="class_id">
+                        <select class="form-select" name="class_id" data-role="class">
                             <option value="">— All classes —</option>
                             {% for class_obj in classes %}
                             <option value="{{ class_obj.id }}" {% if preselect_class_id == class_obj.id %}selected{% endif %}>{{ class_obj.name }}</option>
@@ -49,11 +38,15 @@
                         </select>
                     </div>
                     <div class="mb-3">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="idWholeClass" data-role="whole">
+                            <label class="form-check-label fw-bold" for="idWholeClass">Whole Class <span class="text-muted fw-normal small" data-role="count"></span></label>
+                        </div>
                         <label class="form-label fw-bold">Single student <span class="text-muted fw-normal">(optional)</span></label>
-                        <select class="form-select" name="student_id">
-                            <option value="">— Entire class / all students —</option>
+                        <select class="form-select" name="student_id" data-role="student">
+                            <option value="">— All students —</option>
                             {% for student in students %}
-                            <option value="{{ student.id }}" {% if preselect_student_id == student.id %}selected{% endif %}>
+                            <option value="{{ student.id }}" data-class-id="{{ student.class_id or '' }}" {% if preselect_student_id == student.id %}selected{% endif %}>
                                 {{ student.roll_number }} — {{ student.student_name }}
                                 {% if student.class_info %} ({{ student.class_info.name }}){% endif %}
                             </option>
@@ -112,7 +105,7 @@
                 <p class="text-muted small mb-3">
                     Choose a certificate type, then a student or a whole class. School name, logo, address, and phone from Settings are printed automatically.
                 </p>
-                <form method="GET" action="{{ url_for('main.export_certificates') }}" class="row g-3">
+                <form method="GET" action="{{ url_for('main.export_certificates') }}" class="row g-3" data-class-student-form>
                     <div class="col-md-3">
                         <label class="form-label fw-bold">Certificate type</label>
                         <select class="form-select" name="cert_type">
@@ -123,19 +116,23 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label fw-bold">Class</label>
-                        <select class="form-select" name="class_id">
+                        <select class="form-select" name="class_id" data-role="class">
                             <option value="">— Optional class filter —</option>
                             {% for class_obj in classes %}
                             <option value="{{ class_obj.id }}" {% if preselect_class_id == class_obj.id %}selected{% endif %}>{{ class_obj.name }}</option>
                             {% endfor %}
                         </select>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="certWholeClass" data-role="whole">
+                            <label class="form-check-label fw-bold" for="certWholeClass">Whole Class <span class="text-muted fw-normal small" data-role="count"></span></label>
+                        </div>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label fw-bold">Student</label>
-                        <select class="form-select" name="student_id">
-                            <option value="">— Whole class / all matching —</option>
+                        <select class="form-select" name="student_id" data-role="student">
+                            <option value="">— Select a student —</option>
                             {% for student in students %}
-                            <option value="{{ student.id }}" {% if preselect_student_id == student.id %}selected{% endif %}>
+                            <option value="{{ student.id }}" data-class-id="{{ student.class_id or '' }}" {% if preselect_student_id == student.id %}selected{% endif %}>
                                 {{ student.roll_number }} — {{ student.student_name }}
                             </option>
                             {% endfor %}
@@ -163,4 +160,61 @@
         </div>
     </div>
 </div>
+<script>
+// Class -> student filtering and the "Whole Class" switch (student ID cards + certificates).
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[data-class-student-form]').forEach(function (form) {
+        var classSel = form.querySelector('[data-role="class"]');
+        var studentSel = form.querySelector('[data-role="student"]');
+        var whole = form.querySelector('[data-role="whole"]');
+        var count = form.querySelector('[data-role="count"]');
+        if (!classSel || !studentSel || !whole) return;
+
+        function refresh(classChanged) {
+            var cid = classSel.value;
+            var visible = 0;
+
+            // Only the chosen class's students are selectable.
+            Array.prototype.forEach.call(studentSel.options, function (opt) {
+                if (!opt.value) return;
+                var other = cid && opt.getAttribute('data-class-id') !== cid;
+                opt.hidden = !!other;
+                opt.disabled = !!other;
+                if (!other) visible++;
+            });
+            if (studentSel.selectedOptions.length && studentSel.selectedOptions[0].disabled) {
+                studentSel.value = '';
+            }
+
+            // "Whole Class" only makes sense once a class is chosen.
+            whole.disabled = !cid;
+            if (!cid) {
+                whole.checked = false;
+            } else if (classChanged || whole.dataset.ready !== '1') {
+                // Choosing a class selects the whole class, unless a single student was opened directly.
+                whole.checked = !studentSel.value;
+            }
+            whole.dataset.ready = '1';
+
+            if (whole.checked) studentSel.value = '';
+            studentSel.disabled = whole.checked;
+            if (count) {
+                count.textContent = cid ? '(' + visible + ' student' + (visible === 1 ? '' : 's') + ')' : '';
+            }
+        }
+
+        classSel.addEventListener('change', function () { refresh(true); });
+        whole.addEventListener('change', function () { refresh(false); });
+
+        form.addEventListener('submit', function (event) {
+            if (classSel.value && !whole.checked && !studentSel.value) {
+                event.preventDefault();
+                window.SchoolUI.toast('Tick "Whole Class" or choose a student from this class.', 'warning');
+            }
+        });
+
+        refresh(false);
+    });
+});
+</script>
 {% endblock %}

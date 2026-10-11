@@ -1,32 +1,50 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center pt-3 pb-3 mb-3 border-bottom">
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
     <div>
-        <h1 class="h3 fw-bold mb-1"><i class="fas fa-book me-2 text-primary"></i>Fee Ledger</h1>
+        <p class="eyebrow mb-2">Fees</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-book text-primary me-2"></i>Fee Ledger</h1>
         <p class="text-muted small mb-0">
             {{ student.student_name }} — roll no {{ student.roll_number }}.
-            Append-only transaction history; balances are the sum of these rows.
+            Append-only history: nothing is ever deleted; corrections are voided with a reason.
         </p>
     </div>
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
+    {% if current_user.is_admin %}
+    {% if features.advance_credit_writeoff %}
+    <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#writeoffModal">
+        <i class="fas fa-eraser me-1"></i> Write off dues
+    </button>
+    {% endif %}
+    {% endif %}
     <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.fees_list') }}">
         <i class="fas fa-arrow-left me-1"></i> Back to fees
     </a>
+    </div>
 </div>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card border-0 shadow-sm text-center py-3">
             <div class="h4 fw-bold mb-0">{{ '%.2f'|format(totals.charged) }}</div>
             <div class="small text-muted">Total charged (PKR)</div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card border-0 shadow-sm text-center py-3">
             <div class="h4 fw-bold text-success mb-0">{{ '%.2f'|format(totals.paid) }}</div>
             <div class="small text-muted">Total paid (PKR)</div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-2">
+        <div class="card border-0 shadow-sm text-center py-3">
+            {% if features.advance_credit_writeoff %}
+            <div class="h5 fw-bold text-secondary mb-0">{{ '%.2f'|format(totals.written_off) }}</div>
+            <div class="small text-muted">Written off</div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="col-md-2">
         <div class="card border-0 shadow-sm text-center py-3">
             <div class="h4 fw-bold {% if totals.balance > 0 %}text-danger{% else %}text-success{% endif %} mb-0">
                 {{ '%.2f'|format(totals.balance) }}
@@ -34,6 +52,14 @@
             <div class="small text-muted">Outstanding (PKR)</div>
         </div>
     </div>
+    {% if features.advance_credit_writeoff %}
+    <div class="col-md-2">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="h5 fw-bold text-info mb-0">{{ '%.2f'|format(totals.credit) }}</div>
+            <div class="small text-muted">Advance credit</div>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 {% for row in rows %}
@@ -42,7 +68,8 @@
         <strong>{{ row.month_year }}</strong>
         <span>
             charged {{ '%.2f'|format(row.charged) }} ·
-            paid <span class="text-success">{{ '%.2f'|format(row.paid) }}</span> ·
+            paid <span class="text-success">{{ '%.2f'|format(row.paid) }}</span>
+            {% if features.advance_credit_writeoff and row.written_off %} · written off <span class="text-secondary">{{ '%.2f'|format(row.written_off) }}</span>{% endif %} ·
             balance <span class="{% if row.balance > 0 %}text-danger fw-bold{% else %}text-success{% endif %}">{{ '%.2f'|format(row.balance) }}</span>
         </span>
     </div>
@@ -52,24 +79,48 @@
                 <tr>
                     <th class="ps-3">#</th><th>When</th><th>Type</th>
                     <th class="text-end">Amount</th><th>Method</th><th>Reference</th>
-                    <th>Recorded by</th><th class="pe-3">Note</th>
+                    <th>Recorded by</th><th>Note</th>
+                    {% if current_user.is_admin or current_user.role == 'accountant' %}<th class="pe-3 text-end">Actions</th>{% endif %}
                 </tr>
             </thead>
             <tbody>
                 {% for txn in row.transactions %}
                 <tr class="{% if txn.is_void %}text-decoration-line-through text-muted{% endif %}">
                     <td class="ps-3 text-muted small">{{ txn.id }}</td>
-                    <td class="small">{{ txn.created_at.strftime('%Y-%m-%d %H:%M') if txn.created_at else '—' }}</td>
+                    <td class="small">
+                        {{ txn.payment_date.strftime('%Y-%m-%d') if txn.payment_date else (txn.created_at.strftime('%Y-%m-%d') if txn.created_at else '—') }}
+                        <div class="text-muted" style="font-size:.72rem;">{{ txn.created_at.strftime('%H:%M') if txn.created_at }}</div>
+                    </td>
                     <td>
-                        <span class="badge {% if txn.txn_type == 'payment' %}bg-success{% elif txn.txn_type == 'charge' %}bg-secondary{% else %}bg-warning text-dark{% endif %}">
+                        <span class="badge {% if txn.txn_type == 'payment' %}bg-success{% elif txn.txn_type == 'charge' %}bg-secondary{% elif txn.txn_type == 'refund' %}bg-danger{% elif txn.txn_type == 'writeoff' %}bg-dark{% else %}bg-warning text-dark{% endif %}">
                             {{ txn.type_label }}
                         </span>
+                        {% if txn.is_void %}<span class="badge bg-secondary" title="{{ txn.void_reason or '' }}">void</span>{% endif %}
                     </td>
                     <td class="text-end fw-bold">{{ '%.2f'|format(txn.amount or 0) }}</td>
                     <td class="small">{{ txn.method or '—' }}</td>
                     <td class="small">{{ txn.reference or '—' }}</td>
                     <td class="small">{{ txn.created_by_name or 'system' }}</td>
-                    <td class="small text-muted pe-3">{{ txn.note or '—' }}</td>
+                    <td class="small text-muted">
+                        {{ txn.note or '—' }}
+                        {% if txn.is_void and txn.void_reason %}<div class="text-secondary">Voided: {{ txn.void_reason }}</div>{% endif %}
+                    </td>
+                    {% if (current_user.is_admin or current_user.role == 'accountant') and not txn.is_void %}
+                    <td class="pe-3 text-end text-nowrap">
+                        {% if txn.txn_type == 'payment' %}
+                        <button type="button" class="btn btn-sm p-0 text-danger refund-btn" title="Refund part of this payment"
+                                data-txn="{{ txn.id }}" data-max="{{ '%.2f'|format(txn.amount or 0) }}">
+                            <i class="fas fa-rotate-left fa-xs"></i> Refund
+                        </button>
+                        {% endif %}
+                        <button type="button" class="btn btn-sm p-0 text-warning ms-2 void-txn-btn" title="Void with reason"
+                                data-txn="{{ txn.id }}" data-label="{{ txn.type_label }}">
+                            <i class="fas fa-ban fa-xs"></i> Void
+                        </button>
+                    </td>
+                    {% elif current_user.is_admin or current_user.role == 'accountant' %}
+                    <td class="pe-3"></td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>
@@ -79,4 +130,67 @@
 {% else %}
 <div class="alert alert-secondary">No fee transactions recorded for this student.</div>
 {% endfor %}
+
+<!-- Write-off modal (admin only; feature-gated) -->
+{% if current_user.is_admin and features.advance_credit_writeoff %}
+<div class="modal fade" id="writeoffModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form method="post" action="{{ url_for('main.fee_student_writeoff', student_id=student.id) }}">
+                <div class="modal-header bg-danger text-white">
+                    <h6 class="modal-title">Write off outstanding dues?</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body small">
+                    <p>Outstanding: <strong>Rs. {{ '%.2f'|format(totals.outstanding) }}</strong> will leave Receivables
+                    and be reported as <strong>Written Off</strong>. This is an owner-level decision.</p>
+                    <label class="form-label fw-bold">Reason (required)</label>
+                    <input type="text" class="form-control form-control-sm" name="reason" maxlength="200" required>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger btn-sm">Write off</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<form method="post" id="voidTxnForm" action="">
+    <input type="hidden" name="void_reason">
+</form>
+<form method="post" id="refundForm" action="">
+    <input type="hidden" name="reason">
+    <input type="hidden" name="amount">
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var voidForm = document.getElementById('voidTxnForm');
+    document.querySelectorAll('.void-txn-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var reason = window.prompt('Reason for voiding this ' + (btn.getAttribute('data-label') || 'entry') + ' (required):', '');
+            if (reason === null || !reason.trim()) return;
+            voidForm.action = '/fees/transactions/' + btn.getAttribute('data-txn') + '/void';
+            voidForm.querySelector('[name="void_reason"]').value = reason.trim();
+            voidForm.submit();
+        });
+    });
+
+    document.querySelectorAll('.refund-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var amount = window.prompt('Refund amount for payment #' + btn.getAttribute('data-txn') + ' (max ' + btn.getAttribute('data-max') + '):', '');
+            if (amount === null || !amount.trim()) return;
+            var reason = window.prompt('Reason for the refund (required):', '');
+            if (reason === null || !reason.trim()) return;
+            var form = document.getElementById('refundForm');
+            form.action = '/fees/payments/' + btn.getAttribute('data-txn') + '/refund';
+            form.querySelector('[name="amount"]').value = amount.trim();
+            form.querySelector('[name="reason"]').value = reason.trim();
+            form.submit();
+        });
+    });
+});
+</script>
 {% endblock %}

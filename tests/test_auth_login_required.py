@@ -53,11 +53,34 @@ def test_login_lockout_after_repeated_failures(client, app):
     assert response.status_code == 429
 
 
-def test_first_run_setup_creates_admin_settings_and_demo_data(monkeypatch, tmp_path, fresh_app_factory):
+def _wait_for_seed_job(client, timeout=180):
+    """Wait until the background demo-data job started by the wizard ends."""
+    import time
+
+    from app.seed_progress import get_seed_job
+
+    with client.session_transaction() as sess:
+        token = sess.get('seed_job_token')
+    assert token, 'wizard should register a seed job token in the session'
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        job = get_seed_job(token)
+        assert job is not None, 'seed job disappeared'
+        if job['state'] != 'running':
+            return job
+        time.sleep(0.2)
+    raise AssertionError('demo-data job did not finish in time')
+
+
+def test_first_run_setup_creates_admin_settings_and_demo_data(monkeypatch, fresh_app_factory):
     monkeypatch.delenv('INITIAL_ADMIN_USERNAME', raising=False)
     monkeypatch.delenv('INITIAL_ADMIN_PASSWORD', raising=False)
 
-    application = fresh_app_factory(tmp_path, 'setup.db')
+    import pathlib
+    import tempfile
+    base = pathlib.Path(tempfile.mkdtemp(prefix='setup-wizard-'))
+
+    application = fresh_app_factory(base, 'setup.db')
     with application.app_context():
         db.drop_all()
         db.create_all()
@@ -73,9 +96,17 @@ def test_first_run_setup_creates_admin_settings_and_demo_data(monkeypatch, tmp_p
         'phone': '+923001234567',
         'email': 'info@brightfuture.edu',
         'dummy_data': 'on',
+        'dummy_period_months': '1',
+        'dummy_attendance': 'off', 'dummy_fees': 'off', 'dummy_expenses': 'off',
+        'dummy_tests': 'off', 'dummy_term_exams': 'off', 'dummy_payroll': 'off',
     }, follow_redirects=False)
 
+    # The wizard now redirects to the live progress screen while a background
+    # thread generates the demo data.
     assert response.status_code == 302
+    assert '/setup-progress' in response.location
+    job = _wait_for_seed_job(client)
+    assert job['state'] == 'done', job.get('error')
 
     with application.app_context():
         from app.models import AdminUser
@@ -90,11 +121,15 @@ def test_first_run_setup_creates_admin_settings_and_demo_data(monkeypatch, tmp_p
         assert ClassModel.query.count() > 0
 
 
-def test_first_run_setup_honours_demo_counts_and_fee(monkeypatch, tmp_path, fresh_app_factory):
+def test_first_run_setup_honours_demo_counts_and_fee(monkeypatch, fresh_app_factory):
     monkeypatch.delenv('INITIAL_ADMIN_USERNAME', raising=False)
     monkeypatch.delenv('INITIAL_ADMIN_PASSWORD', raising=False)
 
-    application = fresh_app_factory(tmp_path, 'setup2.db')
+    import pathlib
+    import tempfile
+    base = pathlib.Path(tempfile.mkdtemp(prefix='setup-wizard-'))
+
+    application = fresh_app_factory(base, 'setup2.db')
     with application.app_context():
         db.drop_all()
         db.create_all()
@@ -109,14 +144,22 @@ def test_first_run_setup_honours_demo_counts_and_fee(monkeypatch, tmp_path, fres
         'dummy_student_count': '100',
         'dummy_teacher_count': '12',
         'dummy_fee': '2200',
+        'dummy_period_months': '1',
+        'dummy_attendance': 'off', 'dummy_fees': 'off', 'dummy_expenses': 'off',
+        'dummy_tests': 'off', 'dummy_term_exams': 'off', 'dummy_payroll': 'off',
     }, follow_redirects=False)
 
     assert response.status_code == 302
+    job = _wait_for_seed_job(client)
+    assert job['state'] == 'done', job.get('error')
 
     with application.app_context():
         assert StudentModel.query.count() == 100
         assert TeacherModel.query.count() == 12
-        assert all(s.monthly_fee == 2200.0 for s in StudentModel.query.all())
+        # Fees anchor to the entered base fee and rise slightly with class
+        # level (plus small jitter), so every fee stays in a realistic band.
+        fees = [s.monthly_fee for s in StudentModel.query.all()]
+        assert all(2000 <= fee <= 3200 for fee in fees)
 
 
 def test_import_templates_are_available(admin_client):
@@ -133,6 +176,7 @@ def test_class_fee_bulk_update_and_individual_override(admin_client, app, seed):
     response = admin_client.post('/fees/class-bulk-update', data={
         'class_id': str(seed['class_id']),
         'monthly_fee': '2500',
+        'confirm_bulk_update': 'yes',
     }, follow_redirects=False)
     assert response.status_code == 302
 

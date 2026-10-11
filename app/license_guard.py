@@ -36,6 +36,7 @@ ALWAYS_OPEN_ENDPOINTS = {
     'main.license_page',
     'auth.login',
     'auth.logout',
+    'auth.shutdown',        # closing the software must always stay possible
 }
 
 # Non-read requests that are still allowed while the system is read-only.

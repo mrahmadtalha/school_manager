@@ -105,7 +105,14 @@ def _reset_login_throttle():
 
 @pytest.fixture()
 def app():
-    application = create_app({'TESTING': True, 'WTF_CSRF_ENABLED': False})
+    application = create_app({
+        'TESTING': True,
+        'WTF_CSRF_ENABLED': False,
+        # Env-aware so a flag-ON review run is possible without editing this file
+        'FEATURE_ADVANCE_CREDIT_WRITEOFF':
+            os.environ.get('FEATURE_ADVANCE_CREDIT_WRITEOFF', '').strip().lower()
+            in {'1', 'true', 'yes', 'on'}
+    })
     with application.app_context():
         db.drop_all()
         db.create_all()

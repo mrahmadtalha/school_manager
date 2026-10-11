@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/qrcodejs/qrcode.min.js') }}"></script>
 <style>
 .wa-category { border: 1px solid var(--bs-border-color); border-radius: 6px; padding: 1rem; height: 100%; }
 .wa-category-title { display: flex; align-items: center; gap: .55rem; font-weight: 700; margin-bottom: .75rem; }
@@ -246,12 +246,18 @@ window.addEventListener('DOMContentLoaded', function () {
 
     const broadcastForm = document.getElementById('broadcast-form');
     if (broadcastForm && audienceSelect) {
-        broadcastForm.addEventListener('submit', function (event) {
-            if (['whole_school', 'staff'].includes(audienceSelect.value)
-                && !confirm('Queue this message for every selected recipient?')) {
-                event.preventDefault();
+        // Confirmation is declarative (data-confirm on the form) so it uses the
+        // app's styled dialog. Attach the message only for the wide audiences.
+        broadcastForm.addEventListener('change', function () {
+            if (['whole_school', 'staff'].includes(audienceSelect.value)) {
+                broadcastForm.dataset.confirm =
+                    'Queue this message for every selected recipient?';
+            } else {
+                delete broadcastForm.dataset.confirm;
             }
         });
+        audienceSelect.dispatchEvent(new Event('change'));
+        if (window.SchoolUI) window.SchoolUI.wire();
     }
 });
 </script>
@@ -266,17 +272,6 @@ window.addEventListener('DOMContentLoaded', function () {
         <span class="badge bg-light text-dark border">{% if settings.mode == 'approval' %}Approval required{% elif settings.mode == 'delayed' %}Delayed sending{% else %}Automatic sending{% endif %}</span>
     </div>
 </div>
-
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{ category }} alert-dismissible fade show">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-      </div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
 
 <ul class="nav nav-tabs mb-3" id="automation-tabs" role="tablist">
     <li class="nav-item" role="presentation">
@@ -299,6 +294,22 @@ window.addEventListener('DOMContentLoaded', function () {
 
 <div class="tab-content" id="automation-tabs-content">
 <section class="tab-pane fade {% if active_tab == 'connection' %}show active{% endif %}" id="connection-panel" role="tabpanel" aria-labelledby="connection-tab" tabindex="0">
+
+{% if bridge_install %}
+<div class="alert {% if bridge_install.install_state == 'not_installed' %}alert-secondary{% elif bridge_install.install_state in ('node_missing', 'installed_stopped') %}alert-warning{% elif bridge_install.install_state == 'running_unpaired' %}alert-info{% else %}alert-success{% endif %} d-flex flex-wrap align-items-start gap-2 mb-4">
+    <i class="fab fa-whatsapp fa-lg mt-1"></i>
+    <div class="flex-grow-1">
+        <strong>WhatsApp notifications</strong>
+        {{ bridge_install.hint }}
+        {% if bridge_install.install_state == 'not_installed' %}
+        <div class="small text-muted mt-1">Without it, attendance/result notifications stay queued and can be sent later once School Manager is reinstalled &mdash; no messages are lost.</div>
+        {% elif bridge_install.node_version %}
+        <div class="small text-muted mt-1">Node runtime: {{ bridge_install.node_version }} &middot; Bridge folder: <code>{{ bridge_install.bridge_dir }}</code></div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">

@@ -4,6 +4,87 @@ body {
     color: #1f2937;
 }
 
+/* -- keyboard accessibility -----------------------------------------------
+   A visible focus ring is essential for keyboard users. Bootstrap's default is
+   subtle and disappears against the light card backgrounds, so ring any focused
+   control (keyboard focus only, via :focus-visible). */
+
+:focus-visible {
+    outline: 3px solid rgba(59, 130, 246, 0.65) !important;
+    outline-offset: 2px !important;
+}
+
+/* Keep the ring legible on dark surfaces (sidebar, dark cards). */
+#sidebar :focus-visible,
+.bg-dark :focus-visible,
+.btn-dark:focus-visible,
+.modal-header.bg-dark :focus-visible {
+    outline-color: #93c5fd !important;
+}
+
+/* Buttons and links inside tables need the ring above neighbouring cells. */
+.btn:focus-visible,
+.page-link:focus-visible {
+    position: relative;
+    z-index: 2;
+    box-shadow: none !important;
+}
+
+.form-control:focus-visible,
+.form-select:focus-visible,
+.form-check-input:focus-visible {
+    outline: 3px solid rgba(59, 130, 246, 0.55) !important;
+    outline-offset: 1px !important;
+}
+
+/* -- printing -------------------------------------------------------------
+   Documents such as date sheets and fee receipts are printed straight from the
+   browser. Anything marked .no-print (toolbars, flash messages, navigation)
+   must be hidden, and the page content must use the full sheet. */
+
+@media print {
+    .no-print,
+    .mobile-topbar,
+    #sidebar,
+    .sidebar-toggle,
+    .sidebar-toggle-row,
+    .btn-toolbar,
+    .no-print-bar {
+        display: none !important;
+    }
+
+    /* Content spans the sheet once the sidebar is hidden. */
+    main.col-md-9,
+    main[class*="col-lg-10"] {
+        margin-left: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: 0 0 100% !important;
+        padding: 0 !important;
+    }
+
+    body {
+        background: #fff !important;
+        color: #000 !important;
+    }
+
+    /* Cards print without shadows or gradients. */
+    .card,
+    .dashboard-header {
+        box-shadow: none !important;
+        background: #fff !important;
+        border-color: #cbd5e0 !important;
+    }
+
+    a[href]:after {
+        content: "";
+    }
+
+    .table {
+        font-size: 0.8rem;
+    }
+}
+
 #sidebar {
     min-height: 100vh;
     background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
@@ -325,6 +406,114 @@ body {
     padding-bottom: 0.9rem;
 }
 
+/* -- compact data tables --------------------------------------------------
+   Wide directories (Students/Teachers with many fields visible) must stay
+   readable: tighter cell padding/type, a horizontal scroll region that keeps
+   the toolbar and column picker in place, and ellipsised long free-text
+   columns whose full value stays available via the title attribute. */
+
+.table-panel .table > :not(caption) > * > * {
+    padding: 0.45rem 0.6rem;
+}
+
+.table-panel .table {
+    font-size: 0.875rem;
+    width: 100%;
+    margin-bottom: 0;
+}
+
+.table-panel .table thead th {
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+    vertical-align: bottom;
+    white-space: nowrap;
+}
+
+/* Keep short, predictable columns on one line... */
+.table-panel .col-date,
+.table-panel .col-num,
+.table-panel .col-bool,
+.table-panel .col-image,
+.table-panel .col-actions {
+    white-space: nowrap;
+}
+
+/* ...and let long free text wrap rather than stretch the table. */
+.table-panel .col-truncate {
+    max-width: 15rem;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.table-panel .col-image {
+    width: 48px;
+    padding-right: 0.2rem !important;
+}
+
+/* Actions stay reachable while the rest of the row scrolls sideways. */
+.table-panel .col-actions {
+    position: sticky;
+    right: 0;
+    background: #ffffff;
+    box-shadow: -1px 0 0 rgba(148, 163, 184, 0.2);
+    z-index: 1;
+}
+
+.table-panel .table tbody tr:hover .col-actions {
+    background-color: #f8fafc;
+}
+
+.table-panel thead th.col-actions {
+    z-index: 2;
+}
+
+/* Actions buttons are icon-only: keep them from adding extra width. */
+.table-panel .col-actions .btn {
+    padding: 0.25rem 0.45rem;
+    box-shadow: none;
+}
+
+.table-panel .col-actions .btn:hover {
+    transform: none;
+}
+
+/* DataTables horizontal scrolling: the scroll region is bounded and the
+   wrapper itself scrolls, so the search box, page length and pagination stay
+   visible above/below instead of being pushed off-screen. */
+.table-panel .dataTables_wrapper {
+    border-radius: 18px;
+}
+
+.table-panel .dataTables_wrapper > .row:first-child,
+.table-panel .dataTables_wrapper > .row:last-child {
+    padding: 0.6rem 0.9rem;
+    margin: 0;
+}
+
+.table-panel .dataTables_wrapper .dataTables_filter input,
+.table-panel .dataTables_wrapper .dataTables_length select {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.85rem;
+}
+
+.table-panel .dataTables_wrapper .dataTables_info,
+.table-panel .dataTables_wrapper .dataTables_paginate {
+    font-size: 0.85rem;
+}
+
+.table-panel div.dataTables_scrollBody {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.pagination .page-link {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.85rem;
+}
+
 .card-body {
     padding: 1.25rem;
 }
@@ -365,6 +554,10 @@ body {
 .table-panel {
     border-radius: 18px;
     overflow: hidden;
+    /* `clip` keeps the rounded corners without creating a scroll container,
+       which would otherwise stop the sticky Actions column from working.
+       Browsers that do not support it keep the `hidden` fallback above. */
+    overflow: clip;
 }
 
 .table thead th {
@@ -570,4 +763,193 @@ body {
     .analytics-summary {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+}
+
+/* ============================================================
+   Timetables hub — reference design (timetable1.jpg)
+   Thin black grid, bold names, gray break bands, stacked times
+   ============================================================ */
+.tt-ref {
+    border-collapse: collapse;
+    width: 100%;
+    background: #fff;
+    font-size: 0.86rem;
+}
+.tt-ref th,
+.tt-ref td {
+    border: 1px solid #1a1a1a;
+    padding: 0.55rem 0.45rem;
+    text-align: center;
+    vertical-align: middle;
+}
+.tt-ref thead th {
+    font-weight: 700;
+    font-size: 0.8rem;
+    line-height: 1.25;
+    background: #fff;
+}
+.tt-ref .tt-ref-corner {
+    min-width: 8.5rem;
+    font-size: 0.95rem;
+}
+.tt-ref .tt-ref-name {
+    font-weight: 700;
+    text-align: left;
+    padding-left: 0.8rem;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    background: #fff;
+    min-width: 8.5rem;
+}
+.tt-ref .tt-ref-cell {
+    min-width: 6.5rem;
+}
+.tt-ref .tt-subj {
+    font-weight: 600;
+}
+.tt-ref .tt-cls {
+    font-size: 0.78rem;
+    margin-top: 0.15rem;
+}
+.tt-ref .tt-ref-break {
+    background: #c0c0c0;
+    min-width: 2.2rem;
+    padding: 0.4rem 0.15rem;
+}
+.tt-ref .tt-ref-breakhead {
+    background: #c0c0c0;
+}
+.tt-ref .tt-ref-break-h {
+    background: #c0c0c0;
+    padding: 0.35rem 0.15rem;
+}
+.tt-vertical {
+    display: inline-block;
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+    letter-spacing: 0.45em;
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1;
+}
+.tt-break-row .tt-ref-break-h .tt-vertical {
+    font-size: 1.05rem;
+}
+.tt-time {
+    font-weight: 600;
+    font-size: 0.78rem;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+.tt-edit-cell {
+    min-width: 9rem;
+    padding: 0.3rem !important;
+}
+.tt-edit-cell .tt-sel {
+    margin: 0.12rem 0;
+    font-size: 0.78rem;
+    padding: 0.15rem 0.3rem;
+}
+.tt-tpl-card {
+    border: 2px solid #dee2e6;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    background: #fff;
+}
+.tt-tpl-card:hover {
+    border-color: #adb5bd;
+}
+.tt-tpl-active {
+    border-color: #0d6efd;
+    background: #f8f9ff;
+}
+.tt-fetched {
+    padding-left: 1.1rem;
+}
+
+/* Small, friendly marker for a period where one teacher covers more than one
+   class.  Informational only - sharing a period is never blocked. */
+.tt-shared {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.62rem;
+    line-height: 1.1;
+    color: #0b5ed7;
+    background: #e7f1ff;
+    border: 1px solid #cfe2ff;
+    border-radius: 0.5rem;
+    padding: 0 0.3rem;
+    white-space: nowrap;
+}
+
+/* ============================================================
+   Template 2 — all-classes chart (timetable2.jpg)
+   School title, light borders, bold teacher cells, narrow break
+   ============================================================ */
+.tt2-head {
+    text-align: center;
+    margin: 0.25rem 0 0.9rem;
+}
+.tt2-kicker {
+    font-weight: 700;
+    font-size: 0.95rem;
+    letter-spacing: 0.02em;
+}
+.tt2-title {
+    font-weight: 800;
+    font-size: 2rem;
+    line-height: 1.15;
+    color: #111;
+}
+.tt-ref2 {
+    border-collapse: collapse;
+    width: 100%;
+    background: #fff;
+    font-size: 0.95rem;
+}
+.tt-ref2 th,
+.tt-ref2 td {
+    border: 1px solid #9a9a9a;
+    padding: 0.5rem 0.4rem;
+    text-align: center;
+    vertical-align: middle;
+}
+.tt-ref2 thead th {
+    font-weight: 700;
+    background: #fff;
+}
+.tt2-corner {
+    min-width: 9.5rem;
+    font-size: 1rem;
+}
+.tt2-timehead {
+    min-width: 7.5rem;
+    white-space: nowrap;
+}
+.tt2-breakhead {
+    min-width: 2.2rem;
+    padding: 0.4rem 0.15rem !important;
+}
+.tt2-classname {
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.95rem;
+    line-height: 1.3;
+    background: #fff;
+}
+.tt2-cell {
+    min-width: 8rem;
+    padding: 0.3rem !important;
+}
+.tt2-cell .tt-sel {
+    margin: 0.12rem 0;
+    font-size: 0.78rem;
+    padding: 0.15rem 0.3rem;
+}
+.tt2-cell .tt-sel-teacher {
+    font-weight: 600;
+}
+@media (max-width: 768px) {
+    .tt2-title { font-size: 1.35rem; }
+    .tt2-timehead { min-width: 5.5rem; font-size: 0.8rem; }
 }

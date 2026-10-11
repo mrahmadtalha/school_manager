@@ -17,16 +17,6 @@
 </div>
 
 <!-- Flash Messages -->
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
 
 <!-- Date Selector Card -->
 <div class="card shadow-sm mb-4">
@@ -56,15 +46,15 @@
                 <i class="fas fa-print me-1"></i> Print / Export Sheet
             </button>
             <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_attendance_pdf', date=selected_date) }}"><i class="fas fa-file-pdf text-danger me-2"></i>Download PDF Sheet</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_attendance_excel', date=selected_date) }}"><i class="fas fa-file-excel text-success me-2"></i>Download Excel Sheet</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_attendance_csv', date=selected_date) }}"><i class="fas fa-file-csv text-primary me-2"></i>Download CSV Sheet</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_attendance_pdf', date=selected_date) }}"><i class="fas fa-file-pdf text-danger me-2"></i>Export PDF Sheet</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_attendance_excel', date=selected_date) }}"><i class="fas fa-file-excel text-success me-2"></i>Export Excel Sheet</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_attendance_csv', date=selected_date) }}"><i class="fas fa-file-csv text-primary me-2"></i>Export CSV Sheet</a></li>
             </ul>
         </div>
     </div>
 
     {% if teachers %}
-    <div class="alert alert-info py-2 small"><i class="fas fa-clock me-1"></i>School hours: {{ school_start_time }}–{{ school_end_time }}. Late is automatic after start + {{ attendance_grace_minutes }} minute(s) grace. Enter the actual check-in time for each teacher.</div>
+    <div class="alert alert-info py-2 small"><i class="fas fa-clock me-1"></i>School hours: {{ school_start_time }}–{{ school_end_time }}. Late is automatic after start + {{ attendance_grace_minutes }} minute(s) grace. Enter the actual check-in time for each teacher, or use <strong>All Teachers at Time</strong> to mark everyone on time and only change the late ones. <span id="allTeachersAtTimeNote" class="fw-bold ms-1"></span></div>
     <!-- Quick Actions & Live Counter -->
     <div class="card bg-light border-0 mb-3 shadow-sm">
         <div class="card-body py-2 d-flex justify-content-between align-items-center flex-wrap gap-3">
@@ -76,6 +66,13 @@
                 <button type="button" class="btn btn-outline-danger btn-sm px-3" onclick="markAllTeachers('Absent')">
                     <i class="fas fa-times-circle me-1"></i> All Absent
                 </button>
+                <div class="input-group input-group-sm" style="width:auto;" title="Paper register? Mark everyone on time with one click, then only edit the late teachers.">
+                    <span class="input-group-text bg-white"><i class="fas fa-clock text-primary"></i></span>
+                    <input type="time" id="allTeachersAtTime" class="form-control" value="{{ school_start_time }}" style="max-width:120px;" aria-label="On-time check-in time">
+                    <button type="button" class="btn btn-primary" onclick="markAllTeachersAtTime()">
+                        <i class="fas fa-user-clock me-1"></i> All Teachers at Time
+                    </button>
+                </div>
             </div>
             <div class="d-flex gap-2 align-items-center flex-wrap">
                 <span class="badge bg-dark px-2 py-2">Total: {{ teachers|length }}</span>
@@ -133,7 +130,7 @@
                                        value="{{ current_checkin }}" style="width:125px; max-width:100%;">
                                 <button type="button" class="btn btn-outline-secondary btn-sm px-2"
                                         onclick="setTeacherCheckinNow({{ teacher.id }})"
-                                        title="Use current time" data-bs-toggle="tooltip">
+                                        title="Use current time" data-bs-toggle="tooltip" aria-label="Use current time">
                                     <i class="fas fa-clock"></i>
                                 </button>
                             </div>
@@ -188,6 +185,28 @@ function markAllTeachers(status) {
         }
     });
     updateTeacherCounters();
+}
+
+// All Teachers at Time: one click marks everyone Present with the same check-in time
+// (default = school start time, so nobody is late). Teachers marked Absent or Leave are
+// left alone. Then edit the time of anyone who was late; late minutes are still
+// calculated automatically on save.
+function markAllTeachersAtTime() {
+    var timeInput = document.getElementById('allTeachersAtTime');
+    var value = timeInput ? timeInput.value : '';
+    if (!value) { window.SchoolUI.toast('Please choose a time first.', 'warning'); if (timeInput) timeInput.focus(); return; }
+    var changed = 0;
+    document.querySelectorAll('input[id^="tp_"]').forEach(function(present) {
+        var id = present.id.replace('tp_', '');
+        if (document.getElementById('ta_' + id)?.checked || document.getElementById('tlv_' + id)?.checked) return;
+        present.checked = true;
+        var input = document.getElementById('teacher-checkin-' + id);
+        if (input) input.value = value;
+        changed++;
+    });
+    updateTeacherCounters();
+    var note = document.getElementById('allTeachersAtTimeNote');
+    if (note) note.textContent = changed + ' teacher(s) set to ' + value + '. Edit the time of anyone who came late.';
 }
 
 function setTeacherCheckinNow(id) {

@@ -306,6 +306,9 @@ def migrate_teacher_profile_schema(app):
         if 'gender' not in columns:
             connection.execute('ALTER TABLE teachers ADD COLUMN gender VARCHAR(20)')
             print('Migration: added gender to teachers')
+        if 'photo_filename' not in columns:
+            connection.execute('ALTER TABLE teachers ADD COLUMN photo_filename VARCHAR(120)')
+            print('Migration: added photo_filename to teachers')
 
         # Salary normalization: monthly_salary is the single source of truth;
         # backfill it once from the legacy salary column where it is still empty.
@@ -365,6 +368,27 @@ def migrate_class_integrity_schema(app):
         connection.commit()
 
 
+def drop_timetable_draft_table(app):
+    """Drop the obsolesced ``timetable_drafts`` table.
+
+    The draft preview/apply workflow was replaced by the redesigned Timetables
+    page, which applies a generation immediately.  The table only ever held
+    short-lived scratch payloads, so dropping it loses nothing.  A missing
+    table is a no-op.
+    """
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+    with _sqlite_connection(db_path) as connection:
+        exists = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='timetable_drafts'"
+        ).fetchone()
+        if exists:
+            connection.execute('DROP TABLE timetable_drafts')
+            connection.commit()
+            print('Migration: dropped obsolete timetable_drafts table')
+
+
 def migrate_timetable_schema(app):
     """Optional subject-teacher mapping: subjects.teacher_id column (timetable_slots
     table is created automatically by db.create_all())."""
@@ -378,6 +402,520 @@ def migrate_timetable_schema(app):
             connection.execute('ALTER TABLE subjects ADD COLUMN teacher_id INTEGER')
             print('Migration: added teacher_id to subjects')
         connection.commit()
+
+
+def migrate_subject_library_schema(app):
+    """Global Subject Library (Phase 1): subjects.library_id column.
+
+    The subject_library table itself is created by db.create_all().  When an
+    existing database first gains the column, a safety backup is taken first
+    and a one-time auto-link pass then connects every class subject to its
+    library entry (see link_subjects_to_library).  Nothing is renamed,
+    merged or deleted.
+    """
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        subject_columns = _table_columns(connection, 'subjects')
+        if subject_columns and 'library_id' not in subject_columns:
+            from app.services.db_backup import backup_database
+            backup = backup_database(db_path=db_path)
+            print(f'Migration: safety backup before subject-library link: {backup}')
+            connection.execute('ALTER TABLE subjects ADD COLUMN library_id INTEGER')
+            print('Migration: added library_id to subjects')
+        connection.commit()
+
+
+# Class subjects historically auto-created for every new class; marked as the
+# default selection in the Subject Library on the one-time linking pass.
+LEGACY_DEFAULT_SUBJECT_KEYS = ('english', 'urdu', 'mathematics', 'islamiyat')
+
+
+def link_subjects_to_library():
+    """One-time auto-link of existing class subjects to the Subject Library.
+
+    Guarded by the ``subject_library_linked`` system setting.  Every class
+    subject is linked to the library entry with the same name
+    (case-insensitive); the entry is created when missing, keeping the most
+    common spelling already in use.  Afterwards the historic defaults
+    (English, Urdu, Mathematics, Islamiyat) are marked as the default
+    selection for new classes — only when nothing is marked yet, so school
+    choices made later are never overwritten.
+    """
+    from app.models import SubjectLibrary, SubjectModel, SystemSettingModel
+
+    flag = SystemSettingModel.query.filter_by(key='subject_library_linked').first()
+    if flag and flag.value == '1':
+        return
+    if flag is None:
+        flag = SystemSettingModel(key='subject_library_linked', value='1')
+        db.session.add(flag)
+
+    library_by_lower = {lib.name.strip().lower(): lib for lib in SubjectLibrary.query.all()}
+    unlinked = SubjectModel.query.filter(SubjectModel.library_id.is_(None)).all()
+
+    # Pick the most common spelling per subject name so the library entry
+    # looks like what the school already types.
+    casing_counts = {}
+    for subject in unlinked:
+        key = subject.name.strip().lower()
+        casing_counts.setdefault(key, {})
+        casing_counts[key][subject.name.strip()] = casing_counts[key].get(subject.name.strip(), 0) + 1
+
+    for subject in unlinked:
+        key = subject.name.strip().lower()
+        library = library_by_lower.get(key)
+        if library is None:
+            name = max(casing_counts[key].items(), key=lambda item: item[1])[0]
+            library = SubjectLibrary(name=name, is_active=True, is_default=False)
+            db.session.add(library)
+            db.session.flush()
+            library_by_lower[key] = library
+        subject.library_id = library.id
+
+    if not SubjectLibrary.query.filter_by(is_default=True).first():
+        for library in library_by_lower.values():
+            if library.name.strip().lower() in LEGACY_DEFAULT_SUBJECT_KEYS:
+                library.is_default = True
+
+    db.session.commit()
+    if unlinked:
+        print(f'Subject Library: linked {len(unlinked)} existing class subject(s)')
+
+
+def seed_teaching_assignments():
+    """One-time seed of teaching assignments from legacy subjects.teacher_id links.
+
+    Guarded by the ``teaching_assignments_seeded`` system setting.  Every class
+    subject that has both a teacher and a library link gets one class-level
+    (section NULL) TeachingAssignment.  From then on the assignments are kept
+    in step by the subject edit/archive/restore flows.
+    """
+    from app.models import SubjectModel, TeachingAssignment, SystemSettingModel
+
+    flag = SystemSettingModel.query.filter_by(key='teaching_assignments_seeded').first()
+    if flag and flag.value == '1':
+        return
+    if flag is None:
+        flag = SystemSettingModel(key='teaching_assignments_seeded', value='1')
+        db.session.add(flag)
+
+    created = 0
+    subjects = (SubjectModel.query
+                .filter(SubjectModel.teacher_id.isnot(None),
+                        SubjectModel.library_id.isnot(None)).all())
+    for subject in subjects:
+        exists = TeachingAssignment.query.filter_by(
+            teacher_id=subject.teacher_id, library_id=subject.library_id,
+            class_id=subject.class_id, section_id=None).first()
+        if exists is None:
+            db.session.add(TeachingAssignment(
+                teacher_id=subject.teacher_id, library_id=subject.library_id,
+                class_id=subject.class_id, section_id=None, is_active=True))
+            created += 1
+
+    db.session.commit()
+    if created:
+        print(f'Teaching assignments: created {created} from existing subject teachers')
+
+
+def migrate_timetable_section_schema(app):
+    """Phase 3: timetable_slots.section_id + widened unique slot constraint.
+
+    SQLite cannot alter a table constraint, so on the first run after this
+    feature ships the table is rebuilt (with a safety backup first): a
+    nullable ``section_id`` column is inserted and the uniqueness becomes
+    (class, section, day, period).  Every existing row is copied with
+    section_id NULL — class-level slots keep working exactly as before.
+    """
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        slot_columns = _table_columns(connection, 'timetable_slots')
+        if not slot_columns or 'section_id' in slot_columns:
+            return
+
+        from app.services.db_backup import backup_database
+        backup = backup_database(db_path=db_path)
+        print(f'Migration: safety backup before timetable sections rebuild: {backup}')
+
+        # Carry over any indexes so nothing else depends on the old shape.
+        connection.execute('''
+            CREATE TABLE timetable_slots_new (
+                id INTEGER NOT NULL PRIMARY KEY,
+                class_id INTEGER NOT NULL,
+                section_id INTEGER,
+                day_of_week INTEGER NOT NULL,
+                period_no INTEGER NOT NULL,
+                subject_id INTEGER,
+                CONSTRAINT uq_timetable_slot UNIQUE (class_id, section_id, day_of_week, period_no),
+                FOREIGN KEY(class_id) REFERENCES classes (id),
+                FOREIGN KEY(section_id) REFERENCES sections (id),
+                FOREIGN KEY(subject_id) REFERENCES subjects (id)
+            )
+        ''')
+        connection.execute('''
+            INSERT INTO timetable_slots_new
+                (id, class_id, section_id, day_of_week, period_no, subject_id)
+            SELECT id, class_id, NULL, day_of_week, period_no, subject_id
+            FROM timetable_slots
+        ''')
+        connection.execute('DROP TABLE timetable_slots')
+        connection.execute('ALTER TABLE timetable_slots_new RENAME TO timetable_slots')
+        print('Migration: rebuilt timetable_slots with section_id '
+              f'({connection.total_changes} rows preserved)')
+
+
+def migrate_timetable_redesign_schema(app):
+    """Redesigned Timetables page: per-slot teacher override + chosen template.
+
+    ``timetable_slots.teacher_id`` stores a manual/generator teacher for one
+    cell (NULL = keep the subject's own teacher); ``timetable_master_configs.
+    template_key`` remembers whether the school works with the teacher-wise
+    matrix or the class weekly grid.  Both are plain column additions.
+    """
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        slot_columns = _table_columns(connection, 'timetable_slots')
+        if slot_columns and 'teacher_id' not in slot_columns:
+            connection.execute('ALTER TABLE timetable_slots ADD COLUMN teacher_id INTEGER')
+            print('Migration: added teacher_id to timetable_slots')
+
+        master_columns = _table_columns(connection, 'timetable_master_configs')
+        if master_columns and 'template_key' not in master_columns:
+            connection.execute("ALTER TABLE timetable_master_configs "
+                               "ADD COLUMN template_key VARCHAR(30)")
+            print('Migration: added template_key to timetable_master_configs')
+        connection.commit()
+
+
+FINANCIAL_V2_TABLES_SQL = '''
+-- fee_transactions: money -> integer paisa; adds payment_date (explicit cash
+-- date), related_txn_id (refund -> original payment), void bookkeeping.
+CREATE TABLE fee_transactions_new (
+    id INTEGER NOT NULL PRIMARY KEY,
+    student_id INTEGER NOT NULL,
+    month_year VARCHAR(20) NOT NULL,
+    txn_type VARCHAR(20) NOT NULL,
+    amount_paisa INTEGER NOT NULL DEFAULT 0,
+    method VARCHAR(30),
+    reference VARCHAR(80),
+    note VARCHAR(255),
+    is_void BOOLEAN NOT NULL DEFAULT 0,
+    void_reason VARCHAR(255),
+    voided_at DATETIME,
+    voided_by_name VARCHAR(80),
+    payment_date DATE,
+    related_txn_id INTEGER,
+    created_at DATETIME NOT NULL,
+    created_by_id INTEGER,
+    created_by_name VARCHAR(80) DEFAULT 'system',
+    FOREIGN KEY(student_id) REFERENCES students (id),
+    FOREIGN KEY(related_txn_id) REFERENCES fee_transactions (id)
+)
+'''
+
+FEE_RECORDS_TABLE_SQL = '''
+CREATE TABLE fee_records_new (
+    id INTEGER NOT NULL PRIMARY KEY,
+    student_id INTEGER NOT NULL,
+    month_year VARCHAR(20) NOT NULL,
+    amount_due_paisa INTEGER NOT NULL DEFAULT 0,
+    amount_paid_paisa INTEGER NOT NULL DEFAULT 0,
+    amount_written_off_paisa INTEGER NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'Pending',
+    payment_date DATE,
+    remarks VARCHAR(200),
+    FOREIGN KEY(student_id) REFERENCES students (id)
+)
+'''
+
+STAFF_PAYROLL_TABLE_SQL = '''
+CREATE TABLE staff_payroll_new (
+    id INTEGER NOT NULL PRIMARY KEY,
+    teacher_id INTEGER NOT NULL,
+    month_year VARCHAR(10) NOT NULL,
+    base_salary_paisa INTEGER NOT NULL DEFAULT 0,
+    bonus_paisa INTEGER NOT NULL DEFAULT 0,
+    deductions_paisa INTEGER NOT NULL DEFAULT 0,
+    net_salary_paisa INTEGER NOT NULL DEFAULT 0,
+    payment_status VARCHAR(20) NOT NULL DEFAULT 'Pending',
+    payment_date DATE,
+    payment_method VARCHAR(20),
+    notes VARCHAR(255),
+    generated_by VARCHAR(80) DEFAULT 'system',
+    updated_by_id INTEGER,
+    updated_by_name VARCHAR(80),
+    working_days INTEGER,
+    present_days INTEGER,
+    absent_days INTEGER,
+    late_days INTEGER,
+    leave_days INTEGER,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    CONSTRAINT uq_staff_payroll_teacher_month UNIQUE (teacher_id, month_year),
+    FOREIGN KEY(teacher_id) REFERENCES teachers (id)
+)
+'''
+
+EXPENSES_TABLE_SQL = '''
+CREATE TABLE expenses_new (
+    id INTEGER NOT NULL PRIMARY KEY,
+    category_id INTEGER NOT NULL,
+    amount_paisa INTEGER NOT NULL DEFAULT 0,
+    payment_method VARCHAR(20) NOT NULL DEFAULT 'Cash',
+    date DATE NOT NULL,
+    receipt_no VARCHAR(80),
+    description VARCHAR(255),
+    logged_by_id INTEGER,
+    logged_by_name VARCHAR(80) DEFAULT 'system',
+    updated_by_id INTEGER,
+    updated_by_name VARCHAR(80),
+    updated_at DATETIME,
+    is_void BOOLEAN NOT NULL DEFAULT 0,
+    void_reason VARCHAR(255),
+    voided_at DATETIME,
+    voided_by_name VARCHAR(80),
+    created_at DATETIME NOT NULL,
+    FOREIGN KEY(category_id) REFERENCES expense_categories (id)
+)
+'''
+
+
+def migrate_financial_v2_schema(app):
+    """Financial v2 (Phase 1): integer paisa storage + explicit cash dates.
+
+    Converts the four money tables to integer paisa in one rebuild (SQLite
+    cannot change column types), takes a safety backup first, and backfills
+    the new columns from existing data:
+
+    * ``fee_transactions``: + ``amount_paisa``, ``payment_date`` (backfilled
+      from ``created_at`` shifted UTC -> PKT, +5 hours, for payments),
+      ``related_txn_id``, void bookkeeping.
+    * ``fee_records``: paisa totals + ``amount_written_off_paisa``.
+    * ``staff_payroll``: paisa amounts + ``updated_by`` columns.
+    * ``expenses``: paisa amount + void bookkeeping + ``updated_by`` columns.
+
+    Follow-up backfills (payment allocations, salary payments + their Salaries
+    expense rows) run once through :func:`backfill_financial_v2` after all
+    tables exist.  No row is ever deleted; totals in rupees are unchanged.
+    """
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        fee_cols = _table_columns(connection, 'fee_transactions')
+        if not fee_cols or 'payment_date' in fee_cols:
+            return  # fresh install or already migrated
+
+        from app.services.db_backup import backup_database
+        backup = backup_database(db_path=db_path)
+        print(f'Migration: safety backup before financial v2 conversion: {backup}')
+
+        connection.execute(FINANCIAL_V2_TABLES_SQL)
+        connection.execute('''
+            INSERT INTO fee_transactions_new
+                (id, student_id, month_year, txn_type, amount_paisa, method,
+                 reference, note, is_void, created_at, created_by_id,
+                 created_by_name, payment_date)
+            SELECT id, student_id, month_year, txn_type,
+                   CAST(ROUND(COALESCE(amount, 0) * 100) AS INTEGER),
+                   method, reference, note, is_void, created_at,
+                   created_by_id, created_by_name,
+                   CASE WHEN txn_type = 'payment'
+                        THEN DATE(created_at, '+5 hours') END
+            FROM fee_transactions
+        ''')
+        connection.execute('DROP TABLE fee_transactions')
+        connection.execute('ALTER TABLE fee_transactions_new RENAME TO fee_transactions')
+
+        connection.execute(FEE_RECORDS_TABLE_SQL)
+        connection.execute('''
+            INSERT INTO fee_records_new
+                (id, student_id, month_year, amount_due_paisa, amount_paid_paisa,
+                 amount_written_off_paisa, status, payment_date, remarks)
+            SELECT id, student_id, month_year,
+                   CAST(ROUND(COALESCE(amount_due, 0) * 100) AS INTEGER),
+                   CAST(ROUND(COALESCE(amount_paid, 0) * 100) AS INTEGER),
+                   0, status, payment_date, remarks
+            FROM fee_records
+        ''')
+        connection.execute('DROP TABLE fee_records')
+        connection.execute('ALTER TABLE fee_records_new RENAME TO fee_records')
+
+        connection.execute(STAFF_PAYROLL_TABLE_SQL)
+        connection.execute('''
+            INSERT INTO staff_payroll_new
+                (id, teacher_id, month_year, base_salary_paisa, bonus_paisa,
+                 deductions_paisa, net_salary_paisa, payment_status, payment_date,
+                 payment_method, notes, generated_by, working_days, present_days,
+                 absent_days, late_days, leave_days, created_at, updated_at)
+            SELECT id, teacher_id, month_year,
+                   CAST(ROUND(COALESCE(base_salary, 0) * 100) AS INTEGER),
+                   CAST(ROUND(COALESCE(bonus, 0) * 100) AS INTEGER),
+                   CAST(ROUND(COALESCE(deductions, 0) * 100) AS INTEGER),
+                   CAST(ROUND(COALESCE(net_salary, 0) * 100) AS INTEGER),
+                   payment_status, payment_date, payment_method, notes,
+                   generated_by, working_days, present_days, absent_days,
+                   late_days, leave_days, created_at, updated_at
+            FROM staff_payroll
+        ''')
+        connection.execute('DROP TABLE staff_payroll')
+        connection.execute('ALTER TABLE staff_payroll_new RENAME TO staff_payroll')
+
+        connection.execute(EXPENSES_TABLE_SQL)
+        connection.execute('''
+            INSERT INTO expenses_new
+                (id, category_id, amount_paisa, payment_method, date, receipt_no,
+                 description, logged_by_id, logged_by_name, created_at)
+            SELECT id, category_id,
+                   CAST(ROUND(COALESCE(amount, 0) * 100) AS INTEGER),
+                   payment_method, date, receipt_no, description,
+                   logged_by_id, logged_by_name, created_at
+            FROM expenses
+        ''')
+        connection.execute('DROP TABLE expenses')
+        connection.execute('ALTER TABLE expenses_new RENAME TO expenses')
+
+        if 'is_system' not in _table_columns(connection, 'expense_categories'):
+            connection.execute("ALTER TABLE expense_categories "
+                               "ADD COLUMN is_system BOOLEAN NOT NULL DEFAULT 0")
+        # created_at is NOT NULL without a SQL default on legacy tables — supply it.
+        connection.execute("INSERT OR IGNORE INTO expense_categories "
+                           "(name, is_active, is_system, created_at) "
+                           "VALUES ('Salaries', 1, 1, CURRENT_TIMESTAMP)")
+        connection.execute('UPDATE expense_categories SET is_system = 1 '
+                           "WHERE name = 'Salaries'")
+
+        # A receipt / slip number may only be used by one active transaction.
+        connection.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_fee_txn_active_reference
+            ON fee_transactions(reference)
+            WHERE is_void = 0 AND reference IS NOT NULL AND reference <> ''
+        ''')
+        print('Migration: financial v2 conversion complete '
+              '(paisa storage, payment_date backfilled UTC+5h, Salaries category reserved)')
+
+
+def backfill_financial_v2():
+    """One-time derivation of allocations and salary payments from legacy rows.
+
+    Runs after the schema conversion (guard flag ``financial_v2_backfilled``):
+    every payment is allocated across the student's outstanding charges
+    (its own month first, then older months), every already-Paid payroll row
+    gets a SalaryPayment plus its mirrored Salaries expense row, and every
+    cached fee summary is recomputed from the new source of truth.
+    """
+    from datetime import datetime
+
+    from app.models import (Expense, ExpenseCategory, FeeTransaction, SalaryPayment,
+                            StaffPayroll, SystemSettingModel, TXN_PAYMENT)
+    from app.services.fee_ledger import allocate_transaction, repair_summaries
+
+    flag = SystemSettingModel.query.filter_by(key='financial_v2_backfilled').first()
+    if flag and flag.value == '1':
+        return
+    if flag is None:
+        flag = SystemSettingModel(key='financial_v2_backfilled', value='1')
+        db.session.add(flag)
+
+    payments = (FeeTransaction.query.filter_by(txn_type=TXN_PAYMENT, is_void=False)
+                .order_by(FeeTransaction.created_at, FeeTransaction.id).all())
+    for payment in payments:
+        allocate_transaction(payment, actor='migration')
+
+    salaries_category = (ExpenseCategory.query.filter_by(name='Salaries').first()
+                         or ExpenseCategory(name='Salaries', is_system=True))
+    if salaries_category.id is None:
+        db.session.add(salaries_category)
+        db.session.flush()
+    for record in StaffPayroll.query.filter_by(payment_status='Paid').all():
+        already = SalaryPayment.query.filter_by(payroll_id=record.id, is_void=False).first()
+        if already is not None:
+            continue
+        payment_date = record.payment_date
+        if payment_date is None:
+            year, month = record.month_year.split('-')
+            from calendar import monthrange
+            payment_date = datetime(int(year), int(month), monthrange(int(year), int(month))[1]).date()
+        payment = SalaryPayment(
+            teacher_id=record.teacher_id, payroll_id=record.id,
+            amount_paisa=record.net_salary_paisa, payment_date=payment_date,
+            method=record.payment_method or 'Cash',
+            note='Migrated from payroll payment status',
+            created_by_name='migration')
+        db.session.add(payment)
+        db.session.flush()
+        if salaries_category is not None:
+            expense = Expense(
+                category_id=salaries_category.id, amount_paisa=record.net_salary_paisa,
+                payment_method=payment.method, date=payment_date,
+                description='Salary payment (migrated): %s — %s' % (
+                    record.teacher.teacher_name if record.teacher else record.teacher_id,
+                    record.month_year),
+                logged_by_name='migration')
+            db.session.add(expense)
+            db.session.flush()
+            payment.expense_id = expense.id
+
+    repair_summaries()
+    db.session.commit()
+    print('Financial v2 backfill: allocations + salary payments derived from legacy rows')
+
+
+# NOTE: fee allocation repair is a deliberate, user-triggered action, not a
+# startup step.  It writes ledger rows, so it lives on the Fee Reconciliation
+# page (POST /fees/reconciliation/repair) and is never run automatically —
+# launching the app must not modify financial data.
+
+
+def migrate_payment_apply_month(app):
+    """Option B allocation rule: add ``fee_transactions.apply_month``.
+
+    The column is the per-transaction allocation override (NULL = default
+    oldest-dues-first; a month label settles that month first).  The ALTER is
+    additive and safe for SQLite.  Existing payment and write-off rows are
+    stamped once with their own ``month_year`` — the rule they were originally
+    allocated under — so a later refund re-allocates them exactly as before
+    and no migrated figure moves.  New payments stay NULL (oldest-first).
+    """
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        columns = _table_columns(connection, 'fee_transactions')
+        if not columns:
+            return
+        if 'apply_month' not in columns:
+            connection.execute('ALTER TABLE fee_transactions '
+                               'ADD COLUMN apply_month VARCHAR(20)')
+            print('Migration: added apply_month to fee_transactions')
+
+        from app.models import SystemSettingModel
+        flag = SystemSettingModel.query.filter_by(
+            key='payment_apply_month_stamped').first()
+        if flag and flag.value == '1':
+            return
+        if flag is None:
+            flag = SystemSettingModel(key='payment_apply_month_stamped', value='1')
+            db.session.add(flag)
+        updated = connection.execute(
+            "UPDATE fee_transactions SET apply_month = month_year "
+            "WHERE apply_month IS NULL AND txn_type IN ('payment', 'writeoff') "
+            "AND month_year IS NOT NULL").rowcount
+        connection.commit()
+        db.session.commit()
+        print('Migration: stamped %d existing payment/write-off row(s) '
+              'with their original allocation month' % updated)
 
 
 def migrate_user_teacher_link_schema(app):
@@ -415,6 +953,20 @@ def migrate_school_settings_schema(app):
         if 'weekend_off' not in settings_columns:
             connection.execute('ALTER TABLE school_settings ADD COLUMN weekend_off BOOLEAN DEFAULT 1')
             print('Migration: added weekend_off to school_settings')
+        if 'saturday_off' not in settings_columns:
+            # Seed from the legacy weekend_off flag so existing installs keep
+            # their Saturday behaviour when the toggle is split in two.
+            connection.execute(
+                'ALTER TABLE school_settings ADD COLUMN saturday_off BOOLEAN DEFAULT 1')
+            connection.execute(
+                'UPDATE school_settings SET saturday_off = weekend_off')
+            print('Migration: added saturday_off to school_settings')
+        if 'sunday_off' not in settings_columns:
+            connection.execute(
+                'ALTER TABLE school_settings ADD COLUMN sunday_off BOOLEAN DEFAULT 1')
+            connection.execute(
+                'UPDATE school_settings SET sunday_off = weekend_off')
+            print('Migration: added sunday_off to school_settings')
         if 'custom_off_days' not in settings_columns:
             connection.execute("ALTER TABLE school_settings ADD COLUMN custom_off_days VARCHAR(200) DEFAULT ''")
             print('Migration: added custom_off_days to school_settings')
@@ -532,6 +1084,9 @@ def migrate_student_profile_schema(app):
             if 'sponsor_cnic' not in columns:
                 connection.execute('ALTER TABLE students ADD COLUMN sponsor_cnic VARCHAR(20)')
                 print('Migration: added sponsor_cnic to students')
+            if 'photo_filename' not in columns:
+                connection.execute('ALTER TABLE students ADD COLUMN photo_filename VARCHAR(120)')
+                print('Migration: added photo_filename to students')
             index_row = connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='index' "
                 "AND name='idx_students_status'").fetchone()
@@ -596,7 +1151,7 @@ def migrate_term_exam_schema(app):
 
 
 def migrate_test_schema(app):
-    """Add per-category default marks to test types."""
+    """Add per-category default marks to test types and the absent flag to marks."""
     db_path = _sqlite_db_path(app)
     if not db_path or not os.path.exists(db_path):
         return
@@ -606,6 +1161,11 @@ def migrate_test_schema(app):
         if columns and 'default_marks' not in columns:
             connection.execute('ALTER TABLE test_types ADD COLUMN default_marks FLOAT')
             print('Migration: added default_marks to test_types')
+        mark_columns = _table_columns(connection, 'student_marks')
+        if mark_columns and 'is_absent' not in mark_columns:
+            connection.execute(
+                'ALTER TABLE student_marks ADD COLUMN is_absent BOOLEAN NOT NULL DEFAULT 0')
+            print('Migration: added is_absent to student_marks')
         connection.commit()
 
 
@@ -708,98 +1268,27 @@ def ensure_school_settings():
 
 
 def seed_demo_data(student_count=60, teacher_count=8, default_monthly_fee=2500.0):
-    from app.models import ClassModel, SectionModel, SubjectModel, TeacherModel, StudentModel, TestTypeModel
+    """Legacy entry point kept for compatibility — delegates to the generator.
 
-    class_names = [
-        'Playgroup', 'Nursery', 'Class 1', 'Class 2', 'Class 3',
-        'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'
-    ]
-    subject_names = ['English', 'Urdu', 'Mathematics', 'Science', 'Islamiyat']
-    test_types = ['Daily', 'Weekly', 'Monthly', 'Mid-Term', 'Final']
+    The advanced generator (app/services/seed_generator.py) supersedes the old
+    inline classes/teachers/students seeding; this wrapper produces a short
+    3-month demo history when called without explicit options.
+    """
+    from app.services.seed_generator import SeedConfig, run_seed
 
-    classes = []
-    for class_name in class_names:
-        class_obj = ClassModel.query.filter_by(name=class_name).first()
-        if class_obj is None:
-            class_obj = ClassModel(name=class_name)
-            db.session.add(class_obj)
-            db.session.flush()
-        classes.append(class_obj)
-
-        for section_name in ['A', 'B']:
-            if not SectionModel.query.filter_by(class_id=class_obj.id, name=section_name).first():
-                db.session.add(SectionModel(name=section_name, class_id=class_obj.id))
-
-        for subject_name in subject_names:
-            if not SubjectModel.query.filter_by(class_id=class_obj.id, name=subject_name).first():
-                db.session.add(SubjectModel(name=subject_name, class_id=class_obj.id))
-
-    for test_name in test_types:
-        if not TestTypeModel.query.filter_by(name=test_name).first():
-            db.session.add(TestTypeModel(name=test_name))
-
-    teacher_total = max(0, int(teacher_count))
-    if TeacherModel.query.count() == 0 and teacher_total > 0:
-        teacher_names = [
-            'M. Akram', 'Ayesha Bibi', 'Tariq Mahmood', 'Sana Khan', 'Usman Ali',
-            'Farah Nadeem', 'Ali Raza', 'Hina Malik', 'Bilal Ahmed', 'Maryam Noor',
-            'Zahid Hassan', 'Nadia Shahid', 'Kashif Aslam', 'Saima Qureshi'
-        ]
-        for idx in range(teacher_total):
-            teacher_name = teacher_names[idx % len(teacher_names)]
-            assigned_class = classes[idx % len(classes)].name
-            db.session.add(TeacherModel(
-                teacher_id_str=f'T{idx + 1:03d}',
-                teacher_name=teacher_name,
-                joining_date=datetime.utcnow().date(),
-                qualification='B.Ed / M.Ed',
-                salary=35000 + (idx * 1500),
-                assigned_class=assigned_class,
-            ))
-
-    student_total = max(0, int(student_count))
-    if StudentModel.query.count() == 0 and student_total > 0:
-        from app.services.roll_numbers import FIRST_ROLL_NUMBER
-
-        first_names = ['Ali', 'Ahmed', 'Hassan', 'Hussain', 'Bilal', 'Ayesha', 'Fatima', 'Maryam', 'Hamza', 'Zain']
-        last_names = ['Khan', 'Awan', 'Malik', 'Rana', 'Qureshi', 'Abbasi']
-        class_list = ClassModel.query.order_by(ClassModel.id).all()
-        if not class_list:
-            class_list = classes
-
-        next_rolls = {}
-        for index in range(student_total):
-            class_obj = class_list[index % len(class_list)]
-            sections = SectionModel.query.filter_by(class_id=class_obj.id).order_by(SectionModel.id).all()
-            section = sections[index % len(sections)] if sections else None
-            first_name = first_names[index % len(first_names)]
-            last_name = last_names[index % len(last_names)]
-            next_roll = next_rolls.get(class_obj.id, FIRST_ROLL_NUMBER)
-            next_rolls[class_obj.id] = next_roll + 1
-            student = StudentModel(
-                roll_number=next_roll,
-                student_name=f'{first_name} {last_name}',
-                father_name=f'Father of {first_name}',
-                guardian_phone=f'+923{(300 + index) % 900:03d}{(1234567 + index) % 10000000:07d}',
-                address='Main Bazaar, Sargodha',
-                class_id=class_obj.id,
-                section_id=section.id if section else None,
-                monthly_fee=float(default_monthly_fee),
-            )
-            db.session.add(student)
-
-    db.session.flush()
-
-    ensure_demo_accounts()
-
-    db.session.commit()
+    run_seed(SeedConfig(
+        student_count=max(0, int(student_count)),
+        teacher_count=max(0, int(teacher_count)),
+        monthly_fee=float(default_monthly_fee),
+        months=3,
+    ))
 
 
 def ensure_demo_accounts(default_password=None):
     """Create one teacher and one parent demo account when missing."""
     from app.models import AdminUser, GuardianStudentLink, StudentModel
 
-    password = default_password or os.environ.get('DEFAULT_DEMO_PASSWORD') or 'School@2026'
+    password = default_password or os.environ.get('DEFAULT_DEMO_PASSWORD')
 
     if not AdminUser.query.filter_by(username='teacher1').first():
         teacher_user = AdminUser(username='teacher1', role=ROLE_TEACHER, full_name='Demo Teacher')
@@ -830,4 +1319,7 @@ def inject_school_settings(app):
     @app.context_processor
     def inject_school():
         school = SchoolSettings.query.first()
-        return {'school': school}
+        return {'school': school,
+                'features': {'inventory_sales': app.config.get('FEATURE_INVENTORY_SALES', False),
+                             'advance_credit_writeoff':
+                             app.config.get('FEATURE_ADVANCE_CREDIT_WRITEOFF', False)}}

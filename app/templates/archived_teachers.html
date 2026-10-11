@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_photo_macro.html" import avatar %}
 {% block content %}
 <div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
     <div>
@@ -11,14 +12,6 @@
     </a>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show">
-      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  {% endfor %}{% endif %}
-{% endwith %}
-
 {% if teachers %}
 
 <!-- Bulk Action Bar -->
@@ -30,7 +23,8 @@
         <div class="ms-auto d-flex gap-2 flex-wrap">
             <!-- Restore All -->
             <form action="{{ url_for('main.restore_all_teachers') }}" method="POST"
-                  onsubmit="return confirm('Restore ALL {{ teachers | length }} archived teachers?')">
+                  data-confirm="Restore ALL {{ teachers | length }} archived teacher(s)? They will return to the active list."
+                  data-confirm-ok="Restore all">
                 <button type="submit" class="btn btn-success btn-sm px-3">
                     <i class="fas fa-undo me-1"></i> Restore All ({{ teachers | length }})
                 </button>
@@ -57,7 +51,7 @@
                 {% for teacher in teachers %}
                 <tr>
                     <td class="ps-3 font-monospace fw-bold text-secondary">{{ teacher.teacher_id_str }}</td>
-                    <td class="fw-bold">{{ teacher.teacher_name }}</td>
+                    <td class="fw-bold" data-order="{{ teacher.teacher_name | lower }}"><div class="d-flex align-items-center gap-2">{{ avatar('teacher', teacher, 32) }}<span>{{ teacher.teacher_name }}</span></div></td>
                     <td class="text-muted">{{ teacher.qualification }}</td>
                     <td class="text-success fw-bold">Rs. {{ "{:,.0f}".format(teacher.salary) }}</td>
                     <td>

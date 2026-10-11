@@ -13,17 +13,6 @@
     </div>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
-
 <!-- Filter Card -->
 <div class="card shadow-sm mb-4 border-0 analytics-panel">
     <div class="card-body">
@@ -71,31 +60,61 @@
     </div>
 </div>
 
-<!-- Bulk class fee update -->
-<div class="card shadow-sm mb-4 border-0">
-    <div class="card-body">
-        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-            <div>
-                <h5 class="mb-1 text-dark"><i class="fas fa-layer-group me-2 text-primary"></i>Set Monthly Fee for Entire Class <i class="fas fa-circle-info ms-1 text-secondary" data-bs-toggle="tooltip" title="Bulk update: changes the fee on ALL existing student records in this class, and syncs the standard fee used for new admissions."></i></h5>
-                <p class="text-muted mb-0 small">Apply one fee to every active student in the selected class. This also updates the class standard fee (Classes page) used for new admissions. <b class="text-danger-emphasis">Bulk-updates ALL existing student records.</b></p>
-            </div>
-            <form method="POST" action="{{ url_for('main.bulk_update_class_fees') }}" class="row g-2 align-items-end" id="bulk-fee-form">
+<!-- Monthly charges are posted explicitly (never on page load) -->
+{% if pending_charges %}
+<div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+    <div>
+        <i class="fas fa-file-invoice-dollar me-1"></i>
+        <strong>{{ pending_charges }}</strong> student(s) have no fee charge posted for
+        <strong>{{ month_year }}</strong> yet. Generating charges is a deliberate billing
+        action &mdash; it posts the monthly fee to each student's ledger.
+    </div>
+    <form method="POST" action="{{ url_for('main.generate_monthly_charges') }}" class="d-flex gap-2">
+        <input type="hidden" name="month_year" value="{{ month_year }}">
+        {% if selected_class_id %}<input type="hidden" name="class_id" value="{{ selected_class_id }}">{% endif %}
+        <button type="submit" class="btn btn-primary btn-sm text-nowrap">
+            <i class="fas fa-bolt me-1"></i> Generate monthly charges
+        </button>
+    </form>
+</div>
+{% endif %}
+
+<!-- Bulk class fee update (opens in a popup) -->
+<div class="mb-4">
+    <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#bulkClassFeeModal"
+            title="Bulk update: changes the fee on ALL existing student records in this class, and syncs the standard fee used for new admissions.">
+        <i class="fas fa-layer-group me-2"></i>Set Monthly Fee for Entire Class
+    </button>
+</div>
+
+<div class="modal fade" id="bulkClassFeeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <form method="POST" action="{{ url_for('main.bulk_update_class_fees') }}" id="bulk-fee-form">
                 <input type="hidden" name="confirm_bulk_update" id="confirm_bulk_update" value="no">
-                <div class="col-auto">
-                    <label class="form-label fw-bold small text-muted mb-1">Class</label>
-                    <select class="form-select" name="class_id" data-class-fee="class" required>
-                        {% for c in classes %}
-                        <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
-                        {% endfor %}
-                    </select>
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title"><i class="fas fa-layer-group me-2"></i>Set Monthly Fee for Entire Class</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="col-auto">
-                    <label class="form-label fw-bold small text-muted mb-1">Monthly Fee (PKR)</label>
-                    <input type="number" step="0.01" min="0" class="form-control" name="monthly_fee"
-                           data-class-fee="fee" placeholder="e.g. 3500"
-                           value="{{ selected_class_fee if selected_class_fee is not none else '' }}" required>
+                <div class="modal-body text-start">
+                    <p class="text-muted small">Apply one fee to every active student in the selected class. This also updates the class standard fee (Classes page) used for new admissions. <b class="text-danger-emphasis">Bulk-updates ALL existing student records.</b></p>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-muted mb-1">Class</label>
+                        <select class="form-select" name="class_id" data-class-fee="class" required>
+                            {% for c in classes %}
+                            <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label fw-bold small text-muted mb-1">Monthly Fee (PKR)</label>
+                        <input type="number" step="0.01" min="0" class="form-control" name="monthly_fee"
+                               data-class-fee="fee" placeholder="e.g. 3500"
+                               value="{{ selected_class_fee if selected_class_fee is not none else '' }}" required>
+                    </div>
                 </div>
-                <div class="col-auto">
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i> Apply to Class</button>
                 </div>
             </form>
@@ -205,21 +224,34 @@
                            class="btn btn-sm btn-outline-secondary" title="Full transaction ledger">
                             <i class="fas fa-book"></i>
                         </a>
+                        {% if row.total_outstanding > 0 or features.advance_credit_writeoff %}
                         <button class="btn btn-sm btn-outline-primary px-3"
                                 data-bs-toggle="modal"
                                 data-bs-target="#payModal{{ row.student.id }}"
                                 title="Record Payment">
                             <i class="fas fa-cash-register me-1"></i> Collect Fee
                         </button>
+                        {% else %}
+                        <button class="btn btn-sm btn-success" disabled
+                                title="No outstanding dues — fully paid">
+                            <i class="fas fa-circle-check me-1"></i> Fully paid
+                        </button>
+                        {% endif %}
                     </td>
                 </tr>
 
+                {% if row.total_outstanding > 0 or features.advance_credit_writeoff %}
                 <!-- Payment Modal -->
                 <div class="modal fade" id="payModal{{ row.student.id }}" tabindex="-1" aria-hidden="true">
                     <div class="modal-dialog">
                         <div class="modal-content">
                             <form action="{{ url_for('main.pay_fee', student_id=row.student.id) }}" method="POST">
                                 <input type="hidden" name="month_year" value="{{ month_year }}">
+                                {# Carry the current list filters so "Back to Fees" on
+                                   it can restore this exact filtered view. #}
+                                {% for field, value in return_filters.items() %}
+                                <input type="hidden" name="{{ field }}" value="{{ value }}">
+                                {% endfor %}
                                 <div class="modal-header bg-dark text-white">
                                     <h5 class="modal-title">
                                         <i class="fas fa-cash-register me-2"></i>Collect Fee: {{ row.student.student_name }}
@@ -277,19 +309,28 @@
                                                class="form-control form-control-lg border-success"
                                                name="amount_paid"
                                                id="paid_{{ row.student.id }}"
-                                               value="{{ row.balance if row.balance > 0 else '' }}"
+                                               value="{{ row.balance if row.balance > 0 else (row.due_months[0][1] if row.due_months else '') }}"
+                                               max="{{ row.total_outstanding }}"
                                                data-previous-paid="{{ paid }}"
-                                               placeholder="0.00" required max="{{ row.balance if row.balance > 0 else 0 }}">
+                                               data-total-outstanding="{{ row.total_outstanding }}"
+                                               placeholder="0.00" required>
                                         <div class="form-text" id="balance_{{ row.student.id }}">
-                                            {% if row.balance > 0 %}
-                                                <span class="text-warning">Balance remaining: {{ row.balance }} PKR</span>
+                                            {% if row.due_months %}
+                                            <span class="text-warning">Dues: {% for due_month, month_balance in row.due_months %}{{ due_month }} - Rs {{ '{:,.0f}'.format(month_balance) }}{{ ' · ' if not loop.last }}{% endfor %}</span>
+                                            <span class="text-info ms-2">Total outstanding: Rs {{ '{:,.2f}'.format(row.total_outstanding) }} — the amount settles the oldest dues first.</span>
                                             {% elif due > 0 %}
-                                                <span class="text-success">Fully paid ✓</span>
+                                            <span class="text-success">Fully paid ✓</span>
                                             {% endif %}
                                         </div>
                                     </div>
 
                                     <div class="row g-2 mb-2">
+                                        <div class="col-6">
+                                            <label class="form-label fw-bold">Payment Date</label>
+                                            <input type="date" class="form-control" name="payment_date"
+                                                   value="{{ today.strftime('%Y-%m-%d') if today else '' }}">
+                                            <div class="form-text">Back-dating is allowed — the cash date drives all reports.</div>
+                                        </div>
                                         <div class="col-6">
                                             <label class="form-label fw-bold">Payment Method</label>
                                             <select class="form-control" name="method">
@@ -301,7 +342,53 @@
                                         <div class="col-6">
                                             <label class="form-label fw-bold">Reference / Slip No</label>
                                             <input type="text" class="form-control" name="reference"
-                                                   placeholder="e.g. SLIP-20261002-0001" value="">
+                                                   maxlength="80" autocomplete="off"
+                                                   placeholder="e.g. SLIP-20261002-0001"
+                                                   value="{{ suggested_reference }}">
+                                            <div class="form-text">Filled in automatically. You can change it, but each number can only be used once.</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="row g-2 mb-2">
+                                        <div class="col-6">
+                                            <label class="form-label fw-bold">Apply To</label>
+                                            <select class="form-control" name="apply_to"
+                                                    id="apply_to_{{ row.student.id }}">
+                                                {% if row.has_dues %}
+                                                {# Dues pending: a payment can only clear them. #}
+                                                <option value="oldest" selected>Oldest dues first (default)</option>
+                                                <option value="month">Specific month</option>
+                                                {% else %}
+                                                {# Nothing owed anywhere: the only thing
+                                                   left to record is money paid ahead. #}
+                                                {% if row.this_month_paid %}
+                                                <option value="advance" selected>Advance Payment (future months)</option>
+                                                {% else %}
+                                                <option value="advance" selected>Advance Payment (future months)</option>
+                                                <option value="oldest">Oldest dues first (default)</option>
+                                                {% endif %}
+                                                {% endif %}
+                                            </select>
+                                            {% if row.has_dues %}
+                                            <div class="form-text">This student owes Rs {{ '{:,.0f}'.format(row.total_outstanding) }}. The payment clears outstanding dues first; advance credit is only recorded once nothing is owed.</div>
+                                            {% elif row.this_month_paid %}
+                                            <div class="form-text">Nothing is owed and {{ month_year }} is fully paid. This payment is held as advance credit for future months.</div>
+                                            {% else %}
+                                            <div class="form-text">No old dues remain &mdash; this payment can settle {{ month_year }} or be held as advance credit for future months.</div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="col-6" id="applyMonth_{{ row.student.id }}" hidden>
+                                            <label class="form-label fw-bold">Specific Month (if chosen)</label>
+                                            <select class="form-control" name="apply_month">
+                                                {% if row.due_months %}
+                                                {% for due_month, month_balance in row.due_months %}
+                                                <option value="{{ due_month }}">{{ due_month }} - Rs {{ '{:,.2f}'.format(month_balance) }} still due</option>
+                                                {% endfor %}
+                                                {% else %}
+                                                <option value="">No dues</option>
+                                                {% endif %}
+                                            </select>
+                                            <div class="form-text">Only months with an outstanding balance are listed, with the amount still due. That month is settled first; anything left follows the oldest-dues order.</div>
                                         </div>
                                     </div>
 
@@ -322,6 +409,7 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}
                 {% endfor %}
             </tbody>
         </table>
@@ -351,22 +439,21 @@ function getCurrentPaid(id) {
     if (due > 0 && previousPaid > due) previousPaid = due;
     return previousPaid;
 }
+function totalOutstanding(id) {
+    var input = document.getElementById('paid_' + id);
+    if (!input || input.dataset.totalOutstanding === undefined) return 0;
+    return parseFloat(input.dataset.totalOutstanding) || 0;
+}
 function setFull(id) {
-    var due = getDue(id);
-    var previousPaid = getCurrentPaid(id);
-    var remaining = Math.max(due - previousPaid, 0);
-    if (due <= 0) { alert('Please enter the Monthly Due amount first.'); return; }
-    if (remaining <= 0) { alert('This student already has no remaining dues for this month.'); return; }
-    document.getElementById('paid_' + id).value = remaining.toFixed(2);
+    var total = totalOutstanding(id);
+    if (total <= 0) { window.SchoolUI.toast('This student has no outstanding dues.', 'warning'); return; }
+    document.getElementById('paid_' + id).value = total.toFixed(2);
     updateBalance(id);
 }
 function setHalf(id) {
-    var due = getDue(id);
-    var previousPaid = getCurrentPaid(id);
-    var remaining = Math.max(due - previousPaid, 0);
-    if (due <= 0) { alert('Please enter the Monthly Due amount first.'); return; }
-    if (remaining <= 0) { alert('This student already has no remaining dues for this month.'); return; }
-    document.getElementById('paid_' + id).value = Math.min(remaining / 2, remaining).toFixed(2);
+    var total = totalOutstanding(id);
+    if (total <= 0) { window.SchoolUI.toast('This student has no outstanding dues.', 'warning'); return; }
+    document.getElementById('paid_' + id).value = (total / 2).toFixed(2);
     updateBalance(id);
 }
 function setCustom(id) {
@@ -375,21 +462,30 @@ function setCustom(id) {
     el.focus();
 }
 function updateBalance(id) {
+    // The amount may cover ANY months' dues (oldest first), so it is never
+    // clamped to this month's balance — only informed.
+    var input = document.getElementById('paid_' + id);
+    var paid = parseFloat(input.value) || 0;
+    var total = totalOutstanding(id);
     var due = getDue(id);
     var previousPaid = getCurrentPaid(id);
     var remaining = Math.max(due - previousPaid, 0);
-    var paid = parseFloat(document.getElementById('paid_' + id).value) || 0;
     var el = document.getElementById('balance_' + id);
     if (!el) return;
-    if (due > 0) {
-        if (paid > remaining) {
-            paid = remaining;
-            document.getElementById('paid_' + id).value = paid.toFixed(2);
-        }
-        var bal = remaining - paid;
-        el.innerHTML = bal > 0
-            ? '<span class="text-warning">Balance remaining: ' + bal.toFixed(2) + ' PKR</span>'
-            : '<span class="text-success">Fully paid ✓</span>';
+    if (paid > total && total > 0) {
+        el.innerHTML = '<span class="text-danger">More than the total outstanding (Rs ' +
+            total.toFixed(2) + ') — reduce the amount.</span>';
+        return;
+    }
+    if (remaining > 0) {
+        el.innerHTML = '<span class="text-warning">This month\'s own balance: ' + remaining.toFixed(2) +
+            ' PKR · Total outstanding (all months): ' + total.toFixed(2) +
+            ' PKR — settles the oldest dues first.</span>';
+    } else if (total > 0) {
+        el.innerHTML = '<span class="text-warning">This month is fully paid · Total outstanding (all months): ' +
+            total.toFixed(2) + ' PKR — settles the oldest dues first.</span>';
+    } else if (due > 0) {
+        el.innerHTML = '<span class="text-success">Fully paid ✓</span>';
     } else {
         el.innerHTML = '';
     }
@@ -406,6 +502,15 @@ document.addEventListener('DOMContentLoaded', function () {
         var id = el.id.replace('due_', '');
         el.addEventListener('input', function() { updateBalance(id); });
     });
+    document.querySelectorAll('[id^="apply_to_"]').forEach(function(sel) {
+        var id = sel.id.replace('apply_to_', '');
+        var toggle = function () {
+            var wrap = document.getElementById('applyMonth_' + id);
+            if (wrap) wrap.hidden = (sel.value !== 'month');
+        };
+        sel.addEventListener('change', toggle);
+        toggle();
+    });
 });
 
 // Bulk "Set Monthly Fee for Entire Class": keep the fee input showing the
@@ -414,15 +519,21 @@ var classFeeByClass = {{ class_fee_by_class|tojson }};
 (function () {
     var form = document.querySelector('form[action="{{ url_for('main.bulk_update_class_fees') }}"]');
     if (!form) return;
-    form.addEventListener('submit', function (event) {
-        var confirmInput = document.getElementById('confirm_bulk_update');
-        if (!confirmInput || confirmInput.value === 'yes') return;
-        if (!confirm('Are you sure you want to update monthly fees for ALL active students in this class?')) {
-            event.preventDefault();
-            return;
+    // The confirmation is declarative (data-confirm), so it shows the app's
+    // styled dialog instead of the browser's own.
+    form.dataset.confirm = 'Are you sure you want to update monthly fees for ALL active students in this class?';
+    form.dataset.confirmOk = 'Update all fees';
+    // SchoolUI's confirm dialog re-submits the form after the user confirms.
+    // Capture that second pass at document level (before SchoolUI clears its
+    // marker) and flip the hidden flag the server requires.
+    document.addEventListener('submit', function (event) {
+        if (event.target !== form) return;
+        if (form.dataset.confirmed === '1') {
+            var flag = document.getElementById('confirm_bulk_update');
+            if (flag) flag.value = 'yes';
         }
-        confirmInput.value = 'yes';
-    });
+    }, true);
+    if (window.SchoolUI) window.SchoolUI.wire();
     var classSelect = form.querySelector('[data-class-fee="class"]');
     var feeInput = form.querySelector('[data-class-fee="fee"]');
     if (!classSelect || !feeInput) return;

@@ -29,3 +29,4 @@ class TeacherModel(db.Model):
     date_of_birth = db.Column(db.Date, nullable=True)                 # Optional birthday (widgets)
     designation = db.Column(db.String(80), nullable=True)             # e.g. Senior Teacher (optional)
     gender = db.Column(db.String(20), nullable=True)                  # Optional gender
+    photo_filename = db.Column(db.String(120), nullable=True)         # Optional profile picture (see app/services/photos.py)

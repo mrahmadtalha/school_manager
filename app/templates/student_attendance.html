@@ -54,10 +54,13 @@ async function testAttendanceWhatsApp() {
             body: JSON.stringify({})
         }, 6000);
         const data = await res.json();
-        alert(data.ok ? 'Test message sent successfully.' : (data.message || 'Unable to send test message.'));
+        window.SchoolUI.toast(
+            data.ok ? 'Test message sent successfully.'
+                    : (data.message || 'Unable to send test message.'),
+            data.ok ? 'success' : 'warning');
         refreshAttendanceWaStatus();
     } catch (err) {
-        alert('WhatsApp service is unavailable or timed out.');
+        window.SchoolUI.toast('WhatsApp service is unavailable or timed out.', 'warning');
     }
 }
 
@@ -73,7 +76,7 @@ function openNativeWhatsApp(phone, text) {
 function sendAbsentAlerts() {
     const absentStudents = {{ absent_students|tojson }};
     if (!absentStudents || absentStudents.length === 0) {
-        alert('No absent students to message today.');
+        window.SchoolUI.toast('No absent students to message today.', 'warning');
         return;
     }
 
@@ -90,11 +93,11 @@ function sendAbsentAlerts() {
     });
 
     if (sent === 0) {
-        alert('No valid phone numbers found for absent students.');
+        window.SchoolUI.toast('No valid phone numbers found for absent students.', 'warning');
         return;
     }
 
-    alert('Opened WhatsApp messages for ' + sent + ' absent student(s).');
+    window.SchoolUI.toast('Opened WhatsApp messages for ' + sent + ' absent student(s).', 'success');
 }
 
 window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
@@ -110,14 +113,6 @@ window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
         <i class="fas fa-chalkboard-teacher me-1"></i> Teacher Attendance
     </a>
 </div>
-
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show">
-      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  {% endfor %}{% endif %}
-{% endwith %}
 
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
@@ -245,7 +240,8 @@ window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
             <input type="hidden" name="date" value="{{ selected_date }}">
             <input type="hidden" name="action" value="unlock">
             <button type="submit" class="btn btn-warning btn-sm px-3"
-                    onclick="return confirm('Unlock attendance for editing?')">
+                    data-confirm="Unlock attendance for editing? It will no longer be locked for this date."
+                    data-confirm-ok="Unlock">
                 <i class="fas fa-lock-open me-1"></i> Unlock
             </button>
         </form>
@@ -254,7 +250,8 @@ window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
 </div>
 
 <div class="alert alert-info py-2 small mb-3">
-    <i class="fas fa-clock me-1"></i>School hours: {{ school_start_time }}–{{ school_end_time }}. Late is automatic after start + {{ attendance_grace_minutes }} minute(s) grace. Enter each student’s actual check-in time.
+    <i class="fas fa-clock me-1"></i>School hours: {{ school_start_time }}–{{ school_end_time }}. Late is automatic after start + {{ attendance_grace_minutes }} minute(s) grace. Enter each student’s actual check-in time, or use <strong>All Students at Time</strong> to mark everyone on time and only change the late ones.
+    <span id="allAtTimeNote" class="fw-bold ms-1"></span>
 </div>
 
 <!-- Quick Actions & Live Attendance Counter -->
@@ -272,6 +269,13 @@ window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetToInitial()">
                 <i class="fas fa-undo me-1"></i> Reset
             </button>
+            <div class="input-group input-group-sm" style="width:auto;" title="Paper register? Mark everyone on time with one click, then only edit the late students.">
+                <span class="input-group-text bg-white"><i class="fas fa-clock text-primary"></i></span>
+                <input type="time" id="allAtTime" class="form-control" value="{{ school_start_time }}" style="max-width:120px;" aria-label="On-time check-in time">
+                <button type="button" class="btn btn-primary" onclick="markAllAtTime()">
+                    <i class="fas fa-user-clock me-1"></i> All Students at Time
+                </button>
+            </div>
         </div>
         <div class="d-flex gap-2 align-items-center flex-wrap">
             <span class="badge bg-dark px-2 py-2 fs-7">Total: {{ students|length }}</span>
@@ -368,7 +372,7 @@ window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
                                            oninput="this.closest('tr').dataset.checkin=this.value"
                                            style="width:125px; max-width:100%;">
                                     <button type="button" class="btn btn-outline-secondary btn-sm px-2"
-                                            onclick="setNow({{ student.id }})" title="Use current time" data-bs-toggle="tooltip">
+                                            onclick="setNow({{ student.id }})" title="Use current time" data-bs-toggle="tooltip" aria-label="Use current time">
                                         <i class="fas fa-clock"></i>
                                     </button>
                                 </div>
@@ -459,7 +463,7 @@ function updateRow(id, status) {
             var previousValue = row?.dataset.checkin || '';
             cell.innerHTML = '<div class="d-flex gap-1 justify-content-center align-items-center">' +
                 '<input type="time" class="form-control form-control-sm" name="checkin_time_' + id + '" id="checkintime_' + id + '" value="' + previousValue + '" oninput="this.closest(\'tr\').dataset.checkin=this.value" style="width:125px; max-width:100%;">' +
-                '<button type="button" class="btn btn-outline-secondary btn-sm px-2" onclick="setNow(' + id + ')" title="Use current time"><i class="fas fa-clock"></i></button>' +
+                '<button type="button" class="btn btn-outline-secondary btn-sm px-2" onclick="setNow(' + id + ')" title="Use current time" aria-label="Use current time"><i class="fas fa-clock"></i></button>' +
                 '</div>';
                             if (!previousValue && {{ 'true' if is_today else 'false' }}) setNow(id);
         } else {
@@ -497,6 +501,33 @@ function markAll(status) {
         }
     });
     updateLiveCounters();
+}
+
+// All Students at Time: one click marks everyone Present with the same check-in time
+// (default = school start time, so nobody is late). Students already marked Absent or
+// Leave are left alone. Afterwards just edit the check-in time of anyone who was late -
+// the server still calculates Late and late minutes from each saved time.
+function markAllAtTime() {
+    var timeInput = document.getElementById('allAtTime');
+    var value = timeInput ? timeInput.value : '';
+    if (!value) { window.SchoolUI.toast('Please choose a time first.', 'warning'); if (timeInput) timeInput.focus(); return; }
+    var rows = document.querySelectorAll('#attTable tbody tr');
+    var changed = 0;
+    rows.forEach(function(row) {
+        var id = row.id.replace('row_', '');
+        if (document.getElementById('a_' + id)?.checked || document.getElementById('lv_' + id)?.checked) return;
+        var present = document.getElementById('p_' + id);
+        if (!present) return;
+        present.checked = true;
+        row.dataset.checkin = value;      // updateRow() builds the time box from this value
+        updateRow(parseInt(id), 'Present');
+        var input = document.getElementById('checkintime_' + id);
+        if (input) input.value = value;
+        changed++;
+    });
+    updateLiveCounters();
+    var note = document.getElementById('allAtTimeNote');
+    if (note) note.textContent = changed + ' student(s) set to ' + value + '. Edit the time of anyone who came late.';
 }
 
 // Reset selection back to initial state

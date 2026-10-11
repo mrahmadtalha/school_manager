@@ -32,9 +32,12 @@ def test_month_helpers():
 def test_seed_default_categories(app):
     with app.app_context():
         assert ExpenseCategory.query.count() == 0
-        assert expense_service.seed_default_categories() == 6
+        # 6 operational defaults + the system-reserved Salaries category.
+        assert expense_service.seed_default_categories() == 7
         assert expense_service.seed_default_categories() == 0
-        assert ExpenseCategory.query.count() == 6
+        assert ExpenseCategory.query.count() == 7
+        salaries = ExpenseCategory.query.filter_by(name='Salaries').one()
+        assert salaries.is_system
 
 
 def test_suggested_row_uses_attendance(app):
@@ -122,3 +125,92 @@ def test_payroll_generate_idempotent_and_locked(app):
         record = StaffPayroll.query.filter_by(teacher_id=teacher.id,
                                               month_year=month).first()
         assert record.bonus == 1000.0
+
+
+def test_payroll_page_renders_for_saved_calculation(admin_client, app):
+    """JOB 1 regression: /payroll must not 500 when a saved record exists.
+
+    The route passes ``payroll_service.preview_rows()`` rows to payroll.html,
+    and those rows are dicts whose paid/remaining figures are keyed ``paid``
+    and ``remaining``.  The template used to ask for ``row.remaining_amount``
+    - the *model* property name, which only exists on ``row.record`` - so
+    rendering raised
+
+        jinja2.exceptions.UndefinedError:
+        'dict object' has no attribute 'remaining_amount' (payroll.html line 300)
+
+    and the page returned "500 Unexpected error" as soon as a saved payroll
+    record existed.  Hand calculation for the record below:
+        net = base 20,000 + bonus 1,000 - deductions 500 = 20,500
+        paid        = 12,000        (one recorded payment)
+        remaining   = 20,500 - 12,000 = 8,500
+    """
+    with app.app_context():
+        teacher = TeacherModel(teacher_id_str='TP9', teacher_name='Pay Page Test',
+                               qualification='MA', monthly_salary=20000.0,
+                               salary_type='monthly', joining_date=date(2025, 1, 1))
+        db.session.add(teacher)
+        db.session.commit()
+
+        month = '2026-04'
+        payroll_service.generate(month, {
+            'include_%d' % teacher.id: 'on',
+            'base_%d' % teacher.id: '20000',
+            'bonus_%d' % teacher.id: '1000',
+            'deductions_%d' % teacher.id: '500',
+        }, generated_by='tester')
+        record = StaffPayroll.query.filter_by(teacher_id=teacher.id,
+                                              month_year=month).one()
+        assert record.net_salary == 20500.0
+
+        # A partial payment forces the "Pay rest" branch that rendered the
+        # missing attribute, and gives row.remaining a non-zero value.
+        payroll_service.record_salary_payment(record, 12000.0,
+                                              payment_date=date(2026, 4, 20))
+        db.session.commit()
+        assert record.paid_amount == 12000.0
+        assert record.remaining_amount == 8500.0
+
+    response = admin_client.get('/payroll?month=%s' % month)
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert 'Pay Page Test' in body
+    assert 'remaining_amount' not in body
+    assert 'data-amount="8500.00"' in body
+
+
+def test_system_category_rejects_crafted_rename_and_deactivate_posts(admin_client, app):
+    """Server-side lock: direct POSTs must not edit or toggle system categories."""
+    with app.app_context():
+        expense_service.seed_default_categories()
+        salaries = ExpenseCategory.query.filter_by(name='Salaries').one()
+        salaries_id = salaries.id
+        # Any seeded operational category works as the non-system control.
+        utilities = ExpenseCategory.query.filter_by(name='Utilities').one()
+        assert utilities.is_system is False
+        utilities_id = utilities.id
+
+    rename = admin_client.post(f'/expenses/categories/{salaries_id}/edit',
+                               data={'name': 'Staff Wages', 'description': 'renamed'},
+                               follow_redirects=True)
+    assert rename.status_code == 200
+    assert b'cannot be edited' in rename.data
+
+    deactivate = admin_client.post(f'/expenses/categories/{salaries_id}/toggle',
+                                   follow_redirects=True)
+    assert deactivate.status_code == 200
+    assert b'cannot be deactivated' in deactivate.data
+
+    with app.app_context():
+        saved = db.session.get(ExpenseCategory, salaries_id)
+        assert saved.name == 'Salaries'
+        assert saved.is_system is True
+        assert saved.is_active is True
+
+    # The lock is specific to system categories: a normal one still edits fine.
+    normal = admin_client.post(f'/expenses/categories/{utilities_id}/edit',
+                               data={'name': 'Utility Bills', 'description': ''},
+                               follow_redirects=True)
+    assert normal.status_code == 200
+    with app.app_context():
+        assert db.session.get(ExpenseCategory, utilities_id).name == 'Utility Bills'

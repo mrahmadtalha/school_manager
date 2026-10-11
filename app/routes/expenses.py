@@ -1,7 +1,8 @@
 """Operational expense tracker routes: entries, categories and exports (admin only)."""
-import csv  # noqa: F401  (kept for symmetry with other route modules)
+import io  # noqa: F401  (ledger_csv's sibling — the XLSX export writes into a BytesIO)
 from datetime import date, datetime
 
+import pandas as pd
 from flask import (Response, abort, current_app, flash, redirect, render_template,
                    request, send_file, url_for)
 from flask_login import current_user
@@ -28,18 +29,59 @@ def _current_filters():
         'date_to': (request.args.get('date_to') or '').strip(),
         'category_id': request.args.get('category_id', type=int),
         'q': (request.args.get('q') or '').strip(),
+        'month': (request.args.get('month') or '').strip(),
     }
 
 
+def _resolve_month(filters):
+    """Work out which month the list should show.
+
+    The page opens on the **current month** so it never drowns the user in
+    history.  Any explicit narrowing the user asked for wins:
+
+    * a ``month=YYYY-MM`` selection (the month navigation strip),
+    * explicit ``date_from`` / ``date_to``,
+    * category or search filters (those are not time-scoped).
+
+    ``all=1`` is the escape hatch that restores the old "every expense" view.
+    """
+    from app.services import payroll_service
+
+    current = payroll_service.current_month_key()
+    if request.args.get('all') in ('1', 'true', 'yes'):
+        return None, current
+    if filters['date_from'] or filters['date_to']:
+        return None, current
+    if filters['category_id'] or filters['q']:
+        return None, current
+    month = filters['month'] if payroll_service.parse_month(filters['month']) else current
+    return month, current
+
+
 def _filtered_expenses():
+    """Return (filters, expenses, month, current_month) for this request.
+
+    ``month`` is the resolved 'YYYY-MM' being shown, or None when the request
+    asks for all history.  It is returned rather than re-derived afterwards
+    because resolving a month writes its bounds into ``filters``, which would
+    make a second call mistake our own default for an explicit filter.
+    """
     filters = _current_filters()
+    month, current_month = _resolve_month(filters)
+    date_from = _parse_date(filters['date_from'])
+    date_to = _parse_date(filters['date_to'])
+    if month:
+        from app.services import payroll_service
+        date_from, date_to = payroll_service.month_bounds(month)
+        filters['date_from'] = date_from.isoformat()
+        filters['date_to'] = date_to.isoformat()
     expenses = expense_service.filter_expenses(
-        date_from=_parse_date(filters['date_from']),
-        date_to=_parse_date(filters['date_to']),
+        date_from=date_from,
+        date_to=date_to,
         category_id=filters['category_id'],
         search=filters['q'],
     )
-    return filters, expenses
+    return filters, expenses, month, current_month
 
 
 def _validate_expense_form():
@@ -55,6 +97,9 @@ def _validate_expense_form():
     errors = []
     if category is None or not category.is_active:
         errors.append('Please choose a valid category.')
+    elif getattr(category, 'is_system', False):
+        errors.append('The "%s" category is reserved for payroll payments and '
+                      'cannot be used for manual expenses.' % category.name)
     if amount is None or amount <= 0:
         errors.append('Amount must be a positive number.')
     if method not in EXPENSE_PAYMENT_METHODS:
@@ -76,8 +121,11 @@ def _validate_expense_form():
 @main.route('/expenses')
 @role_required(ROLE_ADMIN, ROLE_ACCOUNTANT)
 def expenses_list():
+    from app.services import payroll_service
+
     expense_service.seed_default_categories()
-    filters, expenses = _filtered_expenses()
+    filters, expenses, month, current_month = _filtered_expenses()
+    previous_month = payroll_service.shift_month(current_month, -1)
     return render_template(
         'expenses.html',
         expenses=expenses,
@@ -87,6 +135,16 @@ def expenses_list():
         filters=filters,
         payment_methods=EXPENSE_PAYMENT_METHODS,
         today=date.today(),
+        # Month navigation + the "continue previous month" shortcut.
+        month=month or '',
+        current_month=current_month,
+        month_label=payroll_service.month_label(month) if month else 'All months',
+        prev_month=payroll_service.shift_month(month, -1) if month else None,
+        next_month=payroll_service.shift_month(month, 1) if month else None,
+        show_all=(month is None),
+        previous_month=previous_month,
+        previous_month_label=payroll_service.month_label(previous_month),
+        previous_month_expenses=expense_service.previous_month_expenses(current_month),
     )
 
 
@@ -111,10 +169,18 @@ def expenses_add():
     )
     db.session.add(expense)
     db.session.flush()
+
+    # A "continued" expense is always a brand-new row; the source record is
+    # only referenced here for the audit trail and never modified.
+    source_id = request.form.get('continue_from', type=int)
+    source = db.session.get(Expense, source_id) if source_id else None
+    summary = 'Expense logged: %s Rs. %s' % (
+        values['category'].name, '{:,.0f}'.format(expense.amount))
+    if source is not None:
+        summary += ' (continued from expense #%d)' % source.id
     log_action('create', entity_type='Expense', entity_id=expense.id,
                after={'amount': expense.amount, 'category': values['category'].name},
-               summary='Expense logged: %s Rs. %s' % (
-                   values['category'].name, '{:,.0f}'.format(expense.amount)))
+               summary=summary)
     db.session.commit()
     flash('Expense recorded: %s — Rs. %s.' % (
         values['category'].name, '{:,.0f}'.format(expense.amount)), 'success')
@@ -127,6 +193,13 @@ def expenses_edit(id):
     expense = db.session.get(Expense, id)
     if expense is None:
         abort(404)
+    if expense.is_void:
+        flash('Voided expenses cannot be edited.', 'warning')
+        return redirect(url_for('main.expenses_list'))
+    if expense.salary_payment is not None:
+        flash('Salary-generated expenses are managed from Payroll — void the '
+              'salary payment instead.', 'warning')
+        return redirect(url_for('main.expenses_list'))
 
     values, errors = _validate_expense_form()
     if errors:
@@ -140,6 +213,10 @@ def expenses_edit(id):
     expense.date = values['date']
     expense.receipt_no = values['receipt_no']
     expense.description = values['description']
+    expense.updated_by_id = getattr(current_user, 'id', None)
+    expense.updated_by_name = getattr(current_user, 'username', None) or 'system'
+    from datetime import datetime as _dt
+    expense.updated_at = _dt.utcnow()
     log_action('update', entity_type='Expense', entity_id=expense.id,
                summary='Expense #%d updated (%s, Rs. %s)' % (
                    expense.id, values['category'].name,
@@ -149,21 +226,38 @@ def expenses_edit(id):
     return redirect(url_for('main.expenses_list'))
 
 
-@main.route('/expenses/<int:id>/delete', methods=['POST'])
+@main.route('/expenses/<int:id>/void', methods=['POST'])
 @role_required(ROLE_ADMIN, ROLE_ACCOUNTANT)
-def expenses_delete(id):
+def expenses_void(id):
+    """Void an expense with a mandatory reason — never deleted, excluded from
+    every total but kept visible in history."""
     expense = db.session.get(Expense, id)
     if expense is None:
         abort(404)
+    if expense.is_void:
+        flash('This expense is already voided.', 'warning')
+        return redirect(url_for('main.expenses_list'))
+    if expense.salary_payment is not None:
+        flash('Salary-generated expenses are voided from Payroll by voiding '
+              'the salary payment.', 'warning')
+        return redirect(url_for('main.expenses_list'))
+
+    reason = (request.form.get('void_reason') or '').strip()
+    if not reason:
+        flash('A reason is required to void an expense.', 'danger')
+        return redirect(url_for('main.expenses_list'))
 
     category_name = expense.category.name if expense.category else '—'
-    log_action('delete', entity_type='Expense', entity_id=expense.id,
-               before={'amount': expense.amount, 'category': category_name},
-               summary='Expense #%d deleted (%s, Rs. %s)' % (
-                   expense.id, category_name, '{:,.0f}'.format(expense.amount or 0)))
-    db.session.delete(expense)
+    amount = expense.amount
+    expense_service.void_expense(expense, reason,
+                                 actor_name=getattr(current_user, 'username', None) or 'system')
+    log_action('void', entity_type='Expense', entity_id=expense.id,
+               before={'amount': amount, 'category': category_name},
+               summary='Expense #%d voided (%s, Rs. %s): %s' % (
+                   expense.id, category_name, '{:,.0f}'.format(amount or 0), reason))
     db.session.commit()
-    flash('Expense deleted.', 'success')
+    flash('Expense #%d voided — it is excluded from all totals but kept in history.' % expense.id,
+          'warning')
     return redirect(url_for('main.expenses_list'))
 
 
@@ -197,6 +291,11 @@ def expenses_categories_edit(id):
     if category is None:
         abort(404)
 
+    if getattr(category, 'is_system', False):
+        flash('The "%s" category is system-reserved (fed by payroll) and '
+              'cannot be edited.' % category.name, 'danger')
+        return redirect(url_for('main.expenses_list'))
+
     name = (request.form.get('name') or '').strip()
     description = (request.form.get('description') or '').strip()
     if not name:
@@ -221,6 +320,11 @@ def expenses_categories_toggle(id):
     category = db.session.get(ExpenseCategory, id)
     if category is None:
         abort(404)
+
+    if getattr(category, 'is_system', False):
+        flash('The "%s" category is system-reserved (fed by payroll) and '
+              'cannot be deactivated.' % category.name, 'danger')
+        return redirect(url_for('main.expenses_list'))
 
     category.is_active = not category.is_active
     state = 'reactivated' if category.is_active else 'deactivated'
@@ -249,7 +353,7 @@ def _range_label(filters):
 @main.route('/expenses/export.csv')
 @role_required(ROLE_ADMIN, ROLE_ACCOUNTANT)
 def expenses_export_csv():
-    filters, expenses = _filtered_expenses()
+    filters, expenses, _month, _current = _filtered_expenses()
     text = expense_service.ledger_csv(expenses)
     log_action('export', entity_type='Expense',
                summary='Expense ledger exported to CSV (%d rows)' % len(expenses))
@@ -262,7 +366,7 @@ def expenses_export_csv():
 @main.route('/expenses/export.pdf')
 @role_required(ROLE_ADMIN, ROLE_ACCOUNTANT)
 def expenses_export_pdf():
-    filters, expenses = _filtered_expenses()
+    filters, expenses, _month, _current = _filtered_expenses()
     output = expense_service.ledger_pdf(expenses, current_app.root_path,
                                         range_label=_range_label(filters))
     log_action('export', entity_type='Expense',
@@ -271,3 +375,40 @@ def expenses_export_pdf():
     filename = 'expenses_ledger_%s.pdf' % datetime.now().strftime('%Y%m%d')
     return send_file(output, mimetype='application/pdf', as_attachment=True,
                      download_name=filename)
+
+
+@main.route('/expenses/export.xlsx')
+@role_required(ROLE_ADMIN, ROLE_ACCOUNTANT)
+def expenses_export_xlsx():
+    """Excel twin of ``/expenses/export.pdf`` (spec section 9: "PDF/Excel").
+
+    Same rows as the CSV/PDF export — one row per expense inside the current
+    filters, then a TOTAL row — written with the project's standard pandas +
+    openpyxl pattern (see ``reports._hub_export_file``).
+    """
+    filters, expenses, _month, _current = _filtered_expenses()
+    headers = ['Date', 'Category', 'Amount (Rs)', 'Payment Method',
+               'Receipt No', 'Description', 'Logged By']
+    rows = [[expense.date.strftime('%Y-%m-%d') if expense.date else '',
+             expense.category.name if expense.category else '',
+             round(float(expense.amount or 0), 2),
+             expense.payment_method or '',
+             expense.receipt_no or '',
+             expense.description or '',
+             expense.logged_by_name or '']
+            for expense in expenses]
+    frame = pd.DataFrame(rows, columns=headers)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        frame.to_excel(writer, index=False, sheet_name='Expenses')
+        writer.sheets['Expenses'].append(
+            ['', 'TOTAL', round(sum(row[2] for row in rows), 2), '', '', '', ''])
+    output.seek(0)
+    log_action('export', entity_type='Expense',
+               summary='Expense ledger exported to XLSX (%d rows)' % len(expenses))
+    db.session.commit()
+    filename = 'expenses_ledger_%s.xlsx' % datetime.now().strftime('%Y%m%d')
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True, download_name=filename)

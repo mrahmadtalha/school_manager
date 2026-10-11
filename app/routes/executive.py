@@ -63,24 +63,24 @@ def _attendance_stats(target_type, start, end):
 
 def _fee_totals(month_label_value):
     row = (db.session.query(
-               func.coalesce(func.sum(func.min(FeeRecordModel.amount_paid,
-                                               FeeRecordModel.amount_due)), 0.0),
-               func.coalesce(func.sum(func.max(FeeRecordModel.amount_due -
-                                               FeeRecordModel.amount_paid, 0.0)), 0.0))
+               func.coalesce(func.sum(func.min(FeeRecordModel.amount_paid_paisa,
+                                               FeeRecordModel.amount_due_paisa)), 0.0),
+               func.coalesce(func.sum(func.max(FeeRecordModel.amount_due_paisa -
+                                               FeeRecordModel.amount_paid_paisa, 0.0)), 0.0))
            .join(StudentModel, StudentModel.id == FeeRecordModel.student_id)
            .filter(StudentModel.is_active.is_(True),
                    FeeRecordModel.month_year == month_label_value)
            .one())
-    return float(row[0] or 0.0), float(row[1] or 0.0)
+    return float(row[0] or 0.0) / 100.0, float(row[1] or 0.0) / 100.0
 
 
 def _fee_chart(month_label_value):
     rows = (db.session.query(
                 ClassModel.name,
-                func.coalesce(func.sum(func.min(FeeRecordModel.amount_paid,
-                                                FeeRecordModel.amount_due)), 0.0),
-                func.coalesce(func.sum(func.max(FeeRecordModel.amount_due -
-                                                FeeRecordModel.amount_paid, 0.0)), 0.0))
+                func.coalesce(func.sum(func.min(FeeRecordModel.amount_paid_paisa,
+                                                FeeRecordModel.amount_due_paisa)), 0.0),
+                func.coalesce(func.sum(func.max(FeeRecordModel.amount_due_paisa -
+                                                FeeRecordModel.amount_paid_paisa, 0.0)), 0.0))
             .join(StudentModel, StudentModel.class_id == ClassModel.id)
             .join(FeeRecordModel, FeeRecordModel.student_id == StudentModel.id)
             .filter(StudentModel.is_active.is_(True),
@@ -88,8 +88,8 @@ def _fee_chart(month_label_value):
             .group_by(ClassModel.id).order_by(ClassModel.id).all())
     return {
         'labels': [row[0] for row in rows],
-        'collected': [float(row[1] or 0) for row in rows],
-        'outstanding': [float(row[2] or 0) for row in rows],
+        'collected': [float(row[1] or 0) / 100.0 for row in rows],
+        'outstanding': [float(row[2] or 0) / 100.0 for row in rows],
     }
 
 

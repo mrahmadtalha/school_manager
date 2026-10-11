@@ -9,6 +9,7 @@ from app.routes import (
     promotions,
     teachers,
     classes,
+    timetables,
     attendance,
     examinations,
     term_exams,
@@ -23,4 +24,6 @@ from app.routes import (
     audit,
     portal,
     license,
+    other_income,
+    inventory,
 )

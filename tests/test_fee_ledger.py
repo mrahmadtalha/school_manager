@@ -12,9 +12,11 @@ def _fee_records(app, student_id, month=MONTH):
     return FeeRecordModel.query.filter_by(student_id=student_id, month_year=month).first()
 
 
-def test_viewing_fees_creates_the_monthly_charge(admin_client, app, seed):
-    response = admin_client.get(f'/fees?class_id={seed["class_id"]}&month_year={MONTH}')
-    assert response.status_code == 200
+def test_generating_charges_creates_the_monthly_charge(admin_client, app, seed):
+    response = admin_client.post('/fees/generate-charges', data={
+        'month_year': MONTH, 'class_id': str(seed['class_id']),
+    }, follow_redirects=False)
+    assert response.status_code == 302
 
     with app.app_context():
         charges = FeeTransaction.query.filter_by(student_id=seed['student_id'],
@@ -57,7 +59,7 @@ def test_partial_then_full_payment_reconciles(admin_client, app, seed):
         assert record.balance == 0.0
 
         # The summary must equal the sum of the individual transactions.
-        charged, paid = ledger_totals(student_id, MONTH)
+        charged, paid, _written = ledger_totals(student_id, MONTH)
         assert charged == record.amount_due
         assert paid == record.amount_paid
 
@@ -89,7 +91,9 @@ def test_reconciliation_reports_no_discrepancy_for_consistent_data(admin_client,
 
 def test_reconciliation_detects_a_tampered_summary(admin_client, app, seed):
     student_id = seed['student_id']
-    admin_client.get(f'/fees?class_id={seed["class_id"]}&month_year={MONTH}')
+    admin_client.post('/fees/generate-charges', data={
+        'month_year': MONTH, 'class_id': str(seed['class_id']),
+    }, follow_redirects=False)
 
     with app.app_context():
         record = _fee_records(app, student_id)
@@ -114,10 +118,12 @@ def test_reconciliation_detects_a_tampered_summary(admin_client, app, seed):
 def test_ledger_totals_span_multiple_months(admin_client, app, seed):
     student_id = seed['student_id']
     for month in (MONTH, OTHER_MONTH):
-        admin_client.get(f'/fees?class_id={seed["class_id"]}&month_year={month}')
+        admin_client.post('/fees/generate-charges', data={
+            'month_year': month, 'class_id': str(seed['class_id']),
+        }, follow_redirects=False)
 
     with app.app_context():
-        charged, paid = ledger_totals(student_id)
+        charged, paid, _written = ledger_totals(student_id)
         assert charged == 5000.0
         assert paid == 0.0
 
@@ -161,30 +167,28 @@ def test_partial_payment_rejects_overpayment_and_autogenerates_reference(admin_c
         assert payments[0].reference.startswith('SLIP-')
         assert payments[0].amount == 1000.0
 
-    blocked = admin_client.post(f'/fees/pay/{student_id}', data={
+    # Overpayment is rejected: advance credit is switched off, and a payment
+    # may never exceed the student's total outstanding dues (1,500 left).
+    overpaid = admin_client.post(f'/fees/pay/{student_id}', data={
         'month_year': MONTH,
         'amount_paid': '2000',
         'method': 'bank',
-    }, follow_redirects=False)
-    assert blocked.status_code == 302
+    }, follow_redirects=True)
+    assert b"more than the student&#39;s total dues of Rs 1500.00" in overpaid.data
+
+    with app.app_context():
+        from app.services.fee_ledger import student_credit_paisa
+        payments = FeeTransaction.query.filter_by(student_id=student_id, month_year=MONTH,
+                                                  txn_type='payment').all()
+        assert len(payments) == 1
+        assert student_credit_paisa(student_id) == 0
 
     with app.app_context():
         payments = FeeTransaction.query.filter_by(student_id=student_id, month_year=MONTH,
                                                   txn_type='payment').all()
         assert len(payments) == 1
-
-    allowed = admin_client.post(f'/fees/pay/{student_id}', data={
-        'month_year': MONTH,
-        'amount_paid': '1500',
-        'method': 'online',
-    }, follow_redirects=False)
-    assert allowed.status_code == 302
-
-    with app.app_context():
-        payments = FeeTransaction.query.filter_by(student_id=student_id, month_year=MONTH,
-                                                  txn_type='payment').all()
-        assert len(payments) == 2
-        assert sum(p.amount for p in payments) == 2500.0
+        # Cash received is 1000, all of it allocated to the charge.
+        assert sum(p.amount for p in payments) == 1000.0
 
     search = admin_client.get(f'/fees?month_year={MONTH}&ref_query={payments[0].reference}')
     assert search.status_code == 200
@@ -225,11 +229,65 @@ def test_void_transactions_are_excluded_from_totals(app, seed):
         txn = record_adjustment(student, MONTH, 300.0, note='late fine')
         db.session.commit()
 
-        charged, _ = ledger_totals(student_id, MONTH)
+        charged, _paid, _written = ledger_totals(student_id, MONTH)
         assert charged == 300.0
 
-        void_transaction(txn, note='mistake')
+        void_transaction(txn, reason='mistake')
         db.session.commit()
 
-        charged_after, _ = ledger_totals(student_id, MONTH)
+        charged_after, _paid, _written = ledger_totals(student_id, MONTH)
         assert charged_after == 0.0
+
+
+def test_paid_month_is_protected_from_bulk_update_and_due_override(admin_client, app, seed):
+    student_id = seed['student_id']
+
+    admin_client.post('/fees/generate-charges', data={
+        'month_year': MONTH, 'class_id': str(seed['class_id']),
+    })
+    admin_client.post(f'/fees/pay/{student_id}', data={
+        'month_year': MONTH, 'amount_paid': '1000', 'method': 'cash',
+    })
+
+    with app.app_context():
+        charge = FeeTransaction.query.filter_by(
+            student_id=student_id, month_year=MONTH,
+            txn_type='charge', is_void=False).one()
+        assert charge.amount == 2500.0
+
+    # Bulk update (option: current calendar month only).  September is a PAST
+    # month by the time the bulk runs, so its charge is never touched; the
+    # students' monthly_fee setting (for future charges) does move.
+    bulk = admin_client.post('/fees/class-bulk-update', data={
+        'class_id': str(seed['class_id']), 'monthly_fee': '9999',
+        'month_year': MONTH, 'confirm_bulk_update': 'yes',
+    }, follow_redirects=True)
+    assert bulk.status_code == 200
+    assert b'Past months were not touched' in bulk.data
+
+    # Recording another payment with the SAME due value posted (what the
+    # readonly field always sends) must never be blocked by the guard.
+    another = admin_client.post(f'/fees/pay/{student_id}', data={
+        'month_year': MONTH, 'amount_paid': '100',
+        'amount_due_override': '2500', 'method': 'cash',
+    }, follow_redirects=True)
+    assert another.status_code == 200
+    assert b'can no longer be overwritten' not in another.data
+
+    # Due override that actually CHANGES the charge on a paid month: rejected.
+    override = admin_client.post(f'/fees/pay/{student_id}', data={
+        'month_year': MONTH, 'amount_paid': '0', 'amount_due_override': '9999',
+    }, follow_redirects=True)
+    assert override.status_code == 200
+    assert b'overwritten' in override.data
+
+    with app.app_context():
+        charge = FeeTransaction.query.filter_by(
+            student_id=student_id, month_year=MONTH,
+            txn_type='charge', is_void=False).one()
+        assert charge.amount == 2500.0
+        record = _fee_records(app, student_id)
+        assert record.amount_due == 2500.0
+        assert record.amount_paid == 1100.0
+        student = db.session.get(StudentModel, student_id)
+        assert student.monthly_fee == 9999.0     # future charges use it

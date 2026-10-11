@@ -1,10 +1,12 @@
-"""Monthly payroll: attendance-aware suggestions, generation and payslip PDFs."""
+"""Monthly payroll: attendance-aware suggestions, generation, partial salary
+payments (mirrored into the reserved Salaries expense category) and payslips."""
 import io
 from calendar import monthrange
 from datetime import date, datetime
 
 from app.database import db
-from app.models import AttendanceModel, SchoolSettings, StaffPayroll, TeacherModel
+from app.models import (AttendanceModel, Expense, ExpenseCategory, SalaryPayment,
+                        SchoolSettings, StaffPayroll, TeacherModel)
 from app.services.teacher_payroll import get_school_working_days
 
 
@@ -140,6 +142,9 @@ def preview_rows(month_year, per_late_amount=0.0, leave_as_absent=False):
             'bonus': bonus,
             'deductions': deductions,
             'net': record.net_salary if record else round(base + bonus - deductions, 2),
+            'paid': record.paid_amount if record else 0.0,
+            'remaining': record.remaining_amount if record else round(base + bonus - deductions, 2),
+            'prior_balance': prior_balance_for(teacher.id, month_year),
             'notes': (record.notes or '') if record else '',
         })
     return rows
@@ -190,6 +195,7 @@ def generate(month_year, form, generated_by):
         record.notes = ((form.get('notes_%d' % teacher.id) or '').strip()[:255]
                         or None)
         record.generated_by = (generated_by or 'system')[:80]
+        record.updated_by_name = generated_by or 'system'
         record.working_days = stats.get('working_days')
         record.present_days = stats.get('present')
         record.absent_days = stats.get('absent')
@@ -201,12 +207,128 @@ def generate(month_year, form, generated_by):
 
 
 def month_totals(month_year):
+    """Accrual view for one salary month: payable vs actually paid."""
     records = StaffPayroll.query.filter_by(month_year=month_year).all()
     total = round(sum(r.net_salary or 0 for r in records), 2)
-    paid = round(sum(r.net_salary or 0 for r in records
-                     if r.payment_status == 'Paid'), 2)
+    paid = round(sum(r.paid_amount for r in records), 2)
+    partially_paid = sum(1 for r in records if 0 < r.paid_amount + 1e-9 < r.net_salary - 1e-9)
+    fully_paid = sum(1 for r in records
+                     if r.net_salary and r.paid_amount + 1e-9 >= r.net_salary)
     return {'count': len(records), 'total': total, 'paid': paid,
-            'pending': round(total - paid, 2)}
+            'pending': round(total - paid, 2),
+            'paid_count': fully_paid, 'partial_count': partially_paid,
+            'unpaid_count': len(records) - fully_paid - partially_paid}
+
+
+def prior_balance_for(teacher_id, month_year):
+    """Unpaid remainder of every salary month BEFORE ``month_year``."""
+    rows = (StaffPayroll.query
+            .filter(StaffPayroll.teacher_id == teacher_id,
+                    StaffPayroll.month_year < month_year).all())
+    return round(sum(max(r.net_salary - r.paid_amount, 0.0) for r in rows), 2)
+
+
+def _salaries_category():
+    return ExpenseCategory.query.filter_by(name='Salaries').first()
+
+
+def sync_payroll_status(record, updated_by=None):
+    """Keep the legacy payment_status column in step with the payments."""
+    paid = record.paid_amount
+    if record.net_salary and paid + 0.01 >= record.net_salary:
+        record.payment_status = 'Paid'
+    elif paid > 0:
+        record.payment_status = 'Partial'
+    else:
+        record.payment_status = 'Pending'
+        record.payment_date = None
+        record.payment_method = None
+    if updated_by is not None:
+        record.updated_by_id = updated_by.get('id')
+        record.updated_by_name = updated_by.get('name')
+
+
+def record_salary_payment(record, amount, payment_date, method='Cash', note=None,
+                          actor=None):
+    """Pay part of a month's salary; mirrors the cash into a Salaries expense.
+
+    Returns the new :class:`SalaryPayment`.  ``amount`` may not exceed the
+    month's remaining balance.
+    """
+    amount = round(float(amount or 0), 2)
+    if amount <= 0:
+        raise ValueError('Payment amount must be greater than zero.')
+    remaining = round(record.net_salary - record.paid_amount, 2)
+    if amount > remaining + 0.009:
+        raise ValueError('Payment exceeds the remaining salary balance for %s '
+                         '(maximum: %.2f PKR).' % (month_label(record.month_year), remaining))
+
+    _, username, user_id = _actor(actor)
+    category = _salaries_category()
+    if category is None:
+        # Cash Out counts salary cash ONLY through this mirror row — a missing
+        # category row must self-heal here, never silently drop the mirror.
+        from app.services.expense_service import ensure_salaries_category
+        category = ensure_salaries_category()
+    payment = SalaryPayment(
+        teacher_id=record.teacher_id, payroll_id=record.id,
+        amount=amount, payment_date=payment_date or date.today(),
+        method=method if method in ('Cash', 'Bank', 'Cheque') else 'Cash',
+        note=(note or None) and str(note)[:255],
+        created_by_id=user_id, created_by_name=username)
+    db.session.add(payment)
+    db.session.flush()
+
+    if category is not None:
+        teacher_name = record.teacher.teacher_name if record.teacher else record.teacher_id
+        expense = Expense(
+            category_id=category.id, amount=amount,
+            payment_method=payment.method, date=payment.payment_date,
+            description='Salary payment: %s — %s' % (teacher_name,
+                                                     month_label(record.month_year)),
+            logged_by_id=user_id, logged_by_name=username or 'system')
+        db.session.add(expense)
+        db.session.flush()
+        payment.expense_id = expense.id
+
+    record.payment_date = payment.payment_date
+    record.payment_method = payment.method
+    sync_payroll_status(record, updated_by={'id': user_id, 'name': username})
+    return payment
+
+
+def void_salary_payment(payment, reason, actor=None):
+    """Void a salary payment (mandatory reason) and the expense it created."""
+    if payment.is_void:
+        return
+    _, username, _ = _actor(actor)
+    payment.is_void = True
+    payment.void_reason = (reason or 'No reason recorded')[:255]
+    payment.voided_at = datetime.utcnow()
+    payment.voided_by_name = username or 'system'
+    if payment.expense is not None and not payment.expense.is_void:
+        payment.expense.is_void = True
+        payment.expense.void_reason = 'Salary payment voided: %s' % payment.void_reason
+        payment.expense.voided_at = datetime.utcnow()
+        payment.expense.voided_by_name = username or 'system'
+    record = payment.payroll
+    if record is not None:
+        last_active = (SalaryPayment.query
+                       .filter_by(payroll_id=record.id, is_void=False)
+                       .order_by(SalaryPayment.payment_date.desc(),
+                                 SalaryPayment.id.desc()).first())
+        if last_active is not None:
+            record.payment_date = last_active.payment_date
+            record.payment_method = last_active.method
+        sync_payroll_status(record, updated_by={'id': _actor(actor)[2], 'name': username})
+
+
+def _actor(actor):
+    """Resolve ('role', username, user_id) from a current_user-like object."""
+    if actor is None:
+        return None, 'system', None
+    return (getattr(actor, 'role', None), getattr(actor, 'username', None) or 'system',
+            getattr(actor, 'id', None))
 
 
 # --------------------------------------------------------------------------- #

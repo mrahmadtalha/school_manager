@@ -10,7 +10,7 @@
     {% if current_user.is_admin %}
     <div class="btn-toolbar gap-2">
         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTermExamModal">
-            <i class="fas fa-plus me-1"></i> New Term Exam
+            <i class="fas fa-plus me-1"></i> Add Term Exam
         </button>
     </div>
     {% endif %}
@@ -18,14 +18,6 @@
 
 {% set exam_active = 'examinations' %}
 {% include '_exam_module_switch.html' %}
-
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}{% for category, message in messages %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show">
-      {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-  {% endfor %}{% endif %}
-{% endwith %}
 
 <!-- Filters -->
 <div class="card border-0 bg-light shadow-sm mb-4">
@@ -129,7 +121,7 @@
 {% else %}
 <div class="text-center py-5">
     <i class="fas fa-file-signature fa-3x text-muted mb-3"></i>
-    <p class="text-muted fs-5">No term exams yet.{% if current_user.is_admin %} Click <strong>New Term Exam</strong> to schedule one.{% endif %}</p>
+    <p class="text-muted fs-5">No term exams yet.{% if current_user.is_admin %} Click <strong>Add Term Exam</strong> to schedule one.{% endif %}</p>
 </div>
 {% endif %}
 
@@ -142,7 +134,7 @@
                 <div class="modal-header px-4 py-3 text-white" style="background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%); border: none;">
                     <div>
                         <p class="mb-1 small text-uppercase text-white-50 fw-bold" style="letter-spacing: 0.08em;">Term Examination</p>
-                        <h5 class="modal-title mb-0"><i class="fas fa-file-signature me-2"></i>New Term Exam</h5>
+                        <h5 class="modal-title mb-0"><i class="fas fa-file-signature me-2"></i>Add Term Exam</h5>
                     </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -299,7 +291,7 @@ function teSelectAll(checked) {
 
 function teUseStartDate() {
     var start = document.getElementById('termStartDate').value;
-    if (!start) { alert('Pick a start date first.'); return; }
+    if (!start) { window.SchoolUI.toast('Pick a start date first.', 'warning'); return; }
     document.querySelectorAll('.te-subject-row').forEach(function (row) {
         if (row.style.display === 'none') return;
         var dateInput = row.querySelector('input[type="date"]');
