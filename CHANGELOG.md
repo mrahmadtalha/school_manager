@@ -54,6 +54,43 @@ release, rename `[Unreleased]` to the new version and date.
 
 ---
 
+## [2.2.0] - 2026-10-13
+
+### Added
+- Admission fee — a one-time fee for new students. Set a school-wide admission fee
+  (and, optionally, a different fee per class) from **Fees → Admission Fee Settings**; the
+  Add Student form then fills it in automatically and an administrator can edit it, give a
+  concession (percentage, fixed amount or full waiver, reason optional) and take the money
+  at once. A teacher adding a student records the standard fee as pending. Money is kept
+  as numbered receipts (ADM-0001…) that can be printed, voided with a reason, and paid in
+  instalments. New **Admission Fees** register and per-student page. The money is stored as
+  Other Income, so it shows in Cash In, the dashboard account book and the comparisons, and
+  never touches the monthly-fee ledger. Opt-in: nothing changes until a fee is set, students
+  admitted earlier are untouched ("not applicable"), and the upgrade takes a safety backup
+  of the database before adding its new columns.
+- Students — bulk import accepts optional Admission Fee, Admission Concession and
+  Admission Fee Paid columns (administrator only, once an admission fee is set). An amount
+  already paid is kept as an opening amount that is **not** counted as income, so past
+  months never change; the administrator can tick one box to record it as income instead.
+  The students list and its PDF/Excel/CSV exports gain Admission Fee, Received, Pending
+  and Status columns, and administrators get a one-click link to a student's admission page.
+- Admission fee — the register exports to PDF, Excel and CSV (also under Reports → Finance),
+  following the page's filters. The Financial Overview and the Principal's dashboard show
+  admission fees received on their own line; the amount is already inside Cash In and is
+  never added twice.
+- Assistant — new **School Assistant** page for administrators. Ask in English or
+  Roman Urdu and get answers from your own data: today's attendance, fees collected,
+  defaulters, a student's dues, expenses, salary, profit and student/teacher counts,
+  plus short how-to guides. Works fully offline with no AI service, and is read-only.
+
+### Fixed
+- Backup — the Backup button on an installed product failed with "Database file not
+  found: C:\Program Files\School Manager\_internal\instance\school.db". Backups now
+  always read the live database from the school's data folder
+  (`%LOCALAPPDATA%\SchoolManager`), matching where the app actually stores it.
+
+---
+
 ## [2.1.0] - 2026-10-10
 
 Timetables — the timetable system was rebuilt around two templates, and the

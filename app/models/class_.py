@@ -8,6 +8,7 @@ class ClassModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)
     monthly_fee = db.Column(db.Float, nullable=True)   # Standard monthly fee for this class
+    admission_fee = db.Column(db.Float, nullable=True)  # One-time admission fee for this class (NULL = use the school default)
 
     sections = db.relationship('SectionModel', backref='class_info', cascade='all, delete-orphan')
     students = db.relationship('StudentModel', backref='class_info', lazy=True)

@@ -63,6 +63,9 @@
             <div class="text-muted small text-uppercase fw-bold">Other Income {{ cash_badge }}</div>
             <div class="h4 fw-bold mb-1">Rs. {{ '{:,.2f}'.format(snapshot.other_income) }}</div>
             <div class="text-muted small">canteen, events, trips etc. received in {{ snapshot.label }} — <a href="{{ url_for('main.other_income_page') }}">record other income</a></div>
+            {% if snapshot.admission_fees %}
+            <div class="small mt-1"><i class="fas fa-door-open text-primary me-1"></i>of which admission fees: <b>Rs. {{ '{:,.2f}'.format(snapshot.admission_fees) }}</b> &middot; <a href="{{ url_for('main.admission_register') }}">register</a></div>
+            {% endif %}
         </div></div>
     </div>
     <div class="col-md-3">

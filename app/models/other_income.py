@@ -36,6 +36,12 @@ class OtherIncome(db.Model):
     amount_paisa = db.Column(db.Integer, nullable=False)
     description = db.Column(db.String(200), nullable=True)
 
+    # Set for money that belongs to one student (admission fee receipts).
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'),
+                           nullable=True, index=True)
+    receipt_no = db.Column(db.String(40), nullable=True, index=True)
+    payment_method = db.Column(db.String(20), nullable=True)
+
     is_void = db.Column(db.Boolean, nullable=False, default=False)
     void_reason = db.Column(db.String(255), nullable=True)
     voided_at = db.Column(db.DateTime, nullable=True)
@@ -50,6 +56,7 @@ class OtherIncome(db.Model):
                            onupdate=datetime.utcnow)
 
     category = db.relationship('OtherIncomeCategory', backref='incomes')
+    student = db.relationship('StudentModel', lazy=True)
 
     @property
     def amount(self):

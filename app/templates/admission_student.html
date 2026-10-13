@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-header d-flex justify-content-between flex-wrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Admission fee</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-door-open text-primary me-2"></i>{{ student.student_name }}</h1>
+        <p class="text-muted small mb-0">
+            {{ student.class_info.name if student.class_info else 'No class' }} &middot; Roll {{ student.roll_number }}
+            &middot; Father: {{ student.father_name }}
+            {% if student.admission_number %}&middot; Admission No {{ student.admission_number }}{% endif %}
+        </p>
+    </div>
+    <a href="{{ url_for('main.admission_register') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i> Back to register
+    </a>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2 class="h5 mb-0">Terms</h2>
+                    <span class="badge {{ {'pending': 'bg-warning text-dark', 'partial': 'bg-info text-dark', 'paid': 'bg-success', 'waived': 'bg-secondary'}.get(info.status, 'bg-light text-muted border') }}">{{ status_labels[info.status] }}</span>
+                </div>
+                {% if info.applicable %}
+                <dl class="row mb-0 small">
+                    <dt class="col-6 text-muted">Standard admission fee</dt><dd class="col-6 text-end">{{ money(info.standard) }}</dd>
+                    <dt class="col-6 text-muted">Concession
+                        {% if info.discount_type == 'percentage' %}({{ '%g'|format(info.discount_value or 0) }}%){% elif info.discount_type == 'waived' %}(full waiver){% elif info.discount_type == 'fixed' %}(fixed){% endif %}
+                    </dt>
+                    <dd class="col-6 text-end">{{ ('- ' ~ money(info.concession)) if info.concession else '—' }}</dd>
+                    <dt class="col-6 text-muted">Agreed (net) fee</dt><dd class="col-6 text-end fw-bold">{{ money(info.net) }}</dd>
+                    <dt class="col-6 text-muted">Received so far</dt><dd class="col-6 text-end text-success">{{ money(info.received) }}</dd>
+                    {% if info.prior_paid %}<dt class="col-6 text-muted ps-3">of which opening amount</dt><dd class="col-6 text-end text-muted">{{ money(info.prior_paid) }} <span class="small">(paid earlier, not counted as income)</span></dd>{% endif %}
+                    <dt class="col-6 text-muted">Pending</dt><dd class="col-6 text-end {{ 'text-danger fw-bold' if info.balance }}">{{ money(info.balance) if info.balance else '—' }}</dd>
+                    {% if info.note %}<dt class="col-6 text-muted">Reason</dt><dd class="col-6 text-end">{{ info.note }}</dd>{% endif %}
+                    {% if info.date %}<dt class="col-6 text-muted">Recorded on</dt><dd class="col-6 text-end">{{ info.date.strftime('%d %b %Y') }}</dd>{% endif %}
+                </dl>
+                {% else %}
+                <p class="text-muted mb-0">No admission fee is on record for this student (for example, admitted before this feature was switched on).{% if is_admin %} You can set one below.{% endif %}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        {% if can_receive and info.applicable and info.balance %}
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body">
+                <h2 class="h5 mb-3">Receive payment</h2>
+                <form method="POST" action="{{ url_for('main.admission_receive', student_id=student.id) }}" class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-muted mb-1">Amount (PKR)</label>
+                        <input type="number" step="0.01" min="0.01" max="{{ info.balance / 100 }}" name="amount" value="{{ '%.2f'|format(info.balance / 100) }}" class="form-control" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-muted mb-1">Date</label>
+                        <input type="date" name="payment_date" value="{{ today.isoformat() }}" max="{{ today.isoformat() }}" class="form-control" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-muted mb-1">Method</label>
+                        <select name="method" class="form-select">
+                            {% for m in methods %}<option value="{{ m }}">{{ m|capitalize }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-muted mb-1">Note <span class="fw-normal">(optional)</span></label>
+                        <input type="text" name="note" maxlength="80" class="form-control">
+                    </div>
+                    <div class="col-12 d-grid">
+                        <button type="submit" class="btn btn-success"><i class="fas fa-receipt me-1"></i> Receive &amp; open receipt</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if is_admin %}
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5 mb-1">{{ 'Change terms / concession' if info.applicable else 'Set admission fee' }}</h2>
+                <p class="text-muted small">Administrator only. The agreed fee can never go below what has already been received; to lower it further, void a payment first.</p>
+                <form method="POST" action="{{ url_for('main.admission_terms', student_id=student.id) }}" class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold text-muted mb-1">Admission fee (PKR)</label>
+                        <input type="number" step="0.01" min="0" name="admission_fee" class="form-control"
+                               value="{{ '%.2f'|format((info.standard if info.applicable else default_standard * 100) / 100) }}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold text-muted mb-1">Concession</label>
+                        <select name="admission_discount_type" class="form-select">
+                            <option value="" {{ 'selected' if not info.discount_type }}>None</option>
+                            <option value="percentage" {{ 'selected' if info.discount_type == 'percentage' }}>Percentage (%)</option>
+                            <option value="fixed" {{ 'selected' if info.discount_type == 'fixed' }}>Fixed amount (PKR)</option>
+                            <option value="waived" {{ 'selected' if info.discount_type == 'waived' }}>Full waiver</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold text-muted mb-1">Value</label>
+                        <input type="number" step="0.01" min="0" name="admission_discount_value" class="form-control" value="{{ info.discount_value or 0 }}">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-bold text-muted mb-1">Reason <span class="fw-normal">(optional)</span></label>
+                        <input type="text" name="admission_note" maxlength="200" class="form-control" value="{{ info.note or '' }}">
+                    </div>
+                    <div class="col-12 d-grid">
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i> Save terms</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-body pb-2"><h2 class="h5 mb-0">Receipts</h2></div>
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead class="table-light"><tr>
+                <th>Receipt</th><th>Date</th><th>Method</th><th class="text-end">Amount</th><th>Status</th><th></th>
+            </tr></thead>
+            <tbody>
+            {% for p in payments %}
+                <tr class="{{ 'text-decoration-line-through text-muted' if p.is_void }}">
+                    <td class="font-monospace">{{ p.receipt_no or '—' }}</td>
+                    <td>{{ p.income_date.strftime('%d %b %Y') }}</td>
+                    <td>{{ (p.payment_method or '—')|capitalize }}</td>
+                    <td class="text-end">{{ money(p.amount_paisa) }}</td>
+                    <td>
+                        {% if p.is_void %}<span class="badge bg-danger">Voided</span> <span class="small">{{ p.void_reason }}</span>
+                        {% else %}<span class="badge bg-success">Active</span>{% endif %}
+                    </td>
+                    <td class="text-end">
+                        <a href="{{ url_for('main.admission_receipt', row_id=p.id) }}" class="btn btn-sm btn-outline-dark"><i class="fas fa-print me-1"></i> Receipt</a>
+                        {% if can_receive and not p.is_void %}
+                        <details class="d-inline-block ms-1 text-start">
+                            <summary class="btn btn-sm btn-outline-danger">Void</summary>
+                            <form method="POST" action="{{ url_for('main.admission_payment_void', row_id=p.id) }}" class="d-flex gap-1 mt-1">
+                                <input type="text" name="reason" required maxlength="200" class="form-control form-control-sm" placeholder="Reason (required)">
+                                <button class="btn btn-sm btn-danger" type="submit">Confirm</button>
+                            </form>
+                        </details>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="6" class="text-center text-muted py-4">No payments recorded yet.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

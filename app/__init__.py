@@ -5,6 +5,7 @@ from flask_login import LoginManager, current_user
 
 from app.bootstrap import (
     backfill_financial_v2,
+    migrate_admission_fee_schema,
     create_default_admin,
     ensure_school_settings,
     inject_school_settings,
@@ -84,6 +85,8 @@ def create_app(config_override=None):
         from app.models import AdminUser  # noqa: F401  (ensures models are imported)
 
         db.create_all()
+        # Admission-fee columns first, so no ORM query meets a missing column.
+        migrate_admission_fee_schema(app)
         # Financial v2 rebuilds the money tables (paisa + cash dates) and must
         # run before any ORM query touches them.
         migrate_financial_v2_schema(app)

@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-3">
+    <div>
+        <p class="eyebrow mb-2">Administration</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-robot text-primary me-2"></i>School Assistant</h1>
+        <p class="text-muted small mb-0">
+            Ask in English or Roman Urdu. Answers come from your own data &mdash; offline, no internet, no AI service. Read-only: the assistant never changes anything.
+        </p>
+    </div>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="assistantClear">
+            <i class="fas fa-eraser me-1"></i> Clear chat
+        </button>
+    </div>
+</div>
+
+<style>
+    .assistant-box { max-width: 900px; }
+    .assistant-log { height: 55vh; min-height: 320px; overflow-y: auto; background: #f8fafc;
+                     border: 1px solid #e2e8f0; border-radius: .75rem; padding: 1rem; }
+    .assistant-msg { max-width: 85%; margin-bottom: .75rem; padding: .6rem .85rem; border-radius: .9rem;
+                     white-space: pre-wrap; word-wrap: break-word; font-size: .93rem; }
+    .assistant-msg.user { margin-left: auto; background: #0d6efd; color: #fff; border-bottom-right-radius: .25rem; }
+    .assistant-msg.bot { background: #fff; border: 1px solid #e2e8f0; border-bottom-left-radius: .25rem; }
+    .assistant-msg table { font-size: .85rem; margin: .5rem 0 0; white-space: normal; }
+    .assistant-chip { cursor: pointer; }
+    .assistant-links a { font-size: .8rem; }
+</style>
+
+<div class="assistant-box">
+    <div id="assistantLog" class="assistant-log mb-3" aria-live="polite"></div>
+
+    <div id="assistantChips" class="d-flex flex-wrap gap-2 mb-3"></div>
+
+    <div class="input-group">
+        <input type="text" id="assistantInput" class="form-control" maxlength="{{ max_length }}"
+               placeholder="Maslan: aaj kitne students absent hain?" autocomplete="off" autofocus>
+        <button type="button" class="btn btn-primary" id="assistantSend">
+            <i class="fas fa-paper-plane me-1"></i> Send
+        </button>
+    </div>
+</div>
+
+<script>
+(function () {
+    var ASK_URL = {{ url_for('main.assistant_ask')|tojson }};
+    var STARTERS = {{ starters|tojson }};
+    var STORE_KEY = 'sm.assistant.history';
+    var log = document.getElementById('assistantLog');
+    var input = document.getElementById('assistantInput');
+    var chips = document.getElementById('assistantChips');
+    var history = [];
+
+    function save() { try { sessionStorage.setItem(STORE_KEY, JSON.stringify(history.slice(-40))); } catch (e) {} }
+    function load() {
+        try { history = JSON.parse(sessionStorage.getItem(STORE_KEY) || '[]') || []; } catch (e) { history = []; }
+    }
+
+    // Everything below uses textContent only, so school data can never inject HTML.
+    function bubble(kind) {
+        var div = document.createElement('div');
+        div.className = 'assistant-msg ' + kind;
+        log.appendChild(div);
+        return div;
+    }
+    function renderUser(text) { bubble('user').textContent = text; }
+    function renderBot(data) {
+        var div = bubble('bot');
+        div.appendChild(document.createTextNode(data.answer || ''));
+        if (data.table && data.table.rows && data.table.rows.length) {
+            var wrap = document.createElement('div');
+            wrap.className = 'table-responsive';
+            var table = document.createElement('table');
+            table.className = 'table table-sm table-bordered mb-0';
+            var thead = document.createElement('thead');
+            var hr = document.createElement('tr');
+            data.table.columns.forEach(function (c) {
+                var th = document.createElement('th'); th.textContent = c; hr.appendChild(th);
+            });
+            thead.appendChild(hr); table.appendChild(thead);
+            var tbody = document.createElement('tbody');
+            data.table.rows.forEach(function (row) {
+                var tr = document.createElement('tr');
+                row.forEach(function (cell) {
+                    var td = document.createElement('td'); td.textContent = cell; tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody); wrap.appendChild(table); div.appendChild(wrap);
+        }
+        if (data.links && data.links.length) {
+            var links = document.createElement('div');
+            links.className = 'assistant-links mt-2';
+            data.links.forEach(function (l) {
+                var a = document.createElement('a');
+                a.href = l.url; a.className = 'me-3';
+                a.textContent = l.label + ' \u2192';
+                links.appendChild(a);
+            });
+            div.appendChild(links);
+        }
+        if (data.suggestions && data.suggestions.length) {
+            var sug = document.createElement('div');
+            sug.className = 'd-flex flex-wrap gap-2 mt-2';
+            data.suggestions.forEach(function (s) { sug.appendChild(chip(s)); });
+            div.appendChild(sug);
+        }
+    }
+    function chip(text) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn btn-outline-primary btn-sm assistant-chip';
+        b.textContent = text;
+        b.addEventListener('click', function () { ask(text); });
+        return b;
+    }
+    function scroll() { log.scrollTop = log.scrollHeight; }
+
+    function ask(question) {
+        question = (question || '').trim();
+        if (!question) { return; }
+        input.value = '';
+        renderUser(question);
+        history.push({ role: 'user', text: question });
+        var wait = bubble('bot'); wait.textContent = '...';
+        scroll();
+        fetch(ASK_URL + '?q=' + encodeURIComponent(question), { credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' } })
+            .then(function (r) {
+                if (!r.ok) { throw new Error('http ' + r.status); }
+                return r.json();
+            })
+            .then(function (data) {
+                log.removeChild(wait);
+                renderBot(data);
+                history.push({ role: 'bot', data: data });
+                save(); scroll();
+            })
+            .catch(function () {
+                wait.textContent = 'Sorry, the assistant could not answer right now. Please try again.';
+                scroll();
+            });
+    }
+
+    document.getElementById('assistantSend').addEventListener('click', function () { ask(input.value); });
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); ask(input.value); } });
+    document.getElementById('assistantClear').addEventListener('click', function () {
+        history = []; save(); log.innerHTML = ''; greet();
+    });
+
+    function greet() {
+        renderBot({ answer: 'Assalam o Alaikum! Poochiye: attendance, fees, defaulters, kharcha, salary, profit, ya koi student ka naam.' });
+    }
+
+    STARTERS.forEach(function (s) { chips.appendChild(chip(s)); });
+    load();
+    if (history.length) {
+        history.forEach(function (item) {
+            if (item.role === 'user') { renderUser(item.text); } else { renderBot(item.data); }
+        });
+        scroll();
+    } else {
+        greet();
+    }
+})();
+</script>
+{% endblock %}

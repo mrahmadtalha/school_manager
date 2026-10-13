@@ -26,4 +26,6 @@ from app.routes import (
     license,
     other_income,
     inventory,
+    assistant,
+    admission_fees,
 )

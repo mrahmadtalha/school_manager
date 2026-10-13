@@ -15,6 +15,7 @@ class SchoolSettings(db.Model):
 
     id            = db.Column(db.Integer, primary_key=True)
     school_name   = db.Column(db.String(200), default='School Manager')
+    default_admission_fee = db.Column(db.Float, nullable=True)  # School-wide admission fee (a class can override it)
     tagline       = db.Column(db.String(200), default='')
     logo_filename = db.Column(db.String(200), default='')
     address       = db.Column(db.String(300), default='')

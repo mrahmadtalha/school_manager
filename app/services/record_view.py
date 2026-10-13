@@ -74,6 +74,14 @@ def _teacher_assignment(field):
     return getter
 
 
+def _admission(field):
+    """Getter for one admission-fee figure supplied by the list route."""
+    def getter(record, extras):
+        info = ((extras or {}).get('admission_map') or {}).get(record.id)
+        return info.get(field) if info else None
+    return getter
+
+
 def _class_name(record, extras):
     class_obj = getattr(record, 'class_info', None)
     return getattr(class_obj, 'name', None)
@@ -118,6 +126,14 @@ def student_fields():
                   getter=_attr('admission_number')),
         FieldSpec('admission_date', 'Admission Date', 'Admission', kind='date',
                   getter=_attr('admission_date')),
+        FieldSpec('admission_fee', 'Admission Fee (net)', 'Admission', kind='money',
+                  getter=_admission('net')),
+        FieldSpec('admission_received', 'Admission Fee Received', 'Admission', kind='money',
+                  getter=_admission('received')),
+        FieldSpec('admission_balance', 'Admission Fee Pending', 'Admission', kind='money',
+                  getter=_admission('balance')),
+        FieldSpec('admission_status', 'Admission Fee Status', 'Admission',
+                  getter=_admission('status')),
         FieldSpec('status', 'Status', 'Record', getter=_attr('status')),
         FieldSpec('monthly_fee', 'Monthly Fee', 'Fees', kind='money',
                   getter=_attr('monthly_fee'), default_visible=True),

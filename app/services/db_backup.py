@@ -10,6 +10,8 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from app.user_data import data_root
+
 DEFAULT_BACKUP_DIRNAME = 'backups'
 _TABLES = (
     'admin_users', 'students', 'teachers', 'classes', 'sections', 'subjects',
@@ -17,10 +19,6 @@ _TABLES = (
     'fee_records', 'fee_transactions', 'audit_logs', 'school_settings',
     'message_queue', 'delivery_logs', 'system_settings', 'automation_settings',
 )
-
-
-def project_root():
-    return Path(__file__).resolve().parent.parent.parent
 
 
 def resolve_db_path(database_url=None):
@@ -34,7 +32,10 @@ def resolve_db_path(database_url=None):
         if not path.is_absolute():
             path = Path.cwd() / path
         return path
-    return project_root() / 'instance' / 'school.db'
+    # No DATABASE_URL in the environment: use the app's data root, which is
+    # %LOCALAPPDATA%\SchoolManager inside the packaged exe (project_root()
+    # there points into the read-only install folder, not at real data).
+    return data_root() / 'school.db'
 
 
 def default_backup_dir(db_path=None):

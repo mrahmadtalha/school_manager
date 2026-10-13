@@ -11,7 +11,8 @@ from flask import (
     flash, 
     send_file, 
     Response,
-    abort
+    abort,
+    session
 )
 from reportlab.lib.pagesizes import landscape, letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -20,10 +21,12 @@ from reportlab.lib import colors
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
+from flask_login import current_user
 from sqlalchemy.exc import IntegrityError
 
 from app.database import db
 from app.models import (
+    ROLE_ADMIN,
     StudentModel,
     ClassModel,
     SectionModel,
@@ -42,6 +45,7 @@ from app.routes import main
 from sqlalchemy import func
 from app.services.audit import log_action, serialize
 from app.services import record_view
+from app.services import admission_fee
 from app.services.marks import ABSENT_LABEL
 from app.services.photos import photo_path, save_photo, stash_upload, delete_photo, PhotoError
 from app.models.settings import calculate_grade, get_custom_fields
@@ -192,6 +196,11 @@ def _student_form_context():
                                for class_obj in classes
                                if class_obj.monthly_fee is not None},
         'today': date.today().isoformat(),
+        # Admission fee (opt-in: nothing shows until the school sets one).
+        'admission_enabled': admission_fee.is_enabled(),
+        'admission_manage': admission_fee.is_admin(current_user),
+        'admission_fee_by_class': admission_fee.fee_by_class(),
+        'admission_notice': session.pop('admission_notice', None),
     }
 
 
@@ -206,7 +215,9 @@ def _render_students_page(**extra):
               .order_by(StudentModel.student_name).all())
     dues_map = _dues_balances([s.id for s in listed])
     specs = record_view.field_specs('student')
-    row_extras = {'dues_map': dues_map}
+    row_extras = {'dues_map': dues_map,
+                  'admission_map': admission_fee.student_map(
+                      [s.id for s in listed])}
     context.update({
         'students': listed,
         'sections': [],
@@ -276,7 +287,9 @@ def students_list():
     sections = (SectionModel.query.filter_by(class_id=filters['class_id']).all()
                 if filters['class_id'] else [])
     specs = record_view.field_specs('student')
-    row_extras = {'dues_map': dues_map}
+    row_extras = {'dues_map': dues_map,
+                  'admission_map': admission_fee.student_map(
+                      [s.id for s in students])}
     display_map = {
         student.id: {spec.key: record_view.display_value(spec, student, row_extras)
                      for spec in specs}
@@ -300,7 +313,10 @@ def add_student():
         'roll_number', 'student_name', 'father_name', 'guardian_phone',
         'address', 'class_id', 'section_id', 'monthly_fee',
         'discount_type', 'discount_value', 'date_of_birth',
-        'gender', 'admission_number', 'admission_date', 'sponsor_type', 'sponsor_cnic', 'photo_token')}
+        'gender', 'admission_number', 'admission_date', 'sponsor_type', 'sponsor_cnic', 'photo_token',
+        'admission_fee', 'admission_discount_type', 'admission_discount_value',
+        'admission_note', 'admission_received_now', 'admission_received_amount',
+        'admission_method')}
     custom_field_definitions = get_custom_fields('student')
     missing_fields = missing_required_custom_fields(request.form, custom_field_definitions)
     if missing_fields:
@@ -380,8 +396,28 @@ def add_student():
         db.session.add(new_student)
         start_enrollment(new_student, reason='enrolled', start_date=date.today(),
                          end_previous=False)
+        # One-time admission fee (no-op until the school has set one). Only an
+        # administrator can change the amount, give a concession or take the
+        # money; for anyone else the standard fee is recorded as pending.
+        admission = admission_fee.apply_on_admission(
+            new_student, request.form, current_user,
+            can_manage=admission_fee.is_admin(current_user))
+        notice = None
+        if admission:
+            receipt = admission['receipt']
+            if receipt is not None:
+                notice = {'receipt_id': receipt.id, 'receipt_no': receipt.receipt_no,
+                          'amount': admission_fee.money(receipt.amount_paisa),
+                          'student': new_student.student_name}
+            else:
+                pending = admission_fee.summary(new_student)['balance']
         db.session.commit()
         flash('Student added successfully!', 'success')
+        if notice:
+            session['admission_notice'] = notice
+        elif admission and pending:
+            flash('Admission fee %s is pending for this student. It can be received '
+                  'from Admission Fees.' % admission_fee.money(pending), 'info')
     except ValueError as error:
         db.session.rollback()
         flash(str(error), 'danger')
@@ -822,7 +858,9 @@ def _student_export_context():
                 .order_by(StudentModel.student_name).all())
     dues_map = _dues_balances([s.id for s in students]) if students else {}
     specs = record_view.export_specs('student', request.args.get('cols'))
-    return students, specs, {'dues_map': dues_map}
+    return students, specs, {
+        'dues_map': dues_map,
+        'admission_map': admission_fee.student_map([s.id for s in students])}
 
 
 @main.route('/students/export/csv')
@@ -840,11 +878,17 @@ def export_students_csv():
 STUDENT_EXAMPLE_KEYS = ('student_name', 'father_name', 'guardian_phone')
 
 
+def _import_admission_enabled():
+    """Admission columns are offered to an administrator once a fee is set."""
+    return admission_fee.is_enabled() and admission_fee.is_admin(current_user)
+
+
 @main.route('/students/template/excel')
 def students_template_excel():
     """Import template: every current field, one example row, mandatory marked."""
     classes = ClassModel.query.order_by(ClassModel.name).all()
-    specs = student_import_fields(get_custom_fields('student'))
+    specs = student_import_fields(get_custom_fields('student'),
+                                 admission=_import_admission_enabled())
     example = {spec.key: spec.example for spec in specs}
     if classes:
         example['class_name'] = classes[0].name
@@ -975,9 +1019,24 @@ def import_students():
         flash('No file selected.', 'warning')
         return redirect(url_for('main.students_list'))
 
-    specs = student_import_fields(get_custom_fields('student'))
+    use_admission = _import_admission_enabled()
+    specs = student_import_fields(get_custom_fields('student'), admission=use_admission)
+    paid_as_income = use_admission and request.form.get('admission_paid_as_income') == '1'
+    income_date = date.today()
+    if paid_as_income:
+        raw_date = (request.form.get('admission_income_date') or '').strip()
+        if raw_date:
+            try:
+                income_date = datetime.strptime(raw_date, '%Y-%m-%d').date()
+            except ValueError:
+                flash('Please enter a valid income date.', 'danger')
+                return redirect(url_for('main.students_list'))
+        if income_date > date.today():
+            flash('The income date cannot be in the future.', 'danger')
+            return redirect(url_for('main.students_list'))
     try:
         parsed = read_import_file(file, specs)
+
     except ImportFileError as error:
         flash(str(error), 'danger')
         return redirect(url_for('main.students_list'))
@@ -1038,8 +1097,31 @@ def import_students():
             chk.add_problem('Discount Value cannot be more than 100 percent')
         custom_values = collect_custom_values(chk, specs)
 
+        admission = None
+        if use_admission:
+            adm_fee = chk.number('admission_fee')
+            adm_type = chk.choice('admission_discount_type',
+                                  ('percentage', 'fixed', 'waived'))
+            adm_value = chk.number('admission_discount_value')
+            adm_paid = chk.number('admission_fee_paid')
+            if adm_fee:
+                try:
+                    adm_net, _ = admission_fee.compute_net(
+                        admission_fee.to_paisa(adm_fee), adm_type, adm_value)
+                    if adm_paid and admission_fee.to_paisa(adm_paid) > adm_net:
+                        chk.add_problem('Admission Fee Paid is more than the agreed '
+                                        'admission fee after the concession')
+                except ValueError as error:
+                    chk.add_problem('Admission concession: %s' % error)
+                admission = {'fee': adm_fee, 'type': adm_type, 'value': adm_value,
+                             'paid': adm_paid}
+            elif adm_type or adm_value or adm_paid:
+                chk.add_problem('Admission Fee is required when an admission concession '
+                                'or an amount paid is given')
+
         roll = None
         roll_raw = chk.raw('roll_number')
+
         if roll_raw:
             try:
                 roll = parse_whole_number(roll_raw)
@@ -1111,6 +1193,7 @@ def import_students():
             'admission_date': admission_date, 'sponsor_type': sponsor_type,
             'sponsor_cnic': sponsor_cnic, 'fee': fee, 'discount_type': discount_type,
             'discount_value': discount_value, 'custom': custom_values,
+            'admission': admission,
         })
 
     # ---- pass 2: assign automatic roll numbers and save ---------------------
@@ -1154,9 +1237,18 @@ def import_students():
             db.session.add(student)
             start_enrollment(student, reason='enrolled', start_date=date.today(),
                              end_previous=False)
+            admission_note = ''
+            if item.get('admission'):
+                adm = item['admission']
+                admission_fee.apply_on_import(
+                    student, adm['fee'], adm['type'], adm['value'], adm['paid'],
+                    paid_as_income, income_date, current_user)
+                admission_note = ' - admission fee %s' % admission_fee.STATUS_LABELS[
+                    admission_fee.status_for(student)].lower()
             label = f"{item['name']} (Roll No {item['roll']}, {class_obj.name})"
             result.added.append((item['row'], label + (' - roll number assigned automatically'
-                                                       if auto_assigned else '')))
+                                                       if auto_assigned else '') + admission_note))
+
         db.session.commit()
     except IntegrityError:
         db.session.rollback()

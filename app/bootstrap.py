@@ -1038,6 +1038,80 @@ def migrate_student_status_schema(app):
         connection.commit()
 
 
+def _admission_fee_columns():
+    return {
+        'students': [
+            ('admission_fee_standard_paisa', 'INTEGER'),
+            ('admission_fee_net_paisa', 'INTEGER'),
+            ('admission_discount_type', 'VARCHAR(20)'),
+            ('admission_discount_value', 'FLOAT'),
+            ('admission_note', 'VARCHAR(200)'),
+            ('admission_fee_date', 'DATE'),
+            ('admission_fee_prior_paid_paisa', 'INTEGER'),
+        ],
+        'classes': [('admission_fee', 'FLOAT')],
+        'school_settings': [('default_admission_fee', 'FLOAT')],
+        'other_income': [
+            ('student_id', 'INTEGER'),
+            ('receipt_no', 'VARCHAR(40)'),
+            ('payment_method', 'VARCHAR(20)'),
+        ],
+    }
+
+
+def _safety_backup(app, db_path, label):
+    """Copy the database aside before a schema change; never blocks startup."""
+    try:
+        from app.services import db_backup
+        target = db_backup.backup_database(db_path)
+        named = target.with_name('%s-%s%s' % (target.stem, label, target.suffix))
+        target.rename(named)
+        print('Migration: safety backup written to %s' % named)
+        return named
+    except Exception as error:  # pragma: no cover - best effort only
+        print('Migration: WARNING - could not write a safety backup (%s)' % error)
+        return None
+
+
+def migrate_admission_fee_schema(app):
+    """Add the admission-fee columns (all nullable, so nothing changes for
+    existing rows: a student without an admission fee simply has none).
+
+    Existing installs get a safety copy of the database first, but only when
+    the schema really has to change and the school already holds students.
+    """
+    db_path = _sqlite_db_path(app)
+    if not db_path or db_path == ':memory:' or not os.path.exists(db_path):
+        return
+
+    wanted = _admission_fee_columns()
+    with _sqlite_connection(db_path) as connection:
+        missing = []
+        for table, columns in wanted.items():
+            existing = _table_columns(connection, table)
+            if not existing:
+                continue
+            missing.extend((table, name, sql_type) for name, sql_type in columns
+                           if name not in existing)
+        has_students = bool(_table_columns(connection, 'students')) and bool(
+            connection.execute('SELECT 1 FROM students LIMIT 1').fetchone())
+
+    if missing and has_students and (
+            not app.config.get('TESTING') or app.config.get('PRE_MIGRATION_BACKUP')):
+        _safety_backup(app, db_path, 'before-admission-fee')
+
+    with _sqlite_connection(db_path) as connection:
+        for table, name, sql_type in missing:
+            connection.execute('ALTER TABLE %s ADD COLUMN %s %s' % (table, name, sql_type))
+            print('Migration: added %s to %s' % (name, table))
+        if _table_columns(connection, 'other_income'):
+            connection.execute('CREATE INDEX IF NOT EXISTS idx_other_income_student '
+                               'ON other_income (student_id)')
+            connection.execute('CREATE INDEX IF NOT EXISTS idx_other_income_receipt '
+                               'ON other_income (receipt_no)')
+        connection.commit()
+
+
 def migrate_student_enrollments(app):
     """Backfill a class-enrollment snapshot for students that have none."""
     from app.models import StudentEnrollment, StudentModel

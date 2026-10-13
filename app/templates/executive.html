@@ -32,6 +32,7 @@
         <div class="exec-kpi k-green">
             <div class="kpi-num">Rs. {{ "{:,.0f}".format(kpis.collected) }}</div>
             <div class="kpi-label">Fee Collections ({{ report_month }})</div>
+            {% if kpis.admission %}<div class="kpi-label mt-1">+ Rs. {{ "{:,.0f}".format(kpis.admission) }} admission fees</div>{% endif %}
         </div>
     </div>
     <div class="col-6 col-xl-3">

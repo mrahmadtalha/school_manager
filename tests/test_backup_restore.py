@@ -104,3 +104,13 @@ def test_restore_rejects_a_non_sqlite_file(live_app, tmp_path):
 
     with pytest.raises(Exception):
         restore_database(bogus, db_path, force=True)
+
+
+def test_db_path_falls_back_to_data_root_without_env_url(monkeypatch, tmp_path):
+    """The packaged exe runs without DATABASE_URL in the environment; the
+    fallback must be the user data root, never a path resolved from the
+    (read-only) install folder next to the exe."""
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    monkeypatch.setenv('SCHOOL_DATA_DIR', str(tmp_path / 'data'))
+
+    assert resolve_db_path() == tmp_path / 'data' / 'school.db'

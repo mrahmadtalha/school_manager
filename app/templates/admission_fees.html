@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">Finance overview</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-door-open text-primary me-2"></i>Admission Fees</h1>
+        <p class="text-muted small mb-0">One-time fee taken when a student joins: what was agreed, concessions given, money received and what is still pending.</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Export the register">
+            <a class="btn btn-outline-danger" href="{{ url_for('main.admission_export', fmt='pdf', **request.args) }}">PDF</a>
+            <a class="btn btn-outline-success" href="{{ url_for('main.admission_export', fmt='xlsx', **request.args) }}">Excel</a>
+            <a class="btn btn-outline-primary" href="{{ url_for('main.admission_export', fmt='csv', **request.args) }}">CSV</a>
+        </div>
+        {% if is_admin %}
+        <a href="{{ url_for('main.fees_list') }}" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-sliders me-1"></i> Fee settings
+        </a>
+        {% endif %}
+        <a href="{{ url_for('main.other_income_page') }}" class="btn btn-sm btn-outline-dark">
+            <i class="fas fa-wallet me-1"></i> Other Income
+        </a>
+    </div>
+</div>
+
+{% if not enabled and not rows %}
+<div class="alert alert-info">
+    <i class="fas fa-circle-info me-1"></i>
+    Admission fee is not switched on yet. {% if is_admin %}Open <a href="{{ url_for('main.fees_list') }}">Fees &rarr; Admission Fee Settings</a> and enter the school (or class) admission fee. Existing students are never affected.{% else %}Ask an administrator to set the admission fee on the Fees page.{% endif %}
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="text-muted small text-uppercase fw-bold">Students listed</div>
+        <div class="h4 mb-0">{{ totals.count }}</div>
+    </div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="text-muted small text-uppercase fw-bold">Agreed (net)</div>
+        <div class="h4 mb-0">{{ money(totals.net) }}</div>
+    </div></div></div>
+    <div class="col-6 col-lg-2"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="text-muted small text-uppercase fw-bold">Received</div>
+        <div class="h4 mb-0 text-success">{{ money(totals.received) }}</div>
+        {% if totals.prior %}<div class="small text-muted">incl. {{ money(totals.prior) }} opening (not income)</div>{% endif %}
+    </div></div></div>
+    <div class="col-6 col-lg-2"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="text-muted small text-uppercase fw-bold">Pending</div>
+        <div class="h4 mb-0 text-danger">{{ money(totals.balance) }}</div>
+    </div></div></div>
+    <div class="col-12 col-lg-2"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+        <div class="text-muted small text-uppercase fw-bold">Concessions given</div>
+        <div class="h4 mb-0 text-secondary">{{ money(totals.concession) }}</div>
+    </div></div></div>
+</div>
+
+<div class="card shadow-sm mb-4 border-0">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('main.admission_register') }}" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small fw-bold text-muted mb-1">Search</label>
+                <input type="text" name="search" value="{{ search }}" class="form-control form-control-sm" placeholder="Name, father or admission no">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted mb-1">Class</label>
+                <select name="class_id" class="form-select form-select-sm">
+                    <option value="">All classes</option>
+                    {% for c in classes %}<option value="{{ c.id }}" {{ 'selected' if selected_class == c.id }}>{{ c.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted mb-1">Status</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    {% for key in statuses %}<option value="{{ key }}" {{ 'selected' if selected_status == key }}>{{ status_labels[key] }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted mb-1">From</label>
+                <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold text-muted mb-1">To</label>
+                <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-1 d-grid">
+                <button class="btn btn-sm btn-primary" type="submit" aria-label="Apply filters" title="Apply filters"><i class="fas fa-filter"></i></button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Student</th><th>Class</th><th>Date</th>
+                    <th class="text-end">Standard</th><th class="text-end">Concession</th>
+                    <th class="text-end">Net</th><th class="text-end">Received</th>
+                    <th class="text-end">Pending</th><th>Status</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in rows %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('main.admission_student', student_id=r.student.id) }}" class="fw-semibold text-decoration-none">{{ r.student.student_name }}</a>
+                        <div class="small text-muted">{{ r.student.father_name }}</div>
+                    </td>
+                    <td>{{ r.student.class_info.name if r.student.class_info else '—' }}</td>
+                    <td>{{ r.student.admission_fee_date.strftime('%d %b %Y') if r.student.admission_fee_date else '—' }}</td>
+                    <td class="text-end">{{ money(r.standard) }}</td>
+                    <td class="text-end">{{ money(r.concession) if r.concession else '—' }}</td>
+                    <td class="text-end fw-semibold">{{ money(r.net) }}</td>
+                    <td class="text-end text-success">{{ money(r.received) }}</td>
+                    <td class="text-end {{ 'text-danger fw-semibold' if r.balance }}">{{ money(r.balance) if r.balance else '—' }}</td>
+                    <td>
+                        <span class="badge {{ {'pending': 'bg-warning text-dark', 'partial': 'bg-info text-dark', 'paid': 'bg-success', 'waived': 'bg-secondary'}.get(r.status, 'bg-light text-muted') }}">{{ status_labels[r.status] }}</span>
+                    </td>
+                    <td class="text-end">
+                        <a href="{{ url_for('main.admission_student', student_id=r.student.id) }}" class="btn btn-sm btn-outline-primary">Open</a>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="10" class="text-center text-muted py-5">No admission fees match these filters yet.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

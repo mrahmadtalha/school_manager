@@ -107,11 +107,18 @@ ACCOUNTANT_ENDPOINTS = {
     'main.reports_hub', 'main.hub_export_fee_ledger', 'main.hub_export_defaulters',
     'main.hub_export_collections', 'main.hub_export_discounts',
     'main.hub_export_salary_register',
+    # admission fee - register, student page, taking money, receipts
+    'main.admission_register', 'main.admission_student',
+    'main.admission_receive', 'main.admission_receipt',
+    'main.admission_payment_void', 'main.admission_export',
 }
 
 # Endpoints the owner (Principal) may reach - the read-only executive views.
 OWNER_ENDPOINTS = {
     'main.executive_dashboard', 'main.executive_summary_pdf',
+    # admission fee - read-only views (no receiving money, no concessions)
+    'main.admission_register', 'main.admission_student',
+    'main.admission_receipt', 'main.admission_export',
 }
 
 ROUTE_ROLES = {}

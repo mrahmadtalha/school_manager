@@ -13,6 +13,7 @@ from app.routes import main
 from app.security import role_required
 from app.services.audit import current_actor, log_action
 from app.services import fee_reminders as fee_reminders_service
+from app.services import admission_fee
 from app.services.fee_ledger import (
     DuplicateReferenceError, advance_credit_enabled, current_month, ensure_charge,
     ledger_totals, next_reference, payment_allocation_lines,
@@ -258,6 +259,8 @@ def fees_list():
                            show_unpaid=show_unpaid,
                            summary=summary,
                            payment_methods=PAYMENT_METHODS,
+                           admission_settings=admission_fee.settings_context(),
+                           admission_is_admin=admission_fee.is_admin(current_user),
                            class_fee_by_class={str(c.id): c.monthly_fee
                                                for c in classes
                                                if c.monthly_fee is not None},

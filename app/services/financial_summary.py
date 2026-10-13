@@ -280,6 +280,10 @@ def month_snapshot(month_year):
     cash_in_fees = fee_collections(start, end)
     from app.services.other_income_service import month_total
     other_income = month_total(start, end)
+    # Admission-fee receipts are part of other_income (already inside cash_in);
+    # reported on their own line only, never added again.
+    from app.services.admission_fee import income_total as admission_income_total
+    admission_fees = admission_income_total(start, end)
     from app.services import inventory_service
     sales_revenue, sales_cogs = inventory_service.month_sales_totals(start, end)
     purchases = inventory_service.month_purchase_totals(start, end)
@@ -296,6 +300,7 @@ def month_snapshot(month_year):
         'label': month_label(month_year),
         'start': start,
         'end': end,
+        'admission_fees': admission_fees,
         # cash basis
         'revenue': cash_in,
         'cash_in': cash_in,

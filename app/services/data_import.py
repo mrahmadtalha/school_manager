@@ -90,8 +90,12 @@ def _custom_specs(custom_fields, taken_headers, group_name):
     return specs
 
 
-def student_import_fields(custom_fields=()):
-    """Importable student columns, in template order."""
+def student_import_fields(custom_fields=(), admission=False):
+    """Importable student columns, in template order.
+
+    ``admission=True`` adds the optional admission-fee columns (only offered
+    to an administrator once the school has set an admission fee).
+    """
     specs = [
         FieldSpec('student_name', 'Student Name', True,
                   help_text='Full name of the student.', example='Ali Khan'),
@@ -141,6 +145,26 @@ def student_import_fields(custom_fields=()):
                   help_text='Percent (e.g. 10) or PKR amount, matching Discount Type.',
                   example='10', group='Fees'),
     ]
+    if admission:
+        specs.extend([
+            FieldSpec('admission_fee', 'Admission Fee', False,
+                      aliases=('Admission Fee Amount',),
+                      help_text='One-time admission fee agreed with the family, in PKR. '
+                                'Leave blank when the student has none.',
+                      example='5000', group='Admission fee'),
+            FieldSpec('admission_discount_type', 'Admission Concession Type', False,
+                      choices=('percentage', 'fixed', 'waived'),
+                      help_text='percentage, fixed or waived. Only needed when there is a concession.',
+                      example='percentage', group='Admission fee'),
+            FieldSpec('admission_discount_value', 'Admission Concession Value', False,
+                      help_text='Percent (e.g. 10) or PKR amount, matching the concession type.',
+                      example='10', group='Admission fee'),
+            FieldSpec('admission_fee_paid', 'Admission Fee Paid', False,
+                      aliases=('Admission Paid',),
+                      help_text='Amount already received. By default it is kept as an opening '
+                                'amount and is NOT counted as income.',
+                      example='4500', group='Admission fee'),
+        ])
     taken = {normalize_header(s.label) for s in specs}
     for spec in specs:
         taken.update(normalize_header(a) for a in spec.aliases)

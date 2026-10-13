@@ -153,6 +153,7 @@ def _executive_context():
         'session_label': session_label,
         'kpis': {
             'collected': collected,
+            'admission': (snapshot or {}).get('admission_fees', 0.0),
             'outstanding': outstanding,
             'class_avg': class_avg,
             'students_att': students_att['pct'],
@@ -249,6 +250,8 @@ def _build_executive_pdf(context, root_path=None):
     headline_rows = [
         ['Fee Collections (%s)' % context['report_month'],
          'Rs. %s' % _money(kpis['collected'])],
+        *([['Admission Fees Received (%s)' % context['report_month'],
+           'Rs. %s' % _money(kpis['admission'])]] if kpis['admission'] else []),
         ['Outstanding Dues', 'Rs. %s' % _money(kpis['outstanding'])],
         ['Average Class Performance',
          ('%s%%' % kpis['class_avg']) if kpis['class_avg'] is not None else '—'],

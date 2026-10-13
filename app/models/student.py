@@ -40,5 +40,17 @@ class StudentModel(db.Model):
     discount_type = db.Column(db.String(20), nullable=True)  # 'percentage' or 'fixed'
     discount_value = db.Column(db.Float, nullable=True)   # Discount value (percent or PKR amount)
 
+    # One-time admission fee (see app/services/admission_fee.py).  NULL net =
+    # "no admission fee on record" (older students, or none was configured).
+    admission_fee_standard_paisa = db.Column(db.Integer, nullable=True)  # fee before concession
+    admission_fee_net_paisa = db.Column(db.Integer, nullable=True)       # agreed amount after concession
+    admission_discount_type = db.Column(db.String(20), nullable=True)    # percentage | fixed | waived
+    admission_discount_value = db.Column(db.Float, nullable=True)
+    admission_note = db.Column(db.String(200), nullable=True)            # optional reason for a concession
+    admission_fee_date = db.Column(db.Date, nullable=True)               # when the admission fee terms were recorded
+    # Admission money received BEFORE this software (set by import).  Counts toward
+    # the balance but is deliberately NOT income, so past months never change.
+    admission_fee_prior_paid_paisa = db.Column(db.Integer, nullable=True)
+
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False)
     section_id = db.Column(db.Integer, db.ForeignKey('sections.id'), nullable=True)
