@@ -50,12 +50,11 @@
         <a href="{{ url_for('main.subject_library') }}" class="btn btn-outline-secondary btn-sm">
             <i class="fas fa-book-open me-1"></i> Subject Library
         </a>
-        <a href="{{ url_for('main.timetables_hub') }}" class="btn btn-dark btn-sm">
-            <i class="fas fa-calendar-days me-1"></i> Timetable Settings
+        {% if has_feature('timetable') %}
+        <a href="{{ url_for('main.timetable_page') }}" class="btn btn-dark btn-sm">
+            <i class="fas fa-calendar-days me-1"></i> Timetable
         </a>
-        <a href="{{ url_for('main.teacher_timetables') }}" class="btn btn-outline-dark btn-sm">
-            <i class="fas fa-calendar-week me-1"></i> Teacher Timetables
-        </a>
+        {% endif %}
         <a href="{{ url_for('main.archived_subjects_list') }}" class="btn btn-outline-warning btn-sm">
             <i class="fas fa-archive me-1"></i> Archived Subjects
         </a>
@@ -155,9 +154,6 @@
                         <span class="fw-bold text-dark">{% if c.monthly_fee %}Rs. {{ "{:,.0f}".format(c.monthly_fee) }} / month{% else %}not set{% endif %}</span>
                         <span class="ms-1">&middot; auto-fills student fees at admission</span> <i class="fas fa-circle-info ms-1 text-secondary" data-bs-toggle="tooltip" title="This sets the default fee for NEW admissions only. To bulk-update ALL existing students, use Fees Management."></i></span>
                     <div class="d-flex gap-2">
-                        <a href="{{ url_for('main.timetables_hub') }}" class="btn btn-sm btn-outline-dark py-0 px-2">
-                            <i class="fas fa-calendar-days me-1"></i>Timetable
-                        </a>
                         {% if current_user.is_admin %}
                         <button class="btn btn-sm py-0 px-2 {% if c.monthly_fee %}btn-outline-success{% else %}btn-success{% endif %}"
                                 data-bs-toggle="modal" data-bs-target="#editFee{{ c.id }}">
@@ -674,9 +670,6 @@
                         <i class="fas fa-money-bill-wave me-1"></i>{% if c.monthly_fee %}Fee{% else %}Set Fee{% endif %}
                     </button>
                     {% endif %}
-                    <a class="btn btn-sm btn-outline-dark" href="{{ url_for('main.timetables_hub') }}">
-                        <i class="fas fa-calendar-days me-1"></i>Timetable
-                    </a>
                     <button class="btn btn-sm btn-dark ms-auto grid-manage-btn" type="button"
                             data-bs-toggle="collapse" data-bs-target="#gridExtra{{ c.id }}" aria-expanded="false">
                         <i class="fas fa-chevron-down me-1"></i>{% if current_user.is_admin %}Manage{% else %}View{% endif %}
@@ -798,6 +791,54 @@
         document.addEventListener('DOMContentLoaded', initTooltips);
     } else {
         initTooltips();
+    }
+})();
+</script>
+
+<script>
+// Keep the page as the user left it across the reloads that follow saving a class,
+// section, subject or fee: the same classes / rosters stay open and the page returns
+// to the same scroll position (kept for this browser tab only).
+(function () {
+    var KEY = 'classesPageState';
+    var acc = document.getElementById('classAccordion');
+    if (!acc) return;
+    function read() { try { return JSON.parse(sessionStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
+    function write(state) { try { sessionStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+    var state = read();
+
+    if (Array.isArray(state.open)) {
+        acc.querySelectorAll('.collapse').forEach(function (el) {
+            var open = state.open.indexOf(el.id) !== -1;
+            el.classList.toggle('show', open);
+            document.querySelectorAll('[data-bs-target="#' + el.id + '"]').forEach(function (btn) {
+                btn.classList.toggle('collapsed', !open);
+                btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            });
+        });
+    }
+    function remember() {
+        var open = [];
+        acc.querySelectorAll('.collapse.show').forEach(function (el) { open.push(el.id); });
+        state = read();
+        state.open = open;
+        write(state);
+    }
+    acc.addEventListener('shown.bs.collapse', remember);
+    acc.addEventListener('hidden.bs.collapse', remember);
+
+    document.addEventListener('submit', function () {
+        state = read();
+        state.scroll = window.scrollY || document.documentElement.scrollTop || 0;
+        write(state);
+    }, true);
+    if (state.scroll) {
+        var target = state.scroll;
+        state.scroll = 0;
+        write(state);
+        var restore = function () { window.scrollTo(0, target); };
+        restore();
+        window.addEventListener('load', restore);
     }
 })();
 </script>

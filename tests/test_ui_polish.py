@@ -110,8 +110,7 @@ def test_bulk_restore_uses_data_confirm(admin_client, app, seed):
 
 def test_payroll_and_examination_confirms_are_declarative(admin_client, app):
     """The remaining confirm sites use the styled dialog, not the browser's."""
-    for name in ('payroll.html', 'examination_detail.html', 'student_attendance.html',
-                 'timetables.html'):
+    for name in ('payroll.html', 'examination_detail.html', 'student_attendance.html'):
         content = _read(app, name)
         assert 'data-confirm=' in content, name
         assert 'return confirm(' not in content, name

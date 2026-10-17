@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}License Manager{% endblock %} — School Manager (vendor)</title>
+<link href="{{ url_for('static', filename='bootstrap/bootstrap.min.css') }}" rel="stylesheet">
+<link href="{{ url_for('static', filename='fontawesome/css/all.min.css') }}" rel="stylesheet">
+<style>.code-box{word-break:break-all;font-size:.8rem}.feat-group{font-size:.72rem;letter-spacing:.05em}</style>
+</head>
+<body class="bg-light">
+{% if session.get('unlocked') %}
+<nav class="navbar navbar-expand-md navbar-dark bg-dark mb-4">
+  <div class="container">
+    <a class="navbar-brand" href="{{ url_for('index') }}"><i class="fas fa-key text-warning me-2"></i>License Manager</a>
+    <div class="navbar-nav me-auto flex-row gap-3">
+      <a class="nav-link" href="{{ url_for('index') }}">Home</a>
+      <a class="nav-link" href="{{ url_for('schools') }}">Schools</a>
+      <a class="nav-link" href="{{ url_for('recovery') }}">Recovery</a>
+      <a class="nav-link" href="{{ url_for('plans') }}">Plans</a>
+      <a class="nav-link" href="{{ url_for('settings') }}">Settings</a>
+    </div>
+    <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <button class="btn btn-outline-light btn-sm"><i class="fas fa-lock me-1"></i>Lock</button></form>
+  </div>
+</nav>
+{% endif %}
+<div class="container pb-5">
+{% with messages = get_flashed_messages(with_categories=true) %}{% for c, m in messages %}
+<div class="alert alert-{{ c }} py-2">{{ m }}</div>{% endfor %}{% endwith %}
+{% block content %}{% endblock %}
+</div>
+<script>
+function copyFrom(id, btn){var el=document.getElementById(id);var t=el.value!==undefined?el.value:el.textContent;
+ var done=function(){var o=btn.innerHTML;btn.innerHTML='Copied';setTimeout(function(){btn.innerHTML=o},1500)};
+ if(navigator.clipboard){navigator.clipboard.writeText(t).then(done)}else{el.select();document.execCommand('copy');done()}}
+</script>
+</body></html>

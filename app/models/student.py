@@ -51,6 +51,11 @@ class StudentModel(db.Model):
     # Admission money received BEFORE this software (set by import).  Counts toward
     # the balance but is deliberately NOT income, so past months never change.
     admission_fee_prior_paid_paisa = db.Column(db.Integer, nullable=True)
+    # Books and uniform taken at admission (copied from the class, editable per student).
+    # NULL = none.  Uniform total = uniform_qty x uniform_unit_paisa.
+    books_fee_paisa = db.Column(db.Integer, nullable=True)
+    uniform_qty = db.Column(db.Integer, nullable=True)
+    uniform_unit_paisa = db.Column(db.Integer, nullable=True)
 
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False)
     section_id = db.Column(db.Integer, db.ForeignKey('sections.id'), nullable=True)

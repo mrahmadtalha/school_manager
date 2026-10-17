@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block title %}Key{% endblock %}
+{% block content %}
+<a href="{{ url_for('school_detail', school_id=school.id) }}" class="small">&larr; {{ school.name }}</a>
+<h1 class="h3 my-3">Key for {{ school.name }}</h1>
+<div class="card border-0 shadow-sm mb-3"><div class="card-body small">
+<div class="row"><div class="col-md-3"><b>License</b><br><code>{{ row.license_id }}</code> rev {{ row.rev }}</div>
+<div class="col-md-3"><b>Valid</b><br>{{ row.issued|nicedate }} → {{ row.expires|nicedate }} (+{{ row.grace_days }} d grace)</div>
+<div class="col-md-3"><b>Machine</b><br><code>{{ row.machine_code }}</code></div>
+<div class="col-md-3"><b>WhatsApp</b><br>{{ row.wa_daily if row.wa_daily is not none else '∞' }}/day · {{ row.wa_monthly if row.wa_monthly is not none else '∞' }}/month</div></div>
+<div class="mt-2"><b>Features:</b> {{ (row.features|fromjson)|join(', ') or 'none' }}</div></div></div>
+{% if row.key_text %}
+<div class="card border-0 shadow-sm"><div class="card-body">
+<label class="form-label fw-bold">License key</label>
+<textarea id="keyText" class="form-control font-monospace code-box" rows="5" readonly>{{ row.key_text }}</textarea>
+<div class="mt-2 d-flex gap-2"><button class="btn btn-dark" onclick="copyFrom('keyText',this)"><i class="fas fa-copy me-1"></i>Copy key</button>
+<a class="btn btn-outline-dark" href="{{ url_for('key_download', row_id=row.id) }}"><i class="fas fa-download me-1"></i>Download .key file</a></div>
+<label class="form-label fw-bold mt-4">Ready-to-send message</label>
+<textarea id="msg" class="form-control code-box" rows="8" readonly>{{ message }}</textarea>
+<button class="btn btn-outline-secondary mt-2" onclick="copyFrom('msg',this)"><i class="fas fa-copy me-1"></i>Copy message</button>
+</div></div>
+{% else %}<div class="alert alert-secondary">This entry was imported from the old ledger; the original key text was never stored. Issue a new key to get a copy.</div>{% endif %}
+{% endblock %}

@@ -112,6 +112,14 @@
                 <i class="fab fa-whatsapp me-1"></i> WhatsApp
             </a>
             {% endif %}
+            <div class="btn-group btn-group-sm">
+                <a class="btn btn-outline-light" href="{{ url_for('main.student_admission_form', id=student.id, fmt='pdf') }}">
+                    <i class="fas fa-file-pdf me-1"></i> Admission Form PDF
+                </a>
+                <a class="btn btn-outline-light" href="{{ url_for('main.student_admission_form', id=student.id, fmt='xlsx') }}">
+                    <i class="fas fa-file-excel me-1"></i> Excel
+                </a>
+            </div>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.student_transcript_pdf', id=student.id) }}" target="_blank">
                 <i class="fas fa-scroll me-1"></i> Transcript
             </a>

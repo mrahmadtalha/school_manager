@@ -25,6 +25,7 @@ from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from app.database import db
+from app.services.features import FEATURE_LABELS, feature_for_endpoint
 from app.services.licensing import LicenseManager, default_public_key
 
 SAFE_METHODS = {'GET', 'HEAD', 'OPTIONS'}
@@ -37,6 +38,8 @@ ALWAYS_OPEN_ENDPOINTS = {
     'auth.login',
     'auth.logout',
     'auth.shutdown',        # closing the software must always stay possible
+    'auth.recover',         # forgotten-password recovery must work even when locked
+    'auth.recover_reset',
 }
 
 # Non-read requests that are still allowed while the system is read-only.
@@ -44,6 +47,9 @@ WRITE_ALLOWED_ENDPOINTS = {
     'auth.change_password',
     'main.run_backup_now',       # protecting data must never be blocked
 }
+
+# Endpoints that hand messages to the WhatsApp bridge (daily/monthly caps apply).
+WA_DISPATCH_ENDPOINTS = {'main.whatsapp_pending_messages', 'main.whatsapp_test_message'}
 
 # Models that may still be written while locked (login bookkeeping + audit).
 BACKSTOP_EXEMPT_MODELS = {'AuditLog', 'AdminUser'}
@@ -81,6 +87,28 @@ def _blocked_response(status=None):
         return jsonify({'ok': False, 'error': 'license_read_only',
                         'message': READ_ONLY_MESSAGE}), 403
     return render_template('license_locked.html', license_status=status), 403
+
+
+def _feature_locked_response(feature, status):
+    label = FEATURE_LABELS.get(feature, feature)
+    if request.path.startswith('/api/'):
+        return jsonify({'ok': False, 'error': 'feature_locked', 'feature': feature,
+                        'message': f'{label} is not included in this license.'}), 403
+    return render_template('feature_locked.html', feature_label=label,
+                           license_status=status), 403
+
+
+def _view_module(endpoint):
+    from flask import current_app
+    view = current_app.view_functions.get(endpoint)
+    return getattr(view, '__module__', None)
+
+
+def _whatsapp_blocked():
+    """Reason sending is paused by the license caps ('' when it is not)."""
+    from app.services import whatsapp_quota
+    info = whatsapp_quota.summary()
+    return whatsapp_quota.block_message(info) if info['allowance'] == 0 else ''
 
 
 def _has_admin():
@@ -125,10 +153,29 @@ def install_license_guard(app):
         status = manager.status()
         g.license_status = status
         g.license_read_only = status.read_only
+        endpoint = request.endpoint
+
+        # Feature switches: a module the license does not include is closed
+        # for everyone, whatever the license state, even by typing its URL.
+        if endpoint is not None and endpoint not in ALWAYS_OPEN_ENDPOINTS:
+            feature = feature_for_endpoint(endpoint, _view_module(endpoint))
+            if feature and not status.feature_enabled(feature):
+                if endpoint == 'main.whatsapp_pending_messages':
+                    return jsonify({'items': []})     # the bridge just polls; keep it quiet
+                return _feature_locked_response(feature, status)
+            # WhatsApp caps, second layer: with nothing left to send, the
+            # bridge gets an empty queue and test sends are refused.
+            if endpoint in WA_DISPATCH_ENDPOINTS:
+                blocked = _whatsapp_blocked()
+                if blocked:
+                    if endpoint == 'main.whatsapp_pending_messages':
+                        return jsonify({'items': [], 'paused': blocked})
+                    return jsonify({'ok': False, 'error': 'whatsapp_limit',
+                                    'message': blocked}), 429
+
         if not status.read_only:
             return None
 
-        endpoint = request.endpoint
         if endpoint is None or endpoint in ALWAYS_OPEN_ENDPOINTS:
             return None
 
@@ -154,4 +201,5 @@ def install_license_guard(app):
     @app.context_processor
     def _inject_license_status():
         status = g.get('license_status') if has_request_context() else None
-        return {'license_status': status or manager.status()}
+        status = status or manager.status()
+        return {'license_status': status, 'has_feature': status.feature_enabled}

@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .tt-wrap { overflow-x: auto; }
+    table.tt { border-collapse: collapse; background: #fff; min-width: 100%; }
+    table.tt th, table.tt td { border: 1px solid #212529; padding: 4px 6px; text-align: center; vertical-align: middle; font-size: .85rem; }
+    table.tt thead th { background: #e5e7eb; font-weight: 700; white-space: nowrap; }
+    table.tt td.tt-class { text-align: left; font-weight: 700; min-width: 130px; }
+    table.tt td.tt-side { background: #d1d5db; width: 38px; min-width: 38px; padding: 0; }
+    table.tt td.tt-side span { display: inline-block; writing-mode: vertical-rl; transform: rotate(180deg); font-weight: 700; letter-spacing: .08em; }
+    table.tt td.tt-cell { padding: 2px; min-width: 130px; }
+    table.tt td.tt-cell select { border: 0; background-color: transparent; text-align: center; font-size: .82rem; padding: 2px 18px 2px 4px; }
+    table.tt td.tt-cell select.tt-clash { background-color: #fde2e2; box-shadow: inset 0 0 0 2px #dc3545; }
+    table.tt td.tt-act { white-space: nowrap; width: 1%; padding: 2px; border-color: #ced4da; }
+    table.tt td.tt-act .btn { padding: 0 6px; }
+    .tt-time small { font-weight: 400; color: #555; }
+</style>
+
+<div class="dashboard-header d-flex justify-content-between flex-wrap align-items-center pt-3 pb-3 mb-3 gap-2">
+    <div>
+        <p class="eyebrow mb-2">Academic setup</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-calendar-days text-primary me-2"></i>Timetable</h1>
+        <p class="text-muted small mb-0">
+            {{ structure.periods_per_day }} periods &times; {{ structure.period_minutes }} min
+            {%- if structure.assembly_minutes %}, {{ structure.assembly_label|lower }} {{ structure.assembly_minutes }} min{% endif %}
+            {%- if structure.break_after and structure.break_minutes %}, {{ structure.break_label|lower }} after period {{ structure.break_after }}{% endif %}.
+            Change these in <a href="{{ url_for('main.school_settings') }}">School Settings</a>.
+        </p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <label class="small fw-semibold mb-0" for="ttStart">School starts</label>
+        <input type="time" id="ttStart" class="form-control form-control-sm" style="width:120px">
+        <button type="button" class="btn btn-outline-primary btn-sm" id="ttAddRow"><i class="fas fa-plus me-1"></i>Add row</button>
+        <button type="button" class="btn btn-success btn-sm" id="ttSave"><i class="fas fa-floppy-disk me-1"></i>Save</button>
+        <div class="input-group input-group-sm" style="width:auto">
+            <select id="ttOrient" class="form-select form-select-sm" aria-label="PDF orientation">
+                <option value="landscape">Landscape</option>
+                <option value="portrait">Portrait</option>
+            </select>
+            <button type="button" class="btn btn-dark" id="ttPdf"><i class="fas fa-file-pdf me-1"></i>Save &amp; PDF</button>
+        </div>
+    </div>
+</div>
+
+<div id="ttMsg" class="alert d-none py-2 small" role="alert"></div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-2">
+        <div class="tt-wrap"><table class="tt" id="ttTable"></table></div>
+        <p class="small text-muted mt-2 mb-0">
+            One row can hold more than one class (use the <i class="fas fa-pen"></i> button) &mdash; a single teacher then takes all of them in that period.
+            <span id="ttClashNote" class="text-danger d-none"><i class="fas fa-triangle-exclamation ms-2 me-1"></i>Red cells: the same teacher is in two different rows at the same time.</span>
+        </p>
+    </div>
+</div>
+
+<div class="modal fade" id="ttRowModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="ttModalTitle">Select classes for this row</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="ttModalBody"></div>
+            <div class="modal-footer">
+                <span class="text-danger small me-auto d-none" id="ttModalErr">Select at least one class.</span>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm" id="ttModalOk">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script id="ttData" type="application/json">{{ data|tojson }}</script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var D = JSON.parse(document.getElementById('ttData').textContent);
+    var table = document.getElementById('ttTable');
+    var rows = D.rows.map(function (r) { return { class_ids: r.class_ids.slice(), cells: Object.assign({}, r.cells) }; });
+    var dirty = false, editing = null;
+    var classNames = {}; D.classes.forEach(function (c) { classNames[c.id] = c.name; });
+    var startInput = document.getElementById('ttStart');
+    startInput.value = D.start_time;
+
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function fmt(m) { m = ((m % 1440) + 1440) % 1440; return ((Math.floor(m / 60) % 12) || 12) + ':' + pad(m % 60); }
+    function times() {
+        var p = (startInput.value || '08:00').split(':'), cur = (+p[0]) * 60 + (+p[1] || 0), out = [];
+        D.columns.forEach(function (c) { out.push(fmt(cur) + ' to ' + fmt(cur + c.minutes)); cur += c.minutes; });
+        return out;
+    }
+    function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function label(r) { return r.class_ids.map(function (i) { return classNames[i] || '?'; }).join(' + '); }
+    function markDirty() { dirty = true; }
+
+    function render() {
+        var t = times(), h = '<thead><tr><th>Sr</th><th>Class</th>';
+        D.columns.forEach(function (c, i) {
+            var parts = t[i].split(' to ');
+            h += '<th class="tt-time">' + parts[0] + '<br><small>to</small><br>' + parts[1] + '</th>';
+        });
+        h += '<th class="border-0 bg-white"></th></tr></thead><tbody>';
+        if (!rows.length) {
+            h += '<tr><td colspan="' + (D.columns.length + 3) + '" class="text-muted py-4">No rows yet &mdash; click <b>Add row</b> and choose the class(es).</td></tr>';
+        }
+        rows.forEach(function (r, ri) {
+            h += '<tr data-r="' + ri + '"><td>' + (ri + 1) + '</td><td class="tt-class">' + esc(label(r)) +
+                 ' <button type="button" class="btn btn-sm btn-link text-secondary p-0 ms-1" data-edit="' + ri + '" title="Change classes" aria-label="Change classes"><i class="fas fa-pen"></i></button></td>';
+            D.columns.forEach(function (c) {
+                if (c.kind !== 'period') {
+                    if (ri === 0) h += '<td class="tt-side" rowspan="' + rows.length + '"><span>' + esc(c.label) + '</span></td>';
+                    return;
+                }
+                var cur = r.cells[c.no] || '';
+                h += '<td class="tt-cell"><select class="form-select form-select-sm" data-r="' + ri + '" data-p="' + c.no + '"><option value=""></option>';
+                D.teachers.forEach(function (tc) { h += '<option value="' + tc.id + '"' + (String(tc.id) === String(cur) ? ' selected' : '') + '>' + esc(tc.name) + '</option>'; });
+                h += '</select></td>';
+            });
+            h += '<td class="tt-act">' +
+                 '<button type="button" class="btn btn-sm btn-outline-secondary" data-up="' + ri + '"' + (ri === 0 ? ' disabled' : '') + ' title="Move up" aria-label="Move row up"><i class="fas fa-arrow-up"></i></button> ' +
+                 '<button type="button" class="btn btn-sm btn-outline-secondary" data-down="' + ri + '"' + (ri === rows.length - 1 ? ' disabled' : '') + ' title="Move down" aria-label="Move row down"><i class="fas fa-arrow-down"></i></button> ' +
+                 '<button type="button" class="btn btn-sm btn-outline-danger" data-del="' + ri + '" title="Delete row" aria-label="Delete row"><i class="fas fa-trash"></i></button></td></tr>';
+        });
+        table.innerHTML = h + '</tbody>';
+        markClashes();
+    }
+
+    function markClashes() {
+        var seen = {}, any = false;
+        rows.forEach(function (r, ri) {
+            Object.keys(r.cells).forEach(function (p) { var k = p + '_' + r.cells[p]; (seen[k] = seen[k] || []).push(ri); });
+        });
+        table.querySelectorAll('select[data-p]').forEach(function (s) {
+            var r = rows[+s.dataset.r], v = r.cells[s.dataset.p];
+            var bad = v && seen[s.dataset.p + '_' + v].length > 1;
+            s.classList.toggle('tt-clash', !!bad);
+            if (bad) any = true;
+        });
+        document.getElementById('ttClashNote').classList.toggle('d-none', !any);
+    }
+
+    function msg(text, kind) {
+        var m = document.getElementById('ttMsg');
+        m.className = 'alert py-2 small alert-' + kind; m.textContent = text;
+    }
+
+    table.addEventListener('change', function (e) {
+        var s = e.target.closest('select[data-p]'); if (!s) return;
+        var r = rows[+s.dataset.r];
+        if (s.value) r.cells[s.dataset.p] = +s.value; else delete r.cells[s.dataset.p];
+        markDirty(); markClashes();
+    });
+    table.addEventListener('click', function (e) {
+        var b = e.target.closest('button'); if (!b) return;
+        var d = b.dataset, i;
+        if (d.edit !== undefined) openModal(+d.edit);
+        else if (d.del !== undefined) {
+            i = +d.del;
+            window.SchoolUI.confirm('Delete row "' + label(rows[i]) + '"?').then(function (ok) {
+                if (ok) { rows.splice(i, 1); markDirty(); render(); }
+            });
+        } else if (d.up !== undefined) { i = +d.up; rows.splice(i - 1, 0, rows.splice(i, 1)[0]); markDirty(); render(); }
+        else if (d.down !== undefined) { i = +d.down; rows.splice(i + 1, 0, rows.splice(i, 1)[0]); markDirty(); render(); }
+    });
+    startInput.addEventListener('change', function () { markDirty(); render(); });
+
+    // ---- class picker (add / edit a row)
+    var modalEl = document.getElementById('ttRowModal'), modal = new bootstrap.Modal(modalEl);
+    function openModal(ri) {
+        editing = ri;
+        var taken = {}, mine = ri === null ? [] : rows[ri].class_ids;
+        rows.forEach(function (r, i) { if (i !== ri) r.class_ids.forEach(function (c) { taken[c] = i + 1; }); });
+        var h = '';
+        D.classes.forEach(function (c) {
+            var off = taken[c.id] !== undefined;
+            h += '<div class="form-check"><input class="form-check-input" type="checkbox" id="tc' + c.id + '" value="' + c.id + '"' +
+                 (mine.indexOf(c.id) >= 0 ? ' checked' : '') + (off ? ' disabled' : '') + '><label class="form-check-label" for="tc' + c.id + '">' +
+                 esc(c.name) + (off ? ' <span class="text-muted small">(already in row ' + taken[c.id] + ')</span>' : '') + '</label></div>';
+        });
+        document.getElementById('ttModalBody').innerHTML = h || '<p class="text-muted mb-0">No classes yet. Add classes first.</p>';
+        document.getElementById('ttModalTitle').textContent = ri === null ? 'Add row — select class(es)' : 'Change classes in this row';
+        document.getElementById('ttModalErr').classList.add('d-none');
+        modal.show();
+    }
+    document.getElementById('ttAddRow').addEventListener('click', function () { openModal(null); });
+    document.getElementById('ttModalOk').addEventListener('click', function () {
+        var ids = [];
+        document.querySelectorAll('#ttModalBody input:checked').forEach(function (x) { ids.push(+x.value); });
+        if (!ids.length) { document.getElementById('ttModalErr').classList.remove('d-none'); return; }
+        if (editing === null) rows.push({ class_ids: ids, cells: {} }); else rows[editing].class_ids = ids;
+        markDirty(); modal.hide(); render();
+    });
+
+    // ---- save / pdf
+    function save() {
+        var payload = { start_time: startInput.value || '08:00',
+                        rows: rows.map(function (r) { return { class_ids: r.class_ids, cells: r.cells }; }) };
+        return fetch('{{ url_for("main.timetable_sheet_save") }}', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        }).then(function (res) { return res.json().catch(function () { return { ok: false, error: 'Could not save.' }; }); })
+          .then(function (out) {
+              if (out.ok) { dirty = false; msg('Timetable saved.', 'success'); } else { msg(out.error || 'Could not save.', 'danger'); }
+              return out.ok;
+          }).catch(function () { msg('Could not save. Check your connection.', 'danger'); return false; });
+    }
+    document.getElementById('ttSave').addEventListener('click', save);
+    document.getElementById('ttPdf').addEventListener('click', function () {
+        save().then(function (ok) {
+            if (ok) window.location = '{{ url_for("main.timetable_sheet_pdf") }}?orientation=' + document.getElementById('ttOrient').value;
+        });
+    });
+    window.addEventListener('beforeunload', function (e) { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+    render();
+});
+</script>
+{% endblock %}

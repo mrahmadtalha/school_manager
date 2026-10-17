@@ -40,9 +40,11 @@
         {% with table_id = 'teacherTable', export_urls = export_urls %}
         {% include '_column_picker.html' %}
         {% endwith %}
+        {% if has_feature('data_import') %}
         <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#importModal">
             <i class="fas fa-file-upload me-1"></i> Import Excel
         </button>
+        {% endif %}
         <a href="{{ url_for('main.archived_teachers_list') }}" class="btn btn-outline-warning btn-sm">
             <i class="fas fa-archive me-1"></i> Archive Bin
         </a>

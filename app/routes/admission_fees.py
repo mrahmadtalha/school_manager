@@ -46,21 +46,29 @@ def _student_url(student_id):
 @role_required(ROLE_ADMIN)
 def admission_settings_save():
     class_values = {}
+    class_items = {}
     for class_obj in ClassModel.query.all():
         key = 'class_%d' % class_obj.id
         if key in request.form:
             class_values[class_obj.id] = request.form.get(key)
+        if ('books_%d' % class_obj.id) in request.form:
+            class_items[class_obj.id] = {
+                'books': request.form.get('books_%d' % class_obj.id),
+                'uniform': request.form.get('uniform_%d' % class_obj.id),
+                'sets': request.form.get('sets_%d' % class_obj.id),
+            }
     try:
         default, parsed = admission_fee.save_settings(
-            request.form.get('default_admission_fee'), class_values)
+            request.form.get('default_admission_fee'), class_values, class_items)
         log_action('update', entity_type='AdmissionFeeSettings', entity_id=None,
                    summary='Admission fee settings saved: school fee %s, %d class '
                            'override(s)' % (
                                'none' if default is None else 'Rs. %s' % default,
                                sum(1 for v in parsed.values() if v is not None)))
         db.session.commit()
-        flash('Admission fee settings saved. They apply to students admitted '
-              'from now on; existing students are not changed.', 'success')
+        flash('Admission fee, books and uniform settings saved. They apply to '
+              'students admitted from now on; existing students are not changed.',
+              'success')
     except ValueError as error:
         db.session.rollback()
         flash(str(error), 'danger')
@@ -118,7 +126,7 @@ def admission_export(fmt):
     rupees = admission_fee.to_rupees
     headers = ['Date', 'Student', 'Father', 'Class', 'Roll No', 'Standard (Rs)',
                'Concession (Rs)', 'Net (Rs)', 'Received (Rs)', 'Pending (Rs)',
-               'Status', 'Reason']
+               'Status', 'Reason', 'Books + Uniform (Rs)']
     data = []
     for row in rows:
         student = row['student']
@@ -128,7 +136,8 @@ def admission_export(fmt):
             student.class_info.name if student.class_info else '',
             student.roll_number, rupees(row['standard']), rupees(row['concession']),
             rupees(row['net']), rupees(row['received']), rupees(row['balance']),
-            admission_fee.STATUS_LABELS[row['status']], student.admission_note or ''])
+            admission_fee.STATUS_LABELS[row['status']], student.admission_note or '',
+            rupees(row['extras'])])
     parts = []
     if filters['class_id']:
         class_obj = db.session.get(ClassModel, filters['class_id'])
@@ -155,10 +164,10 @@ def admission_export(fmt):
         fmt, 'admission_fees_%s' % date.today().strftime('%Y%m%d'),
         'Admission Fees Register', ' - '.join(parts), headers, data,
         col_align=['CENTER', 'LEFT', 'LEFT', 'LEFT', 'CENTER', 'RIGHT', 'RIGHT',
-                   'RIGHT', 'RIGHT', 'RIGHT', 'CENTER', 'LEFT'],
-        col_weights=[2.2, 3.6, 3.2, 2.2, 1.5, 2.2, 2.2, 2.2, 2.2, 2.2, 1.8, 3.0],
+                   'RIGHT', 'RIGHT', 'RIGHT', 'CENTER', 'LEFT', 'RIGHT'],
+        col_weights=[2.2, 3.6, 3.2, 2.2, 1.5, 2.2, 2.2, 2.2, 2.2, 2.2, 1.8, 3.0, 2.4],
         cell_formats=[None, None, None, None, None, 'money', 'money', 'money',
-                      'money', 'money', None, None],
+                      'money', 'money', None, None, 'money'],
         landscape_mode=True, footer_note=footer)
 
 
@@ -216,11 +225,17 @@ def admission_terms(student_id):
     except ValueError:
         flash('Please enter the admission fee amount (0 removes it).', 'danger')
         return redirect(_student_url(student.id))
+    items = {}
+    if 'books_fee' in request.form or 'uniform_qty' in request.form:
+        items = {'books_rupees': (request.form.get('books_fee') or '0').replace(',', ''),
+                 'uniform_qty': request.form.get('uniform_qty') or '0',
+                 'uniform_unit_rupees': (request.form.get('uniform_price') or '0'
+                                         ).replace(',', '')}
     try:
         admission_fee.adjust_terms(
             student, standard, request.form.get('admission_discount_type'),
             request.form.get('admission_discount_value'),
-            request.form.get('admission_note'))
+            request.form.get('admission_note'), **items)
         db.session.commit()
         flash('Admission fee terms updated.', 'success')
     except ValueError as error:
@@ -241,10 +256,17 @@ def admission_receipt(row_id):
     # reprinted old receipt still shows what was true when it was issued.
     earlier = info['prior_paid'] + sum(p.amount_paisa for p in admission_fee.active_payments(student.id)
                                        if (p.income_date, p.id) <= (row.income_date, row.id))
+    # Item split as printed on this receipt (a voided one still shows what it said).
+    after = earlier + row.amount_paisa if row.is_void else earlier
+    before = after - row.amount_paisa
+    lines_after = admission_fee.allocate(student, after)
+    lines_before = {l['key']: l['paid'] for l in admission_fee.allocate(student, max(0, before))}
+    for line in lines_after:
+        line['this_receipt'] = line['paid'] - lines_before.get(line['key'], 0)
     return render_template(
         'admission_receipt.html', row=row, student=student, info=info,
-        paid_to_date=earlier,
-        balance_after=max(0, info['net'] - earlier),
+        paid_to_date=earlier, lines=lines_after,
+        balance_after=max(0, info['total'] - earlier),
         school=SchoolSettings.query.first(), money=admission_fee.money,
         words=amount_in_words(row.amount), status_labels=admission_fee.STATUS_LABELS)
 

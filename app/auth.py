@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 
 from flask import (Blueprint, current_app, flash, jsonify, redirect,
@@ -17,6 +18,10 @@ from app.security import (
     register_failed_login,
 )
 from app.services.audit import log_action
+from app.services import password_recovery
+
+RECOVERY_THROTTLE_KEY = '__recovery_token__'
+RECOVERY_SESSION_SECONDS = 15 * 60
 
 auth = Blueprint('auth', __name__)
 
@@ -144,6 +149,82 @@ def login():
         flash('Incorrect username or password.', 'danger')
 
     return render_template('login.html')
+
+
+@auth.route('/recover', methods=['GET', 'POST'])
+def recover():
+    """Forgot username / password: show a request code, accept a vendor token."""
+    if not AdminUser.query.first():
+        return redirect(url_for('auth.setup_admin'))
+
+    if request.method == 'POST':
+        if request.form.get('action') == 'new_code':
+            password_recovery.get_request_code(force_new=True)
+            flash('A new request code was generated. Send the NEW code to your vendor.', 'info')
+            return redirect(url_for('auth.recover'))
+
+        if is_login_locked(RECOVERY_THROTTLE_KEY):
+            remaining = lockout_seconds_remaining(RECOVERY_THROTTLE_KEY)
+            flash(f'Too many wrong tokens. Try again in about {remaining} seconds.', 'danger')
+            return render_template('recover_password.html', stage='request',
+                                   request_code=password_recovery.get_request_code()), 429
+        try:
+            nonce = password_recovery.redeem(request.form.get('token') or '')
+        except password_recovery.RecoveryError as err:
+            register_failed_login(RECOVERY_THROTTLE_KEY)
+            log_action('login_failed', entity_type='AdminUser',
+                       summary='Invalid password-recovery token entered')
+            db.session.commit()
+            flash(err.message, 'danger')
+        else:
+            clear_failed_logins(RECOVERY_THROTTLE_KEY)
+            session['recovery_nonce'] = nonce
+            session['recovery_at'] = time.time()
+            return redirect(url_for('auth.recover_reset'))
+
+    return render_template('recover_password.html', stage='request',
+                           request_code=password_recovery.get_request_code())
+
+
+@auth.route('/recover/reset', methods=['GET', 'POST'])
+def recover_reset():
+    """Second step: the vendor token was accepted - choose an admin, set a password."""
+    nonce = session.get('recovery_nonce')
+    if not nonce or time.time() - session.get('recovery_at', 0) > RECOVERY_SESSION_SECONDS:
+        session.pop('recovery_nonce', None)
+        session.pop('recovery_at', None)
+        flash('Enter the reset token from your vendor first.', 'warning')
+        return redirect(url_for('auth.recover'))
+
+    admins = AdminUser.query.filter_by(role=ROLE_ADMIN).order_by(AdminUser.username).all()
+
+    if request.method == 'POST':
+        user = next((a for a in admins if str(a.id) == request.form.get('user_id')), None)
+        password = request.form.get('password') or ''
+        confirm = request.form.get('confirm_password') or ''
+        problem = password_problem(password)
+        if user is None:
+            flash('Choose which administrator account to recover.', 'danger')
+        elif password != confirm:
+            flash('Passwords do not match.', 'danger')
+        elif problem:
+            flash(problem, 'danger')
+        else:
+            user.set_password(password)
+            user.is_active = True
+            password_recovery.mark_used(nonce)
+            log_action('user_admin', entity_type='AdminUser', entity_id=user.id,
+                       actor=(None, 'vendor-recovery', 'system'),
+                       summary=f'Administrator "{user.username}" recovered with a vendor reset token',
+                       after={'password': 'reset', 'method': 'vendor_recovery'})
+            db.session.commit()
+            clear_failed_logins(user.username)
+            session.pop('recovery_nonce', None)
+            session.pop('recovery_at', None)
+            flash(f'Password reset for "{user.username}". You can sign in now.', 'success')
+            return redirect(url_for('auth.login'))
+
+    return render_template('recover_password.html', stage='reset', admins=admins)
 
 
 @auth.route('/logout')

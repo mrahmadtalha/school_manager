@@ -22,6 +22,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from flask_login import current_user
+from markupsafe import Markup
 from sqlalchemy.exc import IntegrityError
 
 from app.database import db
@@ -46,10 +47,13 @@ from sqlalchemy import func
 from app.services.audit import log_action, serialize
 from app.services import record_view
 from app.services import admission_fee
+from app.services import admission_numbers
+from app.services import admission_form
 from app.services.marks import ABSENT_LABEL
 from app.services.photos import photo_path, save_photo, stash_upload, delete_photo, PhotoError
 from app.models.settings import calculate_grade, get_custom_fields
 from app.services.custom_fields import (
+    parse_custom_fields_json,
     collect_custom_field_values,
     has_custom_field_input,
     missing_required_custom_fields,
@@ -200,8 +204,76 @@ def _student_form_context():
         'admission_enabled': admission_fee.is_enabled(),
         'admission_manage': admission_fee.is_admin(current_user),
         'admission_fee_by_class': admission_fee.fee_by_class(),
+        'admission_items_by_class': admission_fee.items_by_class(),
+        'auto_admission_number': admission_numbers.is_auto(),
+        'next_admission_number': (admission_numbers.next_number()
+                                  if admission_numbers.is_auto() else ''),
         'admission_notice': session.pop('admission_notice', None),
     }
+
+
+_NEWLINE_WS = re.compile(r'\s*\n\s*')
+
+
+@main.app_template_filter('collapse_ws')
+def collapse_ws(html):
+    """Squeeze template indentation/newlines to single spaces.
+
+    HTML already renders any whitespace run containing a newline as one space,
+    so the page looks identical; the table rows are just ~60% smaller on the
+    wire (indentation was most of each row).  Used by students.html.
+    """
+    return Markup(_NEWLINE_WS.sub(' ', str(html)))
+
+
+def _num_text(value):
+    """Number as the form field text, e.g. 3500.0 (same text the old modals showed)."""
+    return '' if value is None or value == '' else str(value)
+
+
+def _student_edit_map(students):
+    """Per-student values for the shared Edit / Archive modals on the list page.
+
+    The page used to render a full Edit modal and an Archive modal for EVERY
+    student (about 27 KB of HTML each, thousands of hidden forms for a large
+    school).  It now renders one Edit modal and one Archive modal and fills
+    them from this small JSON map when a row's button is clicked, so the page
+    size no longer depends on the number of modals.  Values mirror exactly what
+    the old per-student modals pre-filled.
+    """
+    result = {}
+    for student in students:
+        if student.class_fee is not None:
+            fee = student.class_fee
+        else:
+            fee = student.monthly_fee if student.monthly_fee else ''
+        result[str(student.id)] = {
+            'name': student.student_name,
+            'roll': student.roll_number,
+            'class_id': student.class_id,
+            'section_id': student.section_id,
+            'sponsor_type': student.sponsor_type or 'Father',
+            'father_name': student.father_name,
+            'cnic': student.sponsor_cnic or '',
+            'fee': _num_text(fee),
+            'discount_type': student.discount_type or 'percentage',
+            'discount_value': _num_text(student.discount_value
+                                        if student.discount_value is not None else 0),
+            'phone': student.guardian_phone,
+            'address': student.address,
+            'dob': student.date_of_birth.isoformat() if student.date_of_birth else '',
+            'gender': student.gender or '',
+            'admission_number': student.admission_number or '',
+            'admission_date': (student.admission_date.isoformat()
+                               if student.admission_date else ''),
+            'custom': parse_custom_fields_json(student.custom_fields_data),
+            'photo': (url_for('main.student_photo', id=student.id,
+                              v=student.photo_filename)
+                      if student.photo_filename else ''),
+            'edit_url': url_for('main.edit_student', id=student.id),
+            'archive_url': url_for('main.delete_student', id=student.id),
+        }
+    return result
 
 
 def _render_students_page(**extra):
@@ -235,6 +307,7 @@ def _render_students_page(**extra):
             for student in listed
         },
         'column_picker': record_view.picker_payload('student'),
+        'edit_map': _student_edit_map(listed),
         'row_extras': row_extras,
     })
     context.update(extra)
@@ -303,6 +376,7 @@ def students_list():
         selected_status=filters['status'], has_dues=filters['has_dues'],
         student_field_specs=specs,
         display_map=display_map,
+        edit_map=_student_edit_map(students),
         column_picker=record_view.picker_payload('student'),
         row_extras=row_extras,
         **_student_form_context())
@@ -316,7 +390,7 @@ def add_student():
         'gender', 'admission_number', 'admission_date', 'sponsor_type', 'sponsor_cnic', 'photo_token',
         'admission_fee', 'admission_discount_type', 'admission_discount_value',
         'admission_note', 'admission_received_now', 'admission_received_amount',
-        'admission_method')}
+        'admission_method', 'books_fee', 'uniform_qty', 'uniform_price')}
     custom_field_definitions = get_custom_fields('student')
     missing_fields = missing_required_custom_fields(request.form, custom_field_definitions)
     if missing_fields:
@@ -393,6 +467,8 @@ def add_student():
         except PhotoError as e:
             flash(f'Photo ignored: {e}', 'warning')
 
+        if not new_student.admission_number and admission_numbers.is_auto():
+            new_student.admission_number = admission_numbers.next_number()
         db.session.add(new_student)
         start_enrollment(new_student, reason='enrolled', start_date=date.today(),
                          end_previous=False)
@@ -416,8 +492,8 @@ def add_student():
         if notice:
             session['admission_notice'] = notice
         elif admission and pending:
-            flash('Admission fee %s is pending for this student. It can be received '
-                  'from Admission Fees.' % admission_fee.money(pending), 'info')
+            flash('Admission fee / books / uniform %s is pending for this student. '
+                  'It can be received from Admission Fees.' % admission_fee.money(pending), 'info')
     except ValueError as error:
         db.session.rollback()
         flash(str(error), 'danger')
@@ -730,6 +806,23 @@ def student_detailed_report(id):
                            fee_recent=fee_recent,
                            term_results=term_results,
                            wa_link=wa_link)
+
+@main.route('/students/<int:id>/admission-form/<fmt>')
+def student_admission_form(id, fmt):
+    """Download this student's admission form as PDF or Excel."""
+    if fmt not in ('pdf', 'xlsx'):
+        abort(404)
+    student = StudentModel.query.get_or_404(id)
+    safe_name = re.sub(r'[^A-Za-z0-9_-]+', '_', student.student_name).strip('_') or 'student'
+    if fmt == 'pdf':
+        data = admission_form.build_pdf(student)
+        mimetype = 'application/pdf'
+    else:
+        data = admission_form.build_xlsx(student)
+        mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    return send_file(io.BytesIO(data), mimetype=mimetype, as_attachment=True,
+                     download_name='admission_form_%s_%s.%s' % (student.roll_number, safe_name, fmt))
+
 
 @main.route('/students/<int:id>/report/pdf')
 def student_report_pdf(id):

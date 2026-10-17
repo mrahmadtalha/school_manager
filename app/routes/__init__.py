@@ -9,7 +9,7 @@ from app.routes import (
     promotions,
     teachers,
     classes,
-    timetables,
+    timetable_sheet,
     attendance,
     examinations,
     term_exams,

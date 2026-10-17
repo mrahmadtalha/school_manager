@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}Settings{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Settings</h1>
+<div class="row g-4">
+<div class="col-lg-6"><div class="card border-0 shadow-sm h-100"><div class="card-body"><h2 class="h5">Backup</h2>
+<p class="small text-muted">Downloads your school database and the encrypted signing key. <b>Keep it somewhere safe and private</b> (e.g. an encrypted USB). If you lose the signing key you cannot renew any school.</p>
+<a class="btn btn-dark" href="{{ url_for('backup') }}"><i class="fas fa-download me-1"></i>Download backup</a>
+<p class="small text-muted mt-3 mb-0">Data folder: <code>{{ data_dir }}</code></p></div></div></div>
+<div class="col-lg-6"><div class="card border-0 shadow-sm h-100"><div class="card-body"><h2 class="h5">Import old ledger</h2>
+{% if ledger_exists %}<p class="small text-muted">Reads <code>{{ ledger_path }}</code> (from the command-line tool) and creates the schools and key history. Safe to run twice.</p>
+<form method="post" action="{{ url_for('import_ledger') }}"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><button class="btn btn-outline-dark">Import issued_licenses.csv</button></form>
+{% else %}<p class="small text-muted mb-0">No <code>issued_licenses.csv</code> found.</p>{% endif %}</div></div></div>
+<div class="col-lg-6"><div class="card border-0 shadow-sm"><div class="card-body"><h2 class="h5">Dashboard password</h2>
+<form method="post" action="{{ url_for('change_password') }}" class="row g-2"><input type="hidden" name="_csrf" value="{{ csrf_token }}">
+<div class="col-12"><input type="password" class="form-control" name="old_password" placeholder="Current password" required></div>
+<div class="col-6"><input type="password" class="form-control" name="new_password" placeholder="New (10+ chars)" required></div>
+<div class="col-6"><input type="password" class="form-control" name="confirm_password" placeholder="Confirm" required></div>
+<div class="col-12"><button class="btn btn-outline-dark btn-sm">Change password</button></div></form></div></div></div>
+<div class="col-lg-6"><div class="card border-0 shadow-sm"><div class="card-body"><h2 class="h5">Plain private key file</h2>
+{% if plain_exists %}<div class="alert alert-warning small">An unencrypted copy of your signing key still exists at <code>{{ plain_path }}</code>. Make a backup first, then erase it - the encrypted copy is what the dashboard uses.</div>
+<form method="post" action="{{ url_for('remove_plain_key') }}" class="d-flex gap-2"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="password" class="form-control" name="password" placeholder="Dashboard password" required><button class="btn btn-danger">Erase</button></form>
+<p class="small text-muted mt-2 mb-0">The old command-line tool (<code>license_admin.py issue</code>) needs this file, so it stops working once erased - use the dashboard instead.</p>
+{% else %}<p class="small text-success mb-0"><i class="fas fa-check-circle me-1"></i>No unencrypted key file on disk.</p>{% endif %}</div></div></div>
+</div>
+{% endblock %}

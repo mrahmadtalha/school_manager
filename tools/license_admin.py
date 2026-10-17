@@ -9,6 +9,16 @@ Run from the project root::
     python tools/license_admin.py inspect --file al-noor.key
     python tools/license_admin.py machine-code
 
+Features and WhatsApp caps (optional; omit them for a legacy "everything on" key)::
+
+    python tools/license_admin.py issue --machine 7F3A-91BC-0D42-E8A5 \\
+        --licensee "Al-Noor Public School" --days 365 --plan standard \\
+        --features expenses,payroll,attendance,exams,whatsapp \\
+        --wa-daily 100 --wa-monthly 2000 --rev 1
+
+The vendor dashboard (``vendor_dashboard/``) does all of this from a web page
+on your own laptop and is the recommended way to issue and renew keys.
+
 Commands
 --------
 init          Create the signing key pair ONCE.  The private key goes to
@@ -73,6 +83,39 @@ def public_key_b64(private_key):
     return lic.b64u_encode(raw)
 
 
+def build_payload(*, license_id, licensee, machine_code, issued, expires, grace_days,
+                  rev=1, plan=None, features=None, wa_daily=None, wa_monthly=None):
+    """The signed license payload (shared by this CLI and the vendor dashboard).
+
+    ``features=None`` leaves the field out (legacy key: everything on);
+    a list - even an empty one - switches exactly those modules on.  A missing
+    WhatsApp cap means unlimited.
+    """
+    payload = {
+        'v': lic.PAYLOAD_VERSION,
+        'product': lic.PRODUCT,
+        'license_id': license_id,
+        'licensee': licensee.strip(),
+        'machine_id': machine_code,
+        'issued': issued.isoformat(),
+        'expires': expires.isoformat(),
+        'grace_days': max(0, min(lic.MAX_GRACE_DAYS, int(grace_days))),
+        'rev': max(0, int(rev)),
+    }
+    if plan:
+        payload['plan'] = str(plan)[:40]
+    if features is not None:
+        payload['features'] = sorted({str(item) for item in features})
+    limits = {}
+    if wa_daily is not None:
+        limits[lic.LIMIT_WA_DAILY] = max(0, int(wa_daily))
+    if wa_monthly is not None:
+        limits[lic.LIMIT_WA_MONTHLY] = max(0, int(wa_monthly))
+    if limits:
+        payload['limits'] = limits
+    return payload
+
+
 def sign_license(private_key, payload):
     """Return the ``SM1.<payload>.<signature>`` key text for ``payload``."""
     payload_bytes = json.dumps(payload, separators=(',', ':'), sort_keys=True).encode('utf-8')
@@ -107,6 +150,15 @@ def cmd_init(args):
     print('Rebuild/restart the application so it picks up the new public key.')
 
 
+def _catalog_keys():
+    """Feature keys from app/services/features.py (loaded by path, no Flask needed)."""
+    path = ROOT / 'app' / 'services' / 'features.py'
+    spec = importlib.util.spec_from_file_location('sm_features', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.ALL_FEATURES
+
+
 def _next_license_id():
     count = 0
     if LEDGER_FILE.exists():
@@ -137,16 +189,20 @@ def cmd_issue(args):
     if expires < issued:
         sys.exit('Expiry cannot be before the issue date.')
 
-    payload = {
-        'v': lic.PAYLOAD_VERSION,
-        'product': lic.PRODUCT,
-        'license_id': args.license_id or _next_license_id(),
-        'licensee': args.licensee.strip(),
-        'machine_id': machine_code,
-        'issued': issued.isoformat(),
-        'expires': expires.isoformat(),
-        'grace_days': max(0, min(lic.MAX_GRACE_DAYS, args.grace_days)),
-    }
+    features = None
+    if args.features is not None:
+        known = set(_catalog_keys())
+        wanted = [item.strip() for item in args.features.split(',') if item.strip()]
+        features = sorted(known) if wanted == ['all'] else wanted
+        unknown = sorted(set(features) - known)
+        if unknown:
+            sys.exit(f'Unknown feature(s): {", ".join(unknown)}. Known: {", ".join(sorted(known))}')
+
+    payload = build_payload(
+        license_id=args.license_id or _next_license_id(), licensee=args.licensee,
+        machine_code=machine_code, issued=issued, expires=expires,
+        grace_days=args.grace_days, rev=args.rev, plan=args.plan, features=features,
+        wa_daily=args.wa_daily, wa_monthly=args.wa_monthly)
     key_text = sign_license(private_key, payload)
 
     KEYS_DIR.mkdir(exist_ok=True)
@@ -167,6 +223,9 @@ def cmd_issue(args):
     print(f'Licensee   : {payload["licensee"]}')
     print(f'Machine    : {machine_code}')
     print(f'Valid      : {payload["issued"]}  ->  {payload["expires"]}  (+{payload["grace_days"]} days grace)')
+    print(f'Revision   : {payload["rev"]}   Plan: {payload.get("plan", "-")}')
+    print(f'Features   : {", ".join(payload["features"]) if "features" in payload else "all (legacy key)"}')
+    print(f'WhatsApp   : {payload.get("limits", "unlimited")}')
     print(f'Key file   : {out}')
     print('\nLicense key (send this to the school):\n')
     print(key_text)
@@ -183,8 +242,12 @@ def cmd_inspect(args):
     except lic.LicenseError as err:
         sys.exit(f'INVALID ({err.code}): {err.message}')
     print('Signature OK')
-    for key in ('license_id', 'licensee', 'machine_id', 'issued', 'expires', 'grace_days'):
+    for key in ('license_id', 'licensee', 'machine_id', 'issued', 'expires', 'grace_days',
+                'rev', 'plan'):
         print(f'  {key:<11}: {payload.get(key)}')
+    features = payload.get('_features')
+    print(f'  {"features":<11}: {", ".join(features) if features is not None else "all (legacy key)"}')
+    print(f'  {"limits":<11}: {payload.get("_limits") or "unlimited"}')
 
 
 def cmd_machine_code(_args):
@@ -208,6 +271,12 @@ def main():
     p.add_argument('--grace-days', type=int, default=lic.DEFAULT_GRACE_DAYS,
                    help=f'days of full use after expiry before read-only (default {lic.DEFAULT_GRACE_DAYS})')
     p.add_argument('--license-id', help='override the automatic license ID')
+    p.add_argument('--rev', type=int, default=1,
+                   help='key revision; use a higher number to replace an earlier key of the same license ID')
+    p.add_argument('--plan', help='plan label shown to the school (e.g. standard)')
+    p.add_argument('--features', help='comma-separated feature keys, or "all"; omit for a legacy everything-on key')
+    p.add_argument('--wa-daily', type=int, help='WhatsApp messages allowed per day (omit = unlimited)')
+    p.add_argument('--wa-monthly', type=int, help='WhatsApp messages allowed per month (omit = unlimited)')
     p.add_argument('--out', help='where to write the .key file')
     p.set_defaults(func=cmd_issue)
 

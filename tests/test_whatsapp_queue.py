@@ -309,7 +309,7 @@ def test_automation_hides_inactive_integration_panel(admin_client, app):
     assert 'id="cloud-api-config" class="border rounded p-3 mb-3" hidden' not in cloud_page
 
 
-def test_queue_is_paginated_at_ten_items_and_search_keeps_queue_tab(admin_client, app):
+def test_queue_is_a_datatable_and_search_keeps_queue_tab(admin_client, app):
     with app.app_context():
         db.session.add_all([
             MessageQueue(
@@ -320,14 +320,16 @@ def test_queue_is_paginated_at_ten_items_and_search_keeps_queue_tab(admin_client
         ])
         db.session.commit()
 
-    page = admin_client.get('/automation?tab=queue&page=2')
+    page = admin_client.get('/automation?tab=queue')
     body = page.get_data(as_text=True)
     assert page.status_code == 200
-    assert 'Page 2 of 3 · 23 message(s)' in body
-    assert body.count('<tr>') == 11
+    # One client-side DataTable holds every row (paging happens in the browser) and it
+    # remembers its page across approve / retry reloads.
+    assert 'id="queueTable"' in body and 'data-state-save="true"' in body
+    assert body.count('<tr>') == 24            # header + all 23 messages
     assert 'tab-pane fade show active' in body
 
-    filtered = admin_client.get('/automation?tab=queue&search=Pagination%20item%2022&page=2')
+    filtered = admin_client.get('/automation?tab=queue&search=Pagination%20item%2022')
     filtered_body = filtered.get_data(as_text=True)
-    assert 'Page 1 of 1 · 1 message(s)' in filtered_body
     assert 'Pagination item 22' in filtered_body
+    assert 'Pagination item 21' not in filtered_body

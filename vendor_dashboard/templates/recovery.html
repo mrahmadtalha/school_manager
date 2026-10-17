@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% block title %}Recovery{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Forgot username / password</h1>
+<div class="row g-4"><div class="col-lg-7">
+<div class="card border-0 shadow-sm"><div class="card-body">
+<p class="small text-muted">The school opens <b>Login → Forgot username / password?</b> and sends you the request code. Confirm it is really the principal/owner (call them back on the number you have on file) before issuing a token.</p>
+<form method="post"><input type="hidden" name="_csrf" value="{{ csrf_token }}">
+<label class="form-label fw-bold">Request code from the school</label>
+<textarea class="form-control font-monospace code-box" name="request_code" rows="3" required placeholder="SMR1.…">{{ request_text }}</textarea>
+{% if not decoded %}<button class="btn btn-dark mt-2" name="action" value="lookup">Check request</button>{% endif %}
+{% if decoded %}
+<div class="alert alert-light border mt-3 small mb-2">
+<b>School:</b> {% if school %}<a href="{{ url_for('school_detail', school_id=school.id) }}">{{ school.name }}</a> ({{ school.phone or 'no phone on file' }}){% else %}<span class="text-danger">not found</span>{% endif %}<br>
+<b>Machine:</b> <code>{{ decoded.machine_code }}</code> · <b>License:</b> <code>{{ decoded.license_id or '-' }}</code><br>
+<b>Request made:</b> {{ decoded.requested_at.strftime('%d %b %Y %H:%M') }} (UTC)</div>
+{% for w in warnings %}<div class="alert alert-warning py-2 small">{{ w }}</div>{% endfor %}
+{% if not token %}
+<div class="row g-2 align-items-end">
+<div class="col-md-4"><label class="form-label small">Token valid for</label><select class="form-select" name="hours">{% for h in hours %}<option value="{{ h }}" {{ 'selected' if h==24 }}>{{ h }} hour{{ 's' if h>1 }}</option>{% endfor %}</select></div>
+<div class="col-md-8"><label class="form-label small">Note (who you verified)</label><input class="form-control" name="note" placeholder="e.g. Called Principal on 03xx"></div></div>
+{% if warnings or not school %}<div class="form-check mt-2"><input class="form-check-input" type="checkbox" name="confirm" id="cf"><label class="form-check-label small" for="cf">I have verified the person and want to issue a token anyway</label></div>{% endif %}
+<button class="btn btn-danger mt-3" name="action" value="issue"><i class="fas fa-unlock me-1"></i>Issue reset token</button>
+{% endif %}{% endif %}
+</form>
+{% if token %}
+<hr><label class="form-label fw-bold">Reset token (send to the school)</label>
+<textarea id="tok" class="form-control font-monospace code-box" rows="4" readonly>{{ token }}</textarea>
+<button class="btn btn-dark mt-2" onclick="copyFrom('tok',this)"><i class="fas fa-copy me-1"></i>Copy token</button>
+<div class="small text-muted mt-2">Works once, only on that computer, until {{ token_expires.strftime('%d %b %Y %H:%M') }}.</div>
+{% endif %}
+</div></div></div>
+<div class="col-lg-5"><div class="card border-0 shadow-sm"><div class="card-body"><h2 class="h6">Recent recoveries</h2>
+<table class="table table-sm mb-0">{% for r in history %}<tr><td>{{ r.issued_at[:16] }}</td><td>{{ r.school_name or 'unknown' }}</td><td class="text-muted small">{{ r.note or '' }}</td></tr>{% else %}<tr><td class="text-muted">None yet.</td></tr>{% endfor %}</table></div></div></div></div>
+{% endblock %}

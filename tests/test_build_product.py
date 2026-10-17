@@ -29,12 +29,14 @@ def test_security_critical_modules_are_obfuscated():
     plan = plan_build()
     for critical in ('license_guard.py', 'auth.py', 'config.py',
                      'services/licensing.py', 'services/license_public_key.py',
-                     'security.py', 'graceful_exit.py'):
+                     'security.py', 'graceful_exit.py', 'services/features.py',
+                     'services/whatsapp_quota.py', 'services/password_recovery.py'):
         assert critical in plan.obfuscate
 
 
 def test_vendor_and_dev_files_are_excluded():
-    for entry in ('tests', 'tools', 'vendor_keys', 'instance', 'build',
+    for entry in ('tests', 'tools', 'vendor_keys', 'vendor_dashboard', 'vendor_data',
+                  'instance', 'build',
                   'whatsapp-service', 'seed_data.py', 'start_all.py', 'run.py'):
         assert entry in EXCLUDED_TOPLEVEL
     assert 'license_admin.py' not in str(PRODUCT_TOPLEVEL)

@@ -79,9 +79,10 @@ def test_only_base_and_login_render_flashes(app):
         with open(os.path.join(templates, name), encoding='utf-8') as handle:
             if 'get_flashed_messages' in handle.read():
                 holders.append(name)
-    # base.html renders them centrally; login.html is a standalone page that
-    # does not extend the layout.
-    assert holders == ['base.html', 'login.html'], holders
+    # base.html renders them centrally; login.html and recover_password.html
+    # are standalone pages (reachable before sign-in) that do not extend the
+    # layout.
+    assert holders == ['base.html', 'login.html', 'recover_password.html'], holders
 
 
 def test_base_defines_a_flashes_block(app):

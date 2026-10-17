@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% block title %}Add school{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Add school</h1>
+<form method="post" class="card border-0 shadow-sm"><div class="card-body row g-3">
+<input type="hidden" name="_csrf" value="{{ csrf_token }}">
+<div class="col-md-6"><label class="form-label">School name *</label><input class="form-control" name="name" value="{{ school.get('name','') }}" required></div>
+<div class="col-md-6"><label class="form-label">Contact person</label><input class="form-control" name="contact_name" value="{{ school.get('contact_name','') }}"></div>
+<div class="col-md-4"><label class="form-label">Phone / WhatsApp</label><input class="form-control" name="phone" value="{{ school.get('phone','') }}"></div>
+<div class="col-md-4"><label class="form-label">Email</label><input class="form-control" name="email" value="{{ school.get('email','') }}"></div>
+<div class="col-md-4"><label class="form-label">City</label><input class="form-control" name="city" value="{{ school.get('city','') }}"></div>
+<div class="col-md-6"><label class="form-label">Machine code (from the school's License page)</label><input class="form-control font-monospace" name="machine_code" value="{{ school.get('machine_code','') }}" placeholder="7F3A-91BC-0D42-E8A5"></div>
+<div class="col-md-6"><label class="form-label">Billing</label><select class="form-select" name="billing"><option value="yearly">Yearly</option><option value="monthly" {{ 'selected' if school.get('billing')=='monthly' }}>Monthly</option></select></div>
+<div class="col-12"><label class="form-label">Notes</label><textarea class="form-control" name="notes" rows="2">{{ school.get('notes','') }}</textarea></div>
+<div class="col-12"><button class="btn btn-dark">Save school</button> <a class="btn btn-link" href="{{ url_for('schools') }}">Cancel</a></div>
+</div></form>
+{% endblock %}

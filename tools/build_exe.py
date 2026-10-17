@@ -137,7 +137,7 @@ def generate_spec(product_root=PRODUCT_ROOT, name=APP_NAME):
         "    strip=False,\n"
         "    upx=False,\n"
         "    console=False,\n"
-        "    icon=None,\n"
+        f"    icon={str(PROJECT_ROOT / 'installer' / 'assets' / 'SchoolManager.ico')!r},\n"
         ")\n"
         "coll = COLLECT(\n"
         "    exe,\n"

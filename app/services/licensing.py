@@ -26,6 +26,15 @@ small state file and never lets effective time go backwards.  If a wrong
 far-future date was ever seen, the vendor recovers the school by issuing a
 replacement key (new license id), which restarts the mark from its issue date.
 
+Features and limits
+-------------------
+A key may also carry ``features`` (the modules the school has paid for),
+``limits`` (daily/monthly WhatsApp message caps), ``plan`` (a label) and
+``rev`` (revision number).  All are OPTIONAL and the payload version stays 1,
+so keys without them (legacy) keep everything switched on and older builds of
+the application simply ignore the extra fields.  A newer revision of the same
+license id replaces an older one; an older revision is refused.
+
 Honest limits: this is a deterrent against casual copying and clock tricks, not
 DRM.  Someone who edits the running code, or deletes the state file *and* keeps
 the clock frozen, can still get around it.  Code obfuscation (Phase 3) raises
@@ -69,6 +78,11 @@ INVALID = 'invalid'
 DISABLED = 'disabled'           # enforcement switched off (development only)
 
 READ_ONLY_STATES = {EXPIRED, UNLICENSED, INVALID}
+
+#: Limits a key may carry (a missing limit means "unlimited").
+LIMIT_WA_DAILY = 'wa_daily'
+LIMIT_WA_MONTHLY = 'wa_monthly'
+LIMIT_NAMES = (LIMIT_WA_DAILY, LIMIT_WA_MONTHLY)
 
 
 class LicenseError(Exception):
@@ -209,7 +223,128 @@ def verify_license_text(text, public_key_b64):
     except (TypeError, ValueError):
         grace = DEFAULT_GRACE_DAYS
     payload['_grace_days'] = max(0, min(MAX_GRACE_DAYS, grace))
+
+    features = payload.get('features')
+    if features is None:
+        payload['_features'] = None            # legacy key: everything on
+    elif isinstance(features, list):
+        payload['_features'] = tuple(sorted({str(item) for item in features}))
+    else:
+        raise LicenseError('malformed', 'License field "features" is not valid.')
+
+    limits = payload.get('limits')
+    clean_limits = {}
+    if limits is not None:
+        if not isinstance(limits, dict):
+            raise LicenseError('malformed', 'License field "limits" is not valid.')
+        for name in LIMIT_NAMES:
+            value = limits.get(name)
+            if value is None:
+                continue                       # missing = unlimited
+            try:
+                clean_limits[name] = max(0, int(value))
+            except (TypeError, ValueError):
+                raise LicenseError('malformed', f'License limit "{name}" is not a number.')
+    payload['_limits'] = clean_limits
+    try:
+        payload['_rev'] = max(0, int(payload.get('rev', 0)))
+    except (TypeError, ValueError):
+        payload['_rev'] = 0
+    payload['_plan'] = str(payload.get('plan') or '')[:40]
     return payload
+
+
+# -- recovery codes (forgotten username / password) -----------------------
+#
+# The application is offline, so a lost administrator login is recovered with
+# a challenge/response through the vendor: the app shows a REQUEST code, the
+# vendor dashboard answers with a signed one-time TOKEN bound to that request
+# and to the school's computer.  Nothing here reveals a password.
+
+RECOVERY_REQUEST_PREFIX = 'SMR1'
+RECOVERY_TOKEN_PREFIX = 'SMT1'
+RECOVERY_SIGN_CONTEXT = b'school-manager-recovery-v1\n'     # never reused for licenses
+
+
+def format_machine_code(code):
+    clean = normalize_machine_code(code)
+    return '-'.join(clean[i:i + 4] for i in range(0, len(clean), 4))
+
+
+def _compact_json(data):
+    return json.dumps(data, separators=(',', ':'), sort_keys=True).encode('utf-8')
+
+
+def _request_check(body):
+    return b64u_encode(hashlib.sha256(body).digest()[:4])
+
+
+def make_recovery_request(nonce, machine_code, license_id, now_ts):
+    """Build the request code the school reads out / sends to the vendor."""
+    body = _compact_json({'n': nonce, 'm': normalize_machine_code(machine_code),
+                          'l': license_id or '', 't': int(now_ts)})
+    return f'{RECOVERY_REQUEST_PREFIX}.{b64u_encode(body)}.{_request_check(body)}'
+
+
+def parse_recovery_request(text):
+    """Decode a request code; raises ``LicenseError`` when it is damaged."""
+    cleaned = ''.join((text or '').split())
+    parts = cleaned.split('.')
+    if len(parts) != 3 or parts[0] != RECOVERY_REQUEST_PREFIX:
+        raise LicenseError('malformed', 'This is not a valid recovery request code.')
+    try:
+        body = b64u_decode(parts[1])
+        data = json.loads(body.decode('utf-8'))
+    except Exception:
+        raise LicenseError('malformed', 'The request code is damaged (it may have been cut short).')
+    if not hmac.compare_digest(_request_check(body), parts[2]):
+        raise LicenseError('malformed', 'The request code is damaged (check digits do not match).')
+    try:
+        nonce, machine, license_id = str(data['n']), str(data['m']), str(data.get('l') or '')
+        requested = int(data['t'])
+    except (KeyError, TypeError, ValueError):
+        raise LicenseError('malformed', 'The request code is incomplete.')
+    if not re.fullmatch(r'[0-9a-f]{8,64}', nonce) or len(machine) != 16:
+        raise LicenseError('malformed', 'The request code is incomplete.')
+    return {'nonce': nonce, 'machine_code': format_machine_code(machine),
+            'license_id': license_id,
+            'requested_at': datetime.fromtimestamp(requested, timezone.utc).replace(tzinfo=None)}
+
+
+def sign_recovery_token(private_key, nonce, machine_code, issued_ts, expires_ts):
+    """Vendor side: sign a one-time reset token for one request on one machine."""
+    body = _compact_json({'n': nonce, 'm': normalize_machine_code(machine_code),
+                          'i': int(issued_ts), 'e': int(expires_ts)})
+    signature = private_key.sign(RECOVERY_SIGN_CONTEXT + body)
+    return f'{RECOVERY_TOKEN_PREFIX}.{b64u_encode(body)}.{b64u_encode(signature)}'
+
+
+def verify_recovery_token(text, public_key_b64):
+    """Check a token's signature and structure; return its fields.
+
+    Matching the nonce, machine and expiry is the caller's job
+    (``app/services/password_recovery.py``).
+    """
+    cleaned = ''.join((text or '').split())
+    parts = cleaned.split('.')
+    if len(parts) != 3 or parts[0] != RECOVERY_TOKEN_PREFIX:
+        raise LicenseError('malformed', 'This is not a valid reset token.')
+    public_key = _load_public_key(public_key_b64)
+    try:
+        body = b64u_decode(parts[1])
+        signature = b64u_decode(parts[2])
+    except Exception:
+        raise LicenseError('malformed', 'The reset token is damaged (it may have been cut short).')
+    try:
+        public_key.verify(signature, RECOVERY_SIGN_CONTEXT + body)
+    except InvalidSignature:
+        raise LicenseError('bad_signature', 'The reset token is not genuine.')
+    try:
+        data = json.loads(body.decode('utf-8'))
+        return {'nonce': str(data['n']), 'machine': str(data['m']),
+                'issued_ts': int(data['i']), 'expires_ts': int(data['e'])}
+    except Exception:
+        raise LicenseError('malformed', 'The reset token could not be read.')
 
 
 # -- status object -------------------------------------------------------
@@ -232,6 +367,20 @@ class LicenseStatus:
     days_left: int = None         # negative once expired
     expiring_soon: bool = False
     clock_rollback: bool = False
+    features: tuple = None        # None = legacy key / not applicable: everything on
+    limits: dict = None           # {'wa_daily': n, 'wa_monthly': n}; missing = unlimited
+    rev: int = 0
+    plan: str = ''
+
+    def feature_enabled(self, key):
+        """True when this license includes ``key`` (legacy keys include all)."""
+        if not self.enforced or self.features is None:
+            return True
+        return key in self.features
+
+    def limit(self, name):
+        """The numeric limit called ``name``, or None when unlimited."""
+        return (self.limits or {}).get(name)
 
     @property
     def needs_attention(self):
@@ -289,6 +438,14 @@ class LicenseManager:
                     f'This license expired on {payload["_expires"]:%d %b %Y} '
                     'and can no longer be activated. Please request a renewal.')
 
+            installed = self._installed_payload()
+            if (installed and installed['license_id'] == payload['license_id']
+                    and payload['_rev'] < installed['_rev']):
+                raise LicenseError(
+                    'older_key',
+                    'A newer key for this license is already installed. '
+                    'This older key was not applied.')
+
             previous_id = self._read_state().get('license_id')
             self._atomic_write(self.license_path, ''.join(text.split()) + '\n')
             if previous_id != payload['license_id']:
@@ -296,6 +453,16 @@ class LicenseManager:
                 self._write_state(payload['license_id'], self._floor(payload))
             self._cache = None
             return self.status(force=True)
+
+    def _installed_payload(self):
+        """Payload of the key currently on disk, or None (unreadable/invalid)."""
+        text = self.read_license_text()
+        if not text:
+            return None
+        try:
+            return verify_license_text(text, self.public_key_b64)
+        except LicenseError:
+            return None
 
     def read_license_text(self):
         try:
@@ -346,7 +513,9 @@ class LicenseManager:
         days_left = (expires - today).days
         common = dict(licensee=payload['licensee'], license_id=payload['license_id'],
                       issued=payload['_issued'], expires=expires, grace_ends=grace_end,
-                      days_left=days_left, clock_rollback=rollback)
+                      days_left=days_left, clock_rollback=rollback,
+                      features=payload['_features'], limits=dict(payload['_limits']),
+                      rev=payload['_rev'], plan=payload['_plan'])
 
         if today <= expires:
             soon = days_left <= EXPIRING_SOON_DAYS

@@ -43,7 +43,7 @@ class AutomationSettings(db.Model):
     ))
     template_late   = db.Column(db.Text, default=(
         "Assalam-o-Alaikum,\n\nDear Guardian of *{student_name}*,\n\n"
-        "Your child arrived *LATE* to school today ({date}).\n\n"
+        "Your child arrived *LATE* to school today ({date}){late_at}.\n\n"
         "Please ensure timely arrival.\n\n"
         "Regards,\nSchool Management"
     ))

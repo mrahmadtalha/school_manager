@@ -42,7 +42,7 @@
             <div class="copy-type-badge">{{ copy_label }}</div>
         </div>
 
-        <div class="title-area"><h2 class="receipt-title">ADMISSION FEE RECEIPT</h2></div>
+        <div class="title-area"><h2 class="receipt-title">{{ 'ADMISSION RECEIPT' if info.extras else 'ADMISSION FEE RECEIPT' }}</h2></div>
 
         <div class="row details-section">
             <div class="col-6">
@@ -64,7 +64,37 @@
             </div>
         </div>
 
-        <div class="section-heading">Admission Fee Summary</div>
+        <div class="section-heading">{{ 'Admission Fee, Books &amp; Uniform' if info.extras else 'Admission Fee Summary' }}</div>
+        {% if info.extras %}
+        <table class="txn-table">
+            <tr>
+                <td><strong>Item</strong></td>
+                <td style="text-align:right;"><strong>Qty</strong></td>
+                <td style="text-align:right;"><strong>Price</strong></td>
+                <td style="text-align:right;"><strong>Amount</strong></td>
+                <td style="text-align:right;"><strong>Paid (this receipt)</strong></td>
+                <td style="text-align:right;"><strong>Balance</strong></td>
+            </tr>
+            {% for line in lines %}
+            <tr>
+                <td>{{ line.label }}</td>
+                <td style="text-align:right;">{{ line.qty }}</td>
+                <td style="text-align:right;">{{ money(line.unit) }}</td>
+                <td style="text-align:right;">{{ money(line.due) }}</td>
+                <td style="text-align:right;">{{ money(line.this_receipt) if line.this_receipt else '—' }}</td>
+                <td style="text-align:right;">{{ money(line.balance) if line.balance else 'Paid' }}</td>
+            </tr>
+            {% endfor %}
+            {% if info.concession %}
+            <tr><td colspan="6" style="font-size:0.7rem; color:#64748b;">Admission fee after concession of {{ money(info.concession) }}
+                {% if info.discount_type == 'percentage' %}({{ '%g'|format(info.discount_value or 0) }}%){% elif info.discount_type == 'waived' %}(full waiver){% endif %}
+                {% if info.note %}&mdash; {{ info.note }}{% endif %}</td></tr>
+            {% endif %}
+            <tr><td colspan="3"><strong>Total agreed</strong></td><td style="text-align:right;"><strong>{{ money(info.total) }}</strong></td><td></td><td></td></tr>
+            <tr><td colspan="3">Paid up to this receipt</td><td style="text-align:right;">{{ money(paid_to_date) }}</td><td></td><td></td></tr>
+            <tr><td colspan="3"><strong>Balance after this receipt</strong></td><td style="text-align:right;"><strong>{{ money(balance_after) }}</strong></td><td></td><td></td></tr>
+        </table>
+        {% else %}
         <table class="txn-table">
             <tr><td>Standard admission fee</td><td style="text-align:right;">{{ money(info.standard) }}</td></tr>
             {% if info.concession %}
@@ -77,6 +107,7 @@
             <tr><td>Paid up to this receipt</td><td style="text-align:right;">{{ money(paid_to_date) }}</td></tr>
             <tr><td><strong>Balance after this receipt</strong></td><td style="text-align:right;"><strong>{{ money(balance_after) }}</strong></td></tr>
         </table>
+        {% endif %}
 
         <div class="arrears-box">
             <div class="arrears-total" style="color: var(--success-color);">
@@ -85,7 +116,7 @@
             {% if row.is_void %}
             <div class="arrears-total"><i class="fas fa-ban me-1"></i> THIS RECEIPT HAS BEEN VOIDED{% if row.void_reason %}: {{ row.void_reason }}{% endif %}</div>
             {% elif balance_after %}
-            <div class="arrears-total"><i class="fas fa-exclamation-circle me-1"></i> Admission fee still pending: {{ money(balance_after) }}</div>
+            <div class="arrears-total"><i class="fas fa-exclamation-circle me-1"></i> {{ 'Still pending' if info.extras else 'Admission fee still pending' }}: {{ money(balance_after) }}</div>
             {% endif %}
         </div>
 

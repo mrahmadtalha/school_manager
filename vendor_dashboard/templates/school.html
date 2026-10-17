@@ -1,0 +1,79 @@
+{% extends "base.html" %}{% block title %}{{ school.name }}{% endblock %}
+{% block content %}
+{% set code = status[0] %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+<div><h1 class="h3 mb-0">{{ school.name }}</h1><div class="text-muted small">{{ school.city or '' }} {{ school.phone or '' }} · billing {{ school.billing }}{% if school.license_id %} · <code>{{ school.license_id }}</code>{% endif %}</div></div>
+<div>{% if latest %}<span class="badge fs-6 bg-{{ {'active':'success','soon':'warning text-dark','grace':'warning text-dark','expired':'danger','none':'secondary'}[code] }}">{{ status[1] }}{% if status[2] is not none %} · {{ status[2] }} d{% endif %}</span>{% endif %}</div></div>
+
+<div class="row g-4">
+<div class="col-lg-7">
+<form method="post" action="{{ url_for('school_issue', school_id=school.id) }}" class="card border-0 shadow-sm" id="issueForm">
+<div class="card-body">
+<input type="hidden" name="_csrf" value="{{ csrf_token }}">
+<h2 class="h5 mb-3"><i class="fas fa-key me-2"></i>Issue key</h2>
+<div class="row g-3">
+<div class="col-md-6"><label class="form-label">Reason</label><select class="form-select" name="reason">{% for k, v in reasons.items() %}<option value="{{ k }}" {{ 'selected' if k==form.reason }}>{{ v }}</option>{% endfor %}</select></div>
+<div class="col-md-6"><label class="form-label">Machine code *</label><input class="form-control font-monospace" name="machine_code" value="{{ form.machine_code }}" required placeholder="7F3A-91BC-0D42-E8A5"></div>
+<div class="col-md-4"><label class="form-label">Plan</label><select class="form-select" name="plan" id="planSel"><option value="">Custom</option>{% for p in plans %}<option value="{{ p.name }}" {{ 'selected' if p.name==form.plan }}>{{ p.label }}</option>{% endfor %}</select></div>
+<div class="col-md-4"><label class="form-label">Validity</label><select class="form-select" name="period" id="periodSel">{% for k, v in periods.items() %}<option value="{{ k }}" {{ 'selected' if k==form.period }}>{{ v }}</option>{% endfor %}</select></div>
+<div class="col-md-4"><label class="form-label">Custom expiry</label><input type="date" class="form-control" name="custom_expires"></div>
+<div class="col-md-4"><label class="form-label">WhatsApp / day</label><input class="form-control" name="wa_daily" id="waDaily" type="number" min="0" value="{{ form.wa_daily if form.wa_daily is not none }}" placeholder="blank = unlimited"></div>
+<div class="col-md-4"><label class="form-label">WhatsApp / month</label><input class="form-control" name="wa_monthly" id="waMonthly" type="number" min="0" value="{{ form.wa_monthly if form.wa_monthly is not none }}" placeholder="blank = unlimited"></div>
+<div class="col-md-4"><label class="form-label">Grace days</label><input class="form-control" name="grace_days" type="number" min="0" max="60" value="{{ form.grace_days }}"></div>
+<div class="col-12"><label class="form-label">Features</label>
+{% set ns = namespace(group='') %}
+<div class="row row-cols-1 row-cols-md-2 g-1">
+{% for key, label, desc, group in catalog %}
+<div class="col">{% if group != ns.group %}{% set ns.group = group %}<div class="feat-group text-uppercase text-muted mt-2">{{ group }}</div>{% endif %}
+<div class="form-check"><input class="form-check-input feat" type="checkbox" name="features" value="{{ key }}" id="f_{{ key }}" {{ 'checked' if key in form.features }}><label class="form-check-label" for="f_{{ key }}" title="{{ desc }}">{{ label }}</label></div></div>
+{% endfor %}</div></div>
+<div class="col-12"><label class="form-label">Note (private)</label><input class="form-control" name="note"></div>
+<div class="col-12"><button class="btn btn-dark"><i class="fas fa-file-signature me-1"></i>Sign & issue key</button></div>
+</div></div></form>
+
+<div class="card border-0 shadow-sm mt-4"><div class="card-body"><h2 class="h5">Key history</h2>
+<table class="table table-sm align-middle mb-0"><thead><tr><th>Rev</th><th>Reason</th><th>Plan</th><th>Valid</th><th></th></tr></thead><tbody>
+{% for l in licenses %}<tr><td>{{ l.rev }}</td><td>{{ reasons.get(l.reason, l.reason) }}</td><td>{{ l.plan|niceplan }}</td><td>{{ l.issued|nicedate }} → {{ l.expires|nicedate }}</td>
+<td class="text-end">{% if l.key_text %}<a href="{{ url_for('key_view', row_id=l.id) }}">open</a>{% else %}<span class="text-muted small">imported</span>{% endif %}</td></tr>
+{% else %}<tr><td colspan="5" class="text-muted">No keys issued yet.</td></tr>{% endfor %}</tbody></table></div></div>
+</div>
+
+<div class="col-lg-5">
+<div class="card border-0 shadow-sm mb-4"><div class="card-body">
+<h2 class="h5">Details</h2>
+<form method="post" action="{{ url_for('school_edit', school_id=school.id) }}" class="row g-2">
+<input type="hidden" name="_csrf" value="{{ csrf_token }}">
+<div class="col-12"><input class="form-control" name="name" value="{{ school.name }}" required></div>
+<div class="col-6"><input class="form-control" name="contact_name" value="{{ school.contact_name or '' }}" placeholder="Contact"></div>
+<div class="col-6"><input class="form-control" name="phone" value="{{ school.phone or '' }}" placeholder="Phone"></div>
+<div class="col-6"><input class="form-control" name="email" value="{{ school.email or '' }}" placeholder="Email"></div>
+<div class="col-6"><input class="form-control" name="city" value="{{ school.city or '' }}" placeholder="City"></div>
+<div class="col-6"><select class="form-select" name="billing"><option value="yearly">Yearly</option><option value="monthly" {{ 'selected' if school.billing=='monthly' }}>Monthly</option></select></div>
+<div class="col-6 d-flex align-items-center"><div class="form-check"><input class="form-check-input" type="checkbox" name="active" id="act" {{ 'checked' if school.active }}><label class="form-check-label" for="act">Active customer</label></div></div>
+<div class="col-12"><textarea class="form-control" name="notes" rows="2" placeholder="Notes">{{ school.notes or '' }}</textarea></div>
+<div class="col-12"><button class="btn btn-outline-dark btn-sm">Save</button></div></form>
+{% if reminder %}<hr><textarea id="rem" class="d-none">{{ reminder }}</textarea><button class="btn btn-sm btn-outline-secondary" onclick="copyFrom('rem',this)"><i class="fas fa-copy me-1"></i>Copy renewal reminder</button>{% endif %}
+</div></div>
+
+<div class="card border-0 shadow-sm mb-4"><div class="card-body"><h2 class="h5">Payments</h2>
+<form method="post" action="{{ url_for('school_payment', school_id=school.id) }}" class="row g-2 mb-3">
+<input type="hidden" name="_csrf" value="{{ csrf_token }}">
+<div class="col-4"><input type="date" class="form-control" name="paid_on" value="{{ today.isoformat() }}" required></div>
+<div class="col-3"><input type="number" step="0.01" class="form-control" name="amount" placeholder="Amount" required></div>
+<div class="col-5"><input class="form-control" name="period_note" placeholder="e.g. Oct 2026 / year"></div>
+<div class="col-12"><button class="btn btn-outline-dark btn-sm">Record payment</button></div></form>
+<table class="table table-sm mb-0">{% for p in payments %}<tr><td>{{ p.paid_on|nicedate }}</td><td>{{ '%.0f'|format(p.amount or 0) }}</td><td class="text-muted">{{ p.period_note or '' }}</td></tr>{% else %}<tr><td class="text-muted">No payments recorded.</td></tr>{% endfor %}</table>
+</div></div>
+
+{% if recoveries %}<div class="card border-0 shadow-sm"><div class="card-body"><h2 class="h5">Password recoveries</h2>
+<table class="table table-sm mb-0">{% for r in recoveries %}<tr><td>{{ r.issued_at[:16] }}</td><td class="text-muted">{{ r.note or '' }}</td></tr>{% endfor %}</table></div></div>{% endif %}
+</div></div>
+<script>
+var PLANS={{ plans|tojson }};
+document.getElementById('planSel').addEventListener('change',function(){
+ var p=PLANS.find(function(x){return x.name===this.value}.bind(this)); if(!p)return;
+ document.querySelectorAll('.feat').forEach(function(cb){cb.checked=p.features.indexOf(cb.value)>=0});
+ document.getElementById('waDaily').value=p.wa_daily===null?'':p.wa_daily;
+ document.getElementById('waMonthly').value=p.wa_monthly===null?'':p.wa_monthly;});
+</script>
+{% endblock %}

@@ -20,8 +20,11 @@
     <div class="row g-2 align-items-end">
         <div class="col-md-3">
             <label class="form-label small fw-bold text-muted mb-1">Billing month</label>
-            <input type="text" class="form-control form-control-sm" name="month_year"
-                   value="{{ month_year }}" placeholder="e.g. September 2026">
+            <select class="form-select form-select-sm" name="month_year" onchange="this.form.submit()">
+                {% for option in month_options %}
+                <option value="{{ option }}" {% if option == month_year %}selected{% endif %}>{{ option }}{% if option in pending_months %} &mdash; pending{% endif %}</option>
+                {% endfor %}
+            </select>
         </div>
         <div class="col-md-3">
             <label class="form-label small fw-bold text-muted mb-1">Class (optional)</label>

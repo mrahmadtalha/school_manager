@@ -16,8 +16,11 @@ B-F of docs/RELEASE_CHECKLIST.md).
 
 Usage:
     python tools/make_release.py
+    python tools/make_release.py --skip-tests   # only right after a fully green
+                                                # `python -m pytest tests/ -q`
 """
 
+import argparse
 import hashlib
 import shutil
 import subprocess
@@ -57,14 +60,18 @@ def sha256_of(path):
     return digest.hexdigest()
 
 
-def build_everything():
+def build_everything(skip_tests=False):
     # --basetemp keeps pytest's scratch files inside build/ so the suite is
     # green even on machines where the default temp root is not writable.
     # The basetemp root itself must exist (pytest does not mkdir -p it).
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
-    run_step([sys.executable, '-m', 'pytest', 'tests/', '-q', '--tb=line',
-              '--basetemp=' + str(BUILD_DIR / '.pytest')],
-             'Full test suite')
+    if skip_tests:
+        print('\n=== Full test suite: SKIPPED (--skip-tests) ===')
+        print('  Only use this right after a fully green full test run.')
+    else:
+        run_step([sys.executable, '-m', 'pytest', 'tests/', '-q', '--tb=line',
+                  '--basetemp=' + str(BUILD_DIR / '.pytest')],
+                 'Full test suite')
     run_step([sys.executable, 'tools/build_product.py'],
              'Phase 4: obfuscated product tree')
     run_step([sys.executable, 'tools/build_exe.py'],
@@ -115,6 +122,12 @@ def assemble_release(version):
 
 
 def main(argv=None):
+    parser = argparse.ArgumentParser(description='Clean release build.')
+    parser.add_argument('--skip-tests', action='store_true',
+                        help='skip the full test suite (use only right after a fully '
+                             'green full test run; tests are NOT skipped by default)')
+    args = parser.parse_args(argv)
+
     version = release_version()
     print(f'Release version: {version} (from installer/SchoolManager.iss)')
 
@@ -122,7 +135,7 @@ def main(argv=None):
         print('Wiping build/ for a clean rebuild (stale artifacts cannot ship)...')
         shutil.rmtree(BUILD_DIR)
 
-    build_everything()
+    build_everything(skip_tests=args.skip_tests)
     release_dir = assemble_release(version)
 
     print('\n=== Reminder: finish docs/RELEASE_CHECKLIST.md sections B-F ===')

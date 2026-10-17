@@ -19,7 +19,7 @@ EVENT_TEMPLATES: Dict[str, str] = {
     ),
     'attendance_late': (
         "Assalam-o-Alaikum,\n\nDear Parent,\n\n"
-        "This is to inform you that your child {student_name} arrived *LATE* on {date_value}.\n\n"
+        "This is to inform you that your child {student_name} arrived *LATE* on {date_value}{late_at}.\n\n"
         "Please ensure timely arrival in the future.\n\n"
         "Regards,\nSchool Management"
     ),
@@ -102,6 +102,35 @@ def build_event_context(student: Any, trigger: str, context: Dict[str, Any] | No
     return merged
 
 
+def format_clock(value: Any) -> str:
+    """'08:47' / '08:47:30' (as stored by attendance) -> '8:47 AM'; '' if unusable."""
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    for pattern in ('%H:%M:%S', '%H:%M'):
+        try:
+            parsed = datetime.strptime(text, pattern)
+        except ValueError:
+            continue
+        return parsed.strftime('%I:%M %p').lstrip('0')
+    return text
+
+
+def _late_at(context: Dict[str, Any]) -> str:
+    """' at *8:47 AM* (17 minutes late)' for a late arrival, '' when no time is known."""
+    clock = format_clock(context.get('late_time'))
+    if not clock:
+        return ''
+    text = f' at *{clock}*'
+    try:
+        minutes = int(context.get('late_minutes') or 0)
+    except (TypeError, ValueError):
+        minutes = 0
+    if minutes > 0:
+        text += f' ({minutes} minute{"s" if minutes != 1 else ""} late)'
+    return text
+
+
 def render_event_message(trigger: str, context: Dict[str, Any], template_override: str | None = None) -> str:
     """Render a message body using the event registry.
 
@@ -113,7 +142,21 @@ def render_event_message(trigger: str, context: Dict[str, Any], template_overrid
     if not template:
         return f"School update for {context.get('student_name', 'Student')}: {context.get('date_value', 'today')}"
 
+    late_at = _late_at(context) if trigger == 'attendance_late' else ''
+    if (trigger == 'attendance_late' and '{late_at}' not in template
+            and '{late_time}' not in template and '{date_value}' in template):
+        # A template saved before the arrival time existed: add it right after the date.
+        template = template.replace('{date_value}', '{date_value}{late_at}', 1)
+    elif trigger == 'attendance_late' and '{date}' in template and '{late_at}' not in template \
+            and '{late_time}' not in template:
+        if '({date})' in template:
+            template = template.replace('({date})', '({date}){late_at}', 1)
+        else:
+            template = template.replace('{date}', '{date}{late_at}', 1)
     payload = {
+        'late_at': late_at,
+        'late_time': format_clock(context.get('late_time')),
+        'late_minutes': context.get('late_minutes') or '',
         'student_name': context.get('student_name', 'Student'),
         'date': context.get('date', None),
         'date_value': context.get('date_value', context.get('date', 'today')),

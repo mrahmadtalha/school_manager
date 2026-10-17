@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block title %}Unlock{% endblock %}
+{% block content %}
+<div class="card shadow-sm mx-auto mt-5" style="max-width:460px"><div class="card-body p-4">
+<h1 class="h4 mb-3"><i class="fas fa-key text-warning me-2"></i>{{ 'First-time setup' if setup_mode else 'Unlock' }}</h1>
+{% if setup_mode %}
+  {% if plain_exists %}
+  <p class="small text-muted">Your license signing key was found at <code>{{ plain_path }}</code>. Choose a dashboard password (10+ characters): the key is stored encrypted with it, and you will need it every time.</p>
+  {% else %}
+  <div class="alert alert-danger small">No private key found at <code>{{ plain_path }}</code>. Run this on the laptop that holds your <code>vendor_keys</code> folder.</div>
+  {% endif %}
+{% endif %}
+<form method="post"><input type="hidden" name="_csrf" value="{{ csrf_token }}">
+<div class="mb-3"><label class="form-label">Password</label><input type="password" name="password" class="form-control" required autofocus></div>
+{% if setup_mode %}<div class="mb-3"><label class="form-label">Confirm password</label><input type="password" name="confirm" class="form-control" required></div>{% endif %}
+<button class="btn btn-dark w-100">{{ 'Create & unlock' if setup_mode else 'Unlock' }}</button></form>
+</div></div>
+{% endblock %}

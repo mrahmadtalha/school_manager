@@ -36,7 +36,7 @@
         <div class="h4 mb-0">{{ totals.count }}</div>
     </div></div></div>
     <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body">
-        <div class="text-muted small text-uppercase fw-bold">Agreed (net)</div>
+        <div class="text-muted small text-uppercase fw-bold">Agreed total</div>
         <div class="h4 mb-0">{{ money(totals.net) }}</div>
     </div></div></div>
     <div class="col-6 col-lg-2"><div class="card border-0 shadow-sm h-100"><div class="card-body">
@@ -96,8 +96,8 @@
             <thead class="table-light">
                 <tr>
                     <th>Student</th><th>Class</th><th>Date</th>
-                    <th class="text-end">Standard</th><th class="text-end">Concession</th>
-                    <th class="text-end">Net</th><th class="text-end">Received</th>
+                    <th class="text-end">Admission</th><th class="text-end">Concession</th>
+                    <th class="text-end">Books + Uniform</th><th class="text-end">Total</th><th class="text-end">Received</th>
                     <th class="text-end">Pending</th><th>Status</th><th></th>
                 </tr>
             </thead>
@@ -112,6 +112,7 @@
                     <td>{{ r.student.admission_fee_date.strftime('%d %b %Y') if r.student.admission_fee_date else '—' }}</td>
                     <td class="text-end">{{ money(r.standard) }}</td>
                     <td class="text-end">{{ money(r.concession) if r.concession else '—' }}</td>
+                    <td class="text-end">{{ money(r.extras) if r.extras else '—' }}</td>
                     <td class="text-end fw-semibold">{{ money(r.net) }}</td>
                     <td class="text-end text-success">{{ money(r.received) }}</td>
                     <td class="text-end {{ 'text-danger fw-semibold' if r.balance }}">{{ money(r.balance) if r.balance else '—' }}</td>
@@ -123,7 +124,7 @@
                     </td>
                 </tr>
             {% else %}
-                <tr><td colspan="10" class="text-center text-muted py-5">No admission fees match these filters yet.</td></tr>
+                <tr><td colspan="11" class="text-center text-muted py-5">No admission fees match these filters yet.</td></tr>
             {% endfor %}
             </tbody>
         </table>

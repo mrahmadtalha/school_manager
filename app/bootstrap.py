@@ -368,30 +368,8 @@ def migrate_class_integrity_schema(app):
         connection.commit()
 
 
-def drop_timetable_draft_table(app):
-    """Drop the obsolesced ``timetable_drafts`` table.
-
-    The draft preview/apply workflow was replaced by the redesigned Timetables
-    page, which applies a generation immediately.  The table only ever held
-    short-lived scratch payloads, so dropping it loses nothing.  A missing
-    table is a no-op.
-    """
-    db_path = _sqlite_db_path(app)
-    if not db_path or not os.path.exists(db_path):
-        return
-    with _sqlite_connection(db_path) as connection:
-        exists = connection.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='timetable_drafts'"
-        ).fetchone()
-        if exists:
-            connection.execute('DROP TABLE timetable_drafts')
-            connection.commit()
-            print('Migration: dropped obsolete timetable_drafts table')
-
-
 def migrate_timetable_schema(app):
-    """Optional subject-teacher mapping: subjects.teacher_id column (timetable_slots
-    table is created automatically by db.create_all())."""
+    """Optional subject-teacher mapping: adds the subjects.teacher_id column."""
     db_path = _sqlite_db_path(app)
     if not db_path or not os.path.exists(db_path):
         return
@@ -519,81 +497,6 @@ def seed_teaching_assignments():
     db.session.commit()
     if created:
         print(f'Teaching assignments: created {created} from existing subject teachers')
-
-
-def migrate_timetable_section_schema(app):
-    """Phase 3: timetable_slots.section_id + widened unique slot constraint.
-
-    SQLite cannot alter a table constraint, so on the first run after this
-    feature ships the table is rebuilt (with a safety backup first): a
-    nullable ``section_id`` column is inserted and the uniqueness becomes
-    (class, section, day, period).  Every existing row is copied with
-    section_id NULL — class-level slots keep working exactly as before.
-    """
-    db_path = _sqlite_db_path(app)
-    if not db_path or not os.path.exists(db_path):
-        return
-
-    with _sqlite_connection(db_path) as connection:
-        slot_columns = _table_columns(connection, 'timetable_slots')
-        if not slot_columns or 'section_id' in slot_columns:
-            return
-
-        from app.services.db_backup import backup_database
-        backup = backup_database(db_path=db_path)
-        print(f'Migration: safety backup before timetable sections rebuild: {backup}')
-
-        # Carry over any indexes so nothing else depends on the old shape.
-        connection.execute('''
-            CREATE TABLE timetable_slots_new (
-                id INTEGER NOT NULL PRIMARY KEY,
-                class_id INTEGER NOT NULL,
-                section_id INTEGER,
-                day_of_week INTEGER NOT NULL,
-                period_no INTEGER NOT NULL,
-                subject_id INTEGER,
-                CONSTRAINT uq_timetable_slot UNIQUE (class_id, section_id, day_of_week, period_no),
-                FOREIGN KEY(class_id) REFERENCES classes (id),
-                FOREIGN KEY(section_id) REFERENCES sections (id),
-                FOREIGN KEY(subject_id) REFERENCES subjects (id)
-            )
-        ''')
-        connection.execute('''
-            INSERT INTO timetable_slots_new
-                (id, class_id, section_id, day_of_week, period_no, subject_id)
-            SELECT id, class_id, NULL, day_of_week, period_no, subject_id
-            FROM timetable_slots
-        ''')
-        connection.execute('DROP TABLE timetable_slots')
-        connection.execute('ALTER TABLE timetable_slots_new RENAME TO timetable_slots')
-        print('Migration: rebuilt timetable_slots with section_id '
-              f'({connection.total_changes} rows preserved)')
-
-
-def migrate_timetable_redesign_schema(app):
-    """Redesigned Timetables page: per-slot teacher override + chosen template.
-
-    ``timetable_slots.teacher_id`` stores a manual/generator teacher for one
-    cell (NULL = keep the subject's own teacher); ``timetable_master_configs.
-    template_key`` remembers whether the school works with the teacher-wise
-    matrix or the class weekly grid.  Both are plain column additions.
-    """
-    db_path = _sqlite_db_path(app)
-    if not db_path or not os.path.exists(db_path):
-        return
-
-    with _sqlite_connection(db_path) as connection:
-        slot_columns = _table_columns(connection, 'timetable_slots')
-        if slot_columns and 'teacher_id' not in slot_columns:
-            connection.execute('ALTER TABLE timetable_slots ADD COLUMN teacher_id INTEGER')
-            print('Migration: added teacher_id to timetable_slots')
-
-        master_columns = _table_columns(connection, 'timetable_master_configs')
-        if master_columns and 'template_key' not in master_columns:
-            connection.execute("ALTER TABLE timetable_master_configs "
-                               "ADD COLUMN template_key VARCHAR(30)")
-            print('Migration: added template_key to timetable_master_configs')
-        connection.commit()
 
 
 FINANCIAL_V2_TABLES_SQL = '''
@@ -1048,8 +951,12 @@ def _admission_fee_columns():
             ('admission_note', 'VARCHAR(200)'),
             ('admission_fee_date', 'DATE'),
             ('admission_fee_prior_paid_paisa', 'INTEGER'),
+            ('books_fee_paisa', 'INTEGER'),
+            ('uniform_qty', 'INTEGER'),
+            ('uniform_unit_paisa', 'INTEGER'),
         ],
-        'classes': [('admission_fee', 'FLOAT')],
+        'classes': [('admission_fee', 'FLOAT'), ('books_fee', 'FLOAT'),
+                    ('uniform_fee', 'FLOAT'), ('uniform_sets', 'INTEGER')],
         'school_settings': [('default_admission_fee', 'FLOAT')],
         'other_income': [
             ('student_id', 'INTEGER'),

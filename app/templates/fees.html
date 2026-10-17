@@ -15,6 +15,10 @@
             <i class="fas fa-sliders me-1"></i> Admission Fee Settings
         </button>
         {% endif %}
+        <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#bulkClassFeeModal"
+                title="Bulk update: changes the fee on ALL existing student records in this class, and syncs the standard fee used for new admissions.">
+            <i class="fas fa-layer-group me-1"></i> Set Monthly Fee for Entire Class
+        </button>
         <a href="{{ url_for('main.fees_reconciliation', month_year=month_year) }}" class="btn btn-sm btn-outline-dark">
             <i class="fas fa-scale-balanced me-1"></i> Reconciliation
         </a>
@@ -24,16 +28,16 @@
 {% if admission_is_admin %}
 <!-- Admission fee settings: one school-wide fee, optionally a different fee per class -->
 <div class="modal fade" id="admissionSettingsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content border-0 shadow-lg">
             <form method="POST" action="{{ url_for('main.admission_settings_save') }}">
                 <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-door-open me-2 text-primary"></i>Admission Fee Settings</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
+                <div class="modal-body" style="max-height: 65vh; overflow-y: auto;">
                     <p class="text-muted small">
-                        A one-time fee charged when a student joins. It fills the Add Student form automatically
+                        A one-time fee charged when a student joins, plus the books and uniform for that class. They fill the Add Student form automatically
                         (you can still change it there). It applies only to students admitted <b>after</b> you save;
                         existing students are not changed.
                     </p>
@@ -43,18 +47,38 @@
                            placeholder="e.g. 5000 (leave empty for none)">
                     <div class="form-text mb-3">Used for every class that does not have its own fee below.</div>
 
-                    <div class="fw-bold small text-muted mb-2">Fee for a specific class <span class="fw-normal">(optional)</span></div>
+                    <div class="fw-bold small text-muted mb-2">Fees for each class <span class="fw-normal">(set once, used on every Add Student form)</span></div>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-1">
+                            <thead>
+                                <tr class="small text-muted">
+                                    <th>Class</th><th>Admission fee</th><th>Books</th><th>Uniform / set</th><th style="width: 70px;">Sets</th>
+                                </tr>
+                            </thead>
                             <tbody>
                             {% for row in admission_settings.classes %}
                             <tr>
-                                <td class="fw-semibold" style="width: 40%;">{{ row.name }}</td>
+                                <td class="fw-semibold">{{ row.name }}</td>
                                 <td>
                                     <input type="number" step="0.01" min="0" class="form-control form-control-sm"
                                            name="class_{{ row.id }}"
                                            value="{{ row.override if row.override is not none else '' }}"
-                                           placeholder="Same as school fee">
+                                           placeholder="School fee">
+                                </td>
+                                <td>
+                                    <input type="number" step="0.01" min="0" class="form-control form-control-sm"
+                                           name="books_{{ row.id }}"
+                                           value="{{ row.books if row.books else '' }}" placeholder="None">
+                                </td>
+                                <td>
+                                    <input type="number" step="0.01" min="0" class="form-control form-control-sm"
+                                           name="uniform_{{ row.id }}"
+                                           value="{{ row.uniform if row.uniform else '' }}" placeholder="None">
+                                </td>
+                                <td>
+                                    <input type="number" step="1" min="1" max="20" class="form-control form-control-sm"
+                                           name="sets_{{ row.id }}"
+                                           value="{{ row.sets if row.sets else '' }}" placeholder="1">
                                 </td>
                             </tr>
                             {% else %}
@@ -63,7 +87,9 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="form-text">Empty = same as the school fee. Enter <b>0</b> for a class with no admission fee.</div>
+                    <div class="form-text">Admission fee: empty = same as the school fee, <b>0</b> = none for that class.
+                        Books and uniform: empty = none. <b>Sets</b> is how many uniform sets are filled in by default (1 if empty);
+                        you can still change books, sets and prices for each student on the form.</div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -109,7 +135,12 @@
 
             <div class="col-md-4">
                 <label class="form-label fw-bold small text-muted">Billing Month &amp; Year:</label>
-                <input type="text" class="form-control" name="month_year" value="{{ month_year }}" placeholder="e.g. September 2026">
+                <select class="form-select" name="month_year" onchange="this.form.submit()">
+                    {% for option in month_options %}
+                    <option value="{{ option }}" {% if option == month_year %}selected{% endif %}>{{ option }}{% if option in pending_months %} &mdash; pending{% endif %}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Shows the current month and months that still have unpaid fees.</div>
             </div>
             <div class="col-md-4">
                 <label class="form-label fw-bold small text-muted">Reference / Slip No</label>
@@ -141,13 +172,7 @@
 </div>
 {% endif %}
 
-<!-- Bulk class fee update (opens in a popup) -->
-<div class="mb-4">
-    <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#bulkClassFeeModal"
-            title="Bulk update: changes the fee on ALL existing student records in this class, and syncs the standard fee used for new admissions.">
-        <i class="fas fa-layer-group me-2"></i>Set Monthly Fee for Entire Class
-    </button>
-</div>
+<!-- Bulk class fee update: the button sits with the other header buttons; the popup is below -->
 
 <div class="modal fade" id="bulkClassFeeModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">

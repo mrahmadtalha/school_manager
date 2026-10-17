@@ -11,7 +11,8 @@ tree that Phase 5 (PyInstaller) will consume:
         BUILD-INFO.txt            what was obfuscated, and what could not be
 
 Deliberately EXCLUDED from the product tree: tests/, tools/
-(``license_admin.py`` must never ship), seed_data.py, start_all.py, run.py,
+(``license_admin.py`` must never ship), vendor_dashboard/ and vendor_data/ (the
+license-manager dashboard and its private data), seed_data.py, start_all.py, run.py,
 the WhatsApp bridge (an optional installer component, Phase 6), docs,
 screenshots, vendor signing keys and any local data.
 
@@ -42,7 +43,8 @@ APP_DIR = PROJECT_ROOT / 'app'
 #: Source files that are never part of the customer product tree.
 EXCLUDED_TOPLEVEL = [
     'tests', 'tools', 'docs', 'scripts', 'screenshots', 'instance',
-    'vendor_keys', 'whatsapp-service', 'build', 'dist', '.git', '.github',
+    'vendor_keys', 'vendor_dashboard', 'vendor_data', 'whatsapp-service',
+    'build', 'dist', '.git', '.github',
     '.zcode', 'node_modules',
     'seed_data.py', 'start_all.py', 'run.py', 'tmp_inspect_db.py',
     'migrate_db.py', 'migrate_custom_fields.py', 'migrate_student_status.py',

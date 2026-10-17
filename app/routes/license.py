@@ -15,9 +15,20 @@ from app.license_guard import get_manager
 from app.models import ROLE_ADMIN, AdminUser
 from app.routes import main
 from app.services.audit import log_action
+from app.services.features import FEATURE_CATALOG
 from app.services.licensing import LicenseError
 
 MAX_LICENSE_FILE_BYTES = 16 * 1024
+
+
+def _license_extras():
+    """Feature list and WhatsApp usage shown next to the license status."""
+    from app.services import whatsapp_quota
+    try:
+        usage = whatsapp_quota.summary()
+    except Exception:       # a counter problem must never break the license page
+        usage = None
+    return {'feature_catalog': FEATURE_CATALOG, 'wa_usage': usage}
 
 
 @main.route('/license', methods=['GET', 'POST'])
@@ -42,7 +53,7 @@ def license_page():
         except LicenseError as err:
             flash(err.message, 'danger')
             return render_template('license.html', license_status=manager.status(force=True),
-                                   fresh_install=fresh_install), 400
+                                   fresh_install=fresh_install, **_license_extras()), 400
 
         log_action('settings_change', entity_type='License',
                    summary=f'License {status.license_id} activated for {status.licensee} '
@@ -56,4 +67,4 @@ def license_page():
         return redirect(url_for('main.license_page'))
 
     return render_template('license.html', license_status=manager.status(force=True),
-                           fresh_install=fresh_install)
+                           fresh_install=fresh_install, **_license_extras())

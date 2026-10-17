@@ -20,6 +20,7 @@ from flask import (
 from flask_login import current_user
 
 from app.database import db
+from app.services import admission_numbers
 from app.models.settings import (get_timetable_structure,
                                  set_timetable_structure)
 from app.models import (
@@ -29,6 +30,7 @@ from app.models import (
 from app.routes import main
 from app.security import role_required
 from app.services import db_backup as db_backup_service
+from app.services import whatsapp_quota
 from app.services.audit import log_action
 from app.services.whatsapp_automation import (
     INTEGRATION_CLOUD_API, INTEGRATION_QR_SCAN, build_whatsapp_message,
@@ -96,6 +98,15 @@ def school_settings():
             settings.email = request.form.get('email', '').strip()
             settings.primary_color = request.form.get('primary_color', '#0d6efd').strip()
             settings.secondary_color = request.form.get('secondary_color', '#6c757d').strip()
+            admission_numbers.set_auto(request.form.get('auto_admission_number') == 'on')
+            if 'admission_number_prefix' in request.form:
+                try:
+                    admission_numbers.save_config(
+                        request.form.get('admission_number_prefix'),
+                        request.form.get('admission_number_digits'),
+                        request.form.get('admission_number_start'))
+                except ValueError as exc:
+                    flash('Admission No pattern not changed: %s' % exc, 'warning')
             settings_tab = 'general'
 
             logo = request.files.get('logo')
@@ -137,7 +148,7 @@ def school_settings():
             settings.weekend_off = (settings.saturday_off and settings.sunday_off)
             settings.custom_off_days = request.form.get('custom_off_days', '').strip()
 
-            # Timetable period structure (consumed by the Timetables hub).
+            # Timetable period structure (stored for the upcoming timetable feature).
             set_timetable_structure(
                 request.form.get('timetable_periods_per_day'),
                 request.form.get('timetable_period_minutes'),
@@ -198,6 +209,9 @@ def school_settings():
     if active_tab not in {'general', 'academic', 'custom-fields', 'integrations'}:
         active_tab = 'general'
     return render_template('settings.html', settings=settings, backup_state=backup_state, grading_scale=grading_scale, student_custom_fields=student_custom_fields, teacher_custom_fields=teacher_custom_fields, active_tab=active_tab, holiday_ranges=get_holiday_ranges(),
+                           auto_admission_number=admission_numbers.is_auto(),
+                           admission_number_config=admission_numbers.get_config(),
+                           admission_number_next=admission_numbers.next_number(),
                            timetable_structure=get_timetable_structure())
 
 
@@ -299,6 +313,18 @@ def download_backup(filename):
     abort(404)
 
 
+QUEUE_VIEW_LIMIT = 2000
+
+
+def _queue_redirect():
+    """Back to the queue tab with the same status / trigger / search filters."""
+    return redirect(url_for(
+        'main.automation_panel', tab='queue',
+        status=request.args.get('status') or None,
+        trigger=request.args.get('trigger') or None,
+        search=request.args.get('search') or None))
+
+
 @main.route('/automation', methods=['GET', 'POST'])
 def automation_panel():
     settings = AutomationSettings.get()
@@ -308,7 +334,7 @@ def automation_panel():
     trigger_filter = request.args.get('trigger')
     search_term = (request.args.get('search') or '').strip()
     active_tab = request.args.get('tab', 'connection')
-    if active_tab not in {'connection', 'broadcast', 'queue'}:
+    if active_tab not in {'connection', 'queue'}:
         active_tab = 'connection'
 
     query = MessageQueue.query
@@ -324,15 +350,12 @@ def automation_panel():
             | (MessageQueue.message.like(like_term))
         )
 
-    page = max(request.args.get('page', 1, type=int) or 1, 1)
-    ordered_queue = query.order_by(MessageQueue.created_at.desc())
-    queue_pagination = ordered_queue.paginate(
-        page=page, per_page=10, error_out=False)
-    if queue_pagination.pages and page > queue_pagination.pages:
-        page = queue_pagination.pages
-        queue_pagination = ordered_queue.paginate(
-            page=page, per_page=10, error_out=False)
-    queue_items = queue_pagination.items
+    # The log is a client-side DataTable (search / sort / paging in the
+    # browser, current page remembered across approve / retry reloads), so the
+    # newest rows matching the filters are sent in one go, up to a safe cap.
+    ordered_queue = query.order_by(MessageQueue.created_at.desc(), MessageQueue.id.desc())
+    queue_matching = query.count()
+    queue_items = ordered_queue.limit(QUEUE_VIEW_LIMIT).all()
 
     queue_summary = {
         'total': MessageQueue.query.count(),
@@ -526,7 +549,7 @@ def automation_panel():
             expected_status = 'failed' if action == 'retry' else 'pending'
             if msg.status != expected_status:
                 flash(f'Message cannot be {action}d from its current status.', 'warning')
-                return redirect(url_for('main.automation_panel', tab='queue'))
+                return _queue_redirect()
             if action == 'approve':
                 msg.status = 'approved'
                 msg.error_msg = None
@@ -538,7 +561,7 @@ def automation_panel():
                 msg.error_msg = None
             db.session.commit()
             flash(f'Message {action}d successfully.', 'success')
-            return redirect(url_for('main.automation_panel', tab='queue'))
+            return _queue_redirect()
 
     return render_template(
         'automation.html',
@@ -546,7 +569,8 @@ def automation_panel():
         students=students,
         queue_items=queue_items,
         queue_summary=queue_summary,
-        queue_pagination=queue_pagination,
+        queue_matching=queue_matching,
+        queue_limit=QUEUE_VIEW_LIMIT,
         active_tab=active_tab,
         status_filter=status_filter,
         trigger_filter=trigger_filter,
@@ -554,6 +578,8 @@ def automation_panel():
         quote=quote,
         bridge_install=get_whatsapp_service_status().get('install'),
         classes=ClassModel.query.order_by(ClassModel.name).all(),
+        wa_quota=whatsapp_quota.summary(),
+        wa_quota_message=whatsapp_quota.block_message(),
     )
 
 
@@ -623,6 +649,11 @@ def whatsapp_test_message():
     if phone and not normalized_phone:
         return {'ok': False, 'message': 'Enter a valid WhatsApp phone number.'}, 400
 
+    quota_info = whatsapp_quota.summary()
+    if quota_info['allowance'] == 0:
+        return {'ok': False, 'error': 'whatsapp_limit',
+                'message': whatsapp_quota.block_message(quota_info)}, 429
+
     try:
         response = requests.post(
             f'{_node_service_url()}/send-test',
@@ -630,6 +661,8 @@ def whatsapp_test_message():
             timeout=20,
         )
         payload = response.json() if response.headers.get('content-type', '').startswith('application/json') else {'ok': False}
+        if response.ok and payload.get('ok'):
+            whatsapp_quota.record_sent()      # test messages count towards the caps too
         return payload if response.ok else (payload, 400)
     except requests.RequestException:
         return {'ok': False, 'message': 'WhatsApp service unavailable.'}, 503
@@ -655,7 +688,10 @@ def whatsapp_pending_messages():
                   .filter(MessageQueue.status.in_(dispatchable_statuses))
                   .order_by(MessageQueue.created_at.asc(), MessageQueue.id.asc()).all())
     items = []
+    allowance = whatsapp_quota.allowance()       # None = unlimited (see license caps)
     for item in candidates:
+        if allowance is not None and len(items) >= allowance:
+            break                                 # the rest stays queued for later
         claimed_status = 'sending' if settings.mode == 'approval' else 'sending_auto'
         claimed = (MessageQueue.query
                    .filter_by(id=item.id, status=item.status)
@@ -665,8 +701,10 @@ def whatsapp_pending_messages():
             item.status = claimed_status
             items.append(item)
     db.session.commit()
+    paused = whatsapp_quota.block_message() if (candidates and not items) else ''
     return {
         **configuration,
+        'paused': paused,
         'items': [
             {
                 'id': item.id,
@@ -708,6 +746,7 @@ def whatsapp_update_status():
         item.sent_at = datetime.utcnow()
         settings = AutomationSettings.get()
         settings.last_successful_send_at = datetime.utcnow()
+        whatsapp_quota.record_sent()
     item.updated_at = datetime.utcnow()
 
     log_entry = DeliveryLog(

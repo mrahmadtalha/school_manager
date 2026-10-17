@@ -128,6 +128,19 @@ def get_delivery_mode_policy(mode: str) -> Dict[str, Any]:
     }
 
 
+def _whatsapp_licensed():
+    """False when the license does not include WhatsApp automation.
+
+    Outside an application (plain scripts, unit tests) there is no license to
+    consult, so the answer is True.
+    """
+    try:
+        from app.license_guard import get_manager
+        return get_manager().status().feature_enabled('whatsapp')
+    except Exception:       # no app context / no manager
+        return True
+
+
 def queue_automation_message(student: Any, trigger: str, context: Dict[str, Any], mode: str | None = None):
     """Queue a message according to the configured automation mode."""
     from app.database import db
@@ -138,6 +151,8 @@ def queue_automation_message(student: Any, trigger: str, context: Dict[str, Any]
 
     settings = AutomationSettings.get()
     if not settings.enabled:
+        return None
+    if not _whatsapp_licensed():
         return None
 
     event_settings = {

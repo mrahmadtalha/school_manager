@@ -36,7 +36,42 @@
                     </dd>
                     <dt class="col-sm-4">Read-only after</dt>
                     <dd class="col-sm-8">{{ license_status.grace_ends.strftime('%d %b %Y') }}</dd>
+                    {% if license_status.plan %}
+                    <dt class="col-sm-4">Plan</dt>
+                    <dd class="col-sm-8">{{ license_status.plan|title }}</dd>
+                    {% endif %}
+                    {% if license_status.rev %}
+                    <dt class="col-sm-4">Key revision</dt>
+                    <dd class="col-sm-8">{{ license_status.rev }}</dd>
+                    {% endif %}
                 </dl>
+                {% endif %}
+
+                {% if license_status.licensee and feature_catalog %}
+                <hr>
+                <h3 class="h6 fw-bold mb-2">Included features</h3>
+                <div class="row row-cols-1 row-cols-sm-2 g-1 small mb-3">
+                    {% for item in feature_catalog %}
+                    <div class="col">
+                        {% if license_status.feature_enabled(item[0]) %}
+                        <i class="fas fa-check-circle text-success me-1"></i>{{ item[1] }}
+                        {% else %}
+                        <i class="fas fa-lock text-muted me-1"></i><span class="text-muted">{{ item[1] }}</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% if wa_usage and wa_usage.enabled %}
+                <h3 class="h6 fw-bold mb-1">WhatsApp messages</h3>
+                {% if wa_usage.limited %}
+                <div class="small text-muted">
+                    Today: <strong>{{ wa_usage.day_used }}{% if wa_usage.day_limit is not none %} / {{ wa_usage.day_limit }}{% endif %}</strong>
+                    &nbsp;·&nbsp; This month: <strong>{{ wa_usage.month_used }}{% if wa_usage.month_limit is not none %} / {{ wa_usage.month_limit }}{% endif %}</strong>
+                </div>
+                {% else %}
+                <div class="small text-muted">No message limit on this license.</div>
+                {% endif %}
+                {% endif %}
                 {% endif %}
             </div>
         </div>

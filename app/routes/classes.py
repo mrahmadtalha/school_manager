@@ -12,7 +12,7 @@ from flask import (
 from flask_login import current_user
 from app.database import db
 from app.models import (ClassModel, SectionModel, SubjectModel, SubjectLibrary, TeacherModel,
-                       StudentModel, TestModel, TimetableSlot)
+                       StudentModel, TestModel)
 from app.routes import main
 
 # ==========================================
@@ -501,99 +501,3 @@ def library_toggle_default(id):
         db.session.rollback()
         flash(f'Error updating library subject: {str(e)}', 'danger')
     return redirect(url_for('main.subject_library'))
-
-
-# ==========================================
-# TEACHER TIMETABLES (school-wide views)
-# ==========================================
-
-@main.route('/timetables/teachers')
-def teacher_timetables():
-    """Hub: weekly teaching load and any double-booking per teacher.
-
-    Administrators see every active teacher; a teacher account sees only its
-    own linked teacher record.
-    """
-    from app.services import timetable_conflicts
-    from app.services.timetable_grid import effective_entries
-
-    teachers = (TeacherModel.query.filter_by(is_active=True)
-                .order_by(TeacherModel.teacher_name).all())
-    not_linked = False
-    if not current_user.is_admin:
-        own_id = getattr(current_user, 'teacher_id', None)
-        teachers = [t for t in teachers if t.id == own_id]
-        not_linked = own_id is None
-
-    # Weekly load counts from the section-effective timetable (a class-level
-    # row counts once per section it actually reaches).
-    period_counts = {}
-    for entry in effective_entries():
-        subject = entry['subject']
-        if subject is not None and subject.teacher_id:
-            period_counts[subject.teacher_id] = period_counts.get(subject.teacher_id, 0) + 1
-    conflicts = timetable_conflicts.all_teacher_conflicts()
-    return render_template('teacher_timetables.html', teachers=teachers,
-                           period_counts=period_counts, conflicts=conflicts,
-                           not_linked=not_linked)
-
-
-@main.route('/timetables/teacher/<int:teacher_id>')
-def teacher_timetable(teacher_id):
-    """One teacher's week across every class, viewable and exportable to PDF."""
-    from app.services import timetable as tt
-    from app.services import timetable_conflicts
-    from app.services.timetable_grid import effective_entries
-    from app.services.audit import log_action
-
-    teacher = TeacherModel.query.get_or_404(teacher_id)
-    if not current_user.is_admin and getattr(current_user, 'teacher_id', None) != teacher.id:
-        abort(403)
-
-    days = tt.school_days()
-    # Effective (section-resolved) entries across the school for this teacher.
-    grid = {}
-    periods_per_week = 0
-    involved_class_ids = set()
-    for entry in effective_entries():
-        subject = entry['subject']
-        if subject is None or subject.teacher_id != teacher.id:
-            continue
-        periods_per_week += 1
-        involved_class_ids.add(entry['class'].id)
-        grid.setdefault((entry['day'], entry['period']),
-                        {'class': entry['class'], 'subject': subject})
-
-    # Period axis merged from the timetables of the classes involved; when
-    # classes disagree about a period's timing, the most common wins and the
-    # cell notes that times vary.
-    starts = {}
-    for class_id in involved_class_ids:
-        for row in tt.load_rows(class_id):
-            if row.get('kind') != 'period' or row.get('no') is None:
-                continue
-            entry = starts.setdefault(row['no'], {})
-            key = (row.get('start') or '', row.get('end') or '')
-            entry[key] = entry.get(key, 0) + 1
-    mixed = {}
-    period_rows = []
-    for no in sorted(starts):
-        (start, end), _count = max(starts[no].items(), key=lambda item: item[1])
-        mixed[no] = len(starts[no]) > 1
-        period_rows.append({'no': no, 'start': start, 'end': end})
-    conflicts = timetable_conflicts.all_teacher_conflicts().get(teacher.id, [])
-
-    if request.args.get('pdf'):
-        output = tt.build_teacher_timetable_pdf(teacher, period_rows, days, grid,
-                                                root_path=current_app.root_path)
-        log_action('export', entity_type='TeacherModel', entity_id=teacher.id,
-                   summary=f'Teacher timetable PDF exported: {teacher.teacher_name}')
-        db.session.commit()
-        safe_name = ''.join(ch if ch.isalnum() else '_' for ch in teacher.teacher_name)
-        return send_file(output, mimetype='application/pdf', as_attachment=True,
-                         download_name='timetable_teacher_%s.pdf' % safe_name)
-
-    day_entries = [{'idx': d, 'name': name, 'off': False} for d, name in days]
-    return render_template('teacher_timetable.html', teacher=teacher, days=day_entries,
-                           period_rows=period_rows, grid=grid, mixed=mixed,
-                           conflicts=conflicts, periods_per_week=periods_per_week)

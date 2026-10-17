@@ -305,7 +305,8 @@ def save_student_attendance(selected_class_id, attendance_date, form_dict, class
                     queue_automation_message(
                         student,
                         'attendance_late',
-                        {'student_name': student.student_name, 'date': attendance_date.isoformat()},
+                        {'student_name': student.student_name, 'date': attendance_date.isoformat(),
+                         'late_time': checkin_time, 'late_minutes': late_minutes},
                     )
 
     db.session.commit()

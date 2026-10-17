@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% block title %}Schools{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h3 mb-0">Schools</h1>
+<a class="btn btn-dark" href="{{ url_for('school_new') }}"><i class="fas fa-plus me-1"></i>Add school</a></div>
+<form class="mb-3"><input class="form-control" name="q" value="{{ search }}" placeholder="Search name, city, phone or license ID"></form>
+<div class="card border-0 shadow-sm"><div class="table-responsive"><table class="table align-middle mb-0">
+<thead><tr><th>School</th><th>Plan</th><th>Status</th><th>Expires</th><th>WhatsApp/day · month</th></tr></thead><tbody>
+{% for i in items %}{% set s=i.school %}<tr class="{{ '' if s.active else 'text-muted' }}">
+<td><a href="{{ url_for('school_detail', school_id=s.id) }}">{{ s.name }}</a>{% if not s.active %} <span class="badge bg-secondary">inactive</span>{% endif %}<div class="small text-muted">{{ s.city or '' }} {{ s.phone or '' }}</div></td>
+<td>{{ s.plan|niceplan }} <span class="small text-muted">({{ s.billing }})</span></td>
+<td><span class="badge bg-{{ {'active':'success','soon':'warning text-dark','grace':'warning text-dark','expired':'danger','none':'secondary'}[i.code] }}">{{ i.label }}</span></td>
+<td>{{ s.expires|nicedate }}</td>
+<td>{% if s.expires %}{{ s.wa_daily if s.wa_daily is not none else '∞' }} · {{ s.wa_monthly if s.wa_monthly is not none else '∞' }}{% else %}-{% endif %}</td></tr>
+{% else %}<tr><td colspan="5" class="text-muted text-center py-4">No schools yet.</td></tr>{% endfor %}
+</tbody></table></div></div>
+{% endblock %}

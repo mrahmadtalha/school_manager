@@ -30,11 +30,8 @@ from app.bootstrap import (
     migrate_subject_library_schema,
     migrate_financial_v2_schema,
     migrate_payment_apply_month,
-    migrate_timetable_section_schema,
-    migrate_timetable_redesign_schema,
     migrate_teacher_profile_schema,
     migrate_teacher_schema,
-    drop_timetable_draft_table,
     migrate_timetable_schema,
     migrate_user_teacher_link_schema,
     register_blueprints,
@@ -100,7 +97,6 @@ def create_app(config_override=None):
         migrate_teacher_profile_schema(app)
         migrate_class_integrity_schema(app)
         migrate_timetable_schema(app)
-        drop_timetable_draft_table(app)
         migrate_user_teacher_link_schema(app)
         migrate_admin_schema(app)
         migrate_attendance_schema(app)
@@ -114,8 +110,6 @@ def create_app(config_override=None):
         migrate_student_enrollments(app)
         migrate_expense_schema(app)
         migrate_subject_library_schema(app)
-        migrate_timetable_section_schema(app)
-        migrate_timetable_redesign_schema(app)
         link_subjects_to_library()
         seed_teaching_assignments()
         backfill_financial_v2()
@@ -130,17 +124,6 @@ def create_app(config_override=None):
         app.jinja_env.filters['fromjson'] = parse_custom_fields_json
         app.jinja_env.filters['fromjsonlist'] = parse_json_list
 
-        def pretty_time_short(value):
-            """'08:15' -> '8:15', '13:00' -> '1:00' — the compact 12-hour
-            form used on the timetable headers (no AM/PM, like the reference)."""
-            from app.services.timetable import clean_time
-            value = clean_time(value)
-            if not value:
-                return value or ''
-            hours, minutes = value.split(':')
-            return '%d:%s' % (int(hours) % 12 or 12, minutes)
-
-        app.jinja_env.filters['pretty_time_short'] = pretty_time_short
         # Compact table rendering: one place decides column classes/widths.
         from app.services import record_view as _record_view
         app.jinja_env.globals['column_classes'] = _record_view.column_css

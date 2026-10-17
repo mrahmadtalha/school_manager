@@ -190,12 +190,12 @@ def _clamp_int(value, fallback, low, high):
 
 
 def get_timetable_structure():
-    """Period/break structure used to build the school timetable.
+    """Period/break structure saved for the school timetable (to be used later).
 
     Stored as JSON in the system settings key-value store (like the grading
     scale and holiday ranges) so no schema migration is needed.  Values are
     validated on read, so a corrupt entry falls back to the defaults instead
-    of breaking the Timetables page.
+    of breaking the settings page.
     """
     structure = dict(DEFAULT_TIMETABLE_STRUCTURE)
     raw = get_system_value('timetable_structure', '')

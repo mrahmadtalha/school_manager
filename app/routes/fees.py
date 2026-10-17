@@ -24,6 +24,7 @@ from app.services.fee_ledger import (
     student_month_outstanding_paisa, student_outstanding_paisa, student_summary,
     transactions_for, void_transaction,
 )
+from app.services.fee_ledger import _month_sort_key
 from app.services.whatsapp_automation import normalize_whatsapp_number
 
 PAYMENT_METHODS = ('cash', 'bank', 'online', 'other')
@@ -179,6 +180,7 @@ def fees_list():
     # load must never write (an expired-license school keeps full read access
     # here) - charges are created explicitly via POST /fees/generate-charges.
     pending_charges = 0
+    pending_months = set()      # months in which someone in this view still owes money
     for student in students:
         record = records.get(student.id)
         if record is None:
@@ -213,6 +215,8 @@ def fees_list():
             'total_outstanding': round(student_outstanding_paisa(student.id) / 100.0, 2),
             'advance_credit': round(student_credit_paisa(student.id) / 100.0, 2),
         }
+
+        pending_months.update(due_month for due_month, _balance in row['due_months'])
 
         # Which "Apply to" choices make sense for THIS student right now.
         #  - money still owed  -> a month can be targeted (never advance)
@@ -250,10 +254,17 @@ def fees_list():
                 selected_class_fee = class_obj.monthly_fee
                 break
 
+    # Billing-month dropdown: only months that still have unpaid fees in this view,
+    # plus the current month and whatever month is open now (newest first).
+    month_options = sorted(pending_months | {month_year, current_month()},
+                           key=_month_sort_key, reverse=True)
+
     return render_template('fees.html',
                            classes=classes,
                            selected_class_id=selected_class_id,
                            month_year=month_year,
+                           month_options=month_options,
+                           pending_months=pending_months,
                            fee_data=fee_data,
                            pending_charges=pending_charges,
                            show_unpaid=show_unpaid,
@@ -704,8 +715,20 @@ def fee_reminders():
     classes = ClassModel.query.all()
     awaiting, already = fee_reminders_service.fee_reminder_status(month_year, class_id=class_id)
     settings = AutomationSettings.get()
+    # Billing-month dropdown: only months in which someone still owes money, plus the
+    # current month and the month being viewed (newest first) - nothing to type.
+    student_query = StudentModel.query.filter_by(is_active=True)
+    if class_id:
+        student_query = student_query.filter_by(class_id=class_id)
+    owed_months = set()
+    for student in student_query.all():
+        owed_months.update(due_month for due_month, _balance in student_dues_months(student.id))
+    month_options = sorted(owed_months | {month_year, current_month()},
+                           key=_month_sort_key, reverse=True)
     return render_template('fee_reminders.html',
                            month_year=month_year,
+                           month_options=month_options,
+                           pending_months=owed_months,
                            classes=classes,
                            selected_class_id=class_id,
                            awaiting=awaiting,

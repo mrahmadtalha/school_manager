@@ -40,3 +40,6 @@ whatsapp-service/session/
 
 # PyArmor / PyInstaller build output (Phase 4/5)
 build/
+
+# Vendor license dashboard private data (never commit or ship)
+vendor_data/

@@ -26,6 +26,10 @@ __all__ = [
 PUBLIC_ENDPOINTS = {
     'auth.login',
     'auth.setup_admin',
+    # Forgotten username/password: needs a vendor-signed token, so it is safe
+    # to reach without a login (and must work while the license is locked).
+    'auth.recover',
+    'auth.recover_reset',
     'static',
     'main.healthz',
     # The route itself decides who may use it: open on a fresh install (so the
@@ -54,10 +58,8 @@ TEACHER_ENDPOINTS = {
     'main.teacher_profile', 'main.student_photo', 'main.teacher_photo',
     'main.export_teachers_csv', 'main.teachers_template_excel', 'main.export_teachers_excel',
     'main.export_teachers_pdf', 'main.import_teachers',
-    # classes (read-only for teachers; the teacher-timetable views are
-    # role-aware: a teacher account only reaches its own record)
+    # classes (read-only for teachers)
     'main.classes_list',
-    'main.teacher_timetables', 'main.teacher_timetable',
     # attendance
     'main.teacher_attendance', 'main.teacher_attendance_summary', 'main.student_attendance',
     'main.lock_attendance', 'main.attendance_summary',

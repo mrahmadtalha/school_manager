@@ -1,8 +1,8 @@
 from app.models.class_     import (ClassModel, SectionModel, SubjectModel, SubjectLibrary,
-                                   TeachingAssignment, TimetableConfig, TimetableSlot,
-                                   TimetableMasterConfig, TimetableOverride)
+                                   TeachingAssignment)
 from app.models.student    import StudentModel, STUDENT_STATUSES, STUDENT_STATUS_LABELS
 from app.models.teacher    import TeacherModel
+from app.models.timetable  import TimetableRow, TimetableCell
 from app.models.attendance import AttendanceModel
 from app.models.test       import TestModel, StudentMarkModel, TestTypeModel
 from app.models.term_exam  import TermExam, TERM_EXAM_STATUSES
@@ -28,11 +28,10 @@ from app.models.other_income import (OtherIncome, OtherIncomeCategory,
                                      DEFAULT_OTHER_INCOME_CATEGORIES)
 
 __all__ = [
+    "TimetableRow", "TimetableCell",
     "Product", "Purchase", "Sale",
     "OtherIncome", "OtherIncomeCategory",
     "ClassModel", "SectionModel", "SubjectModel", "SubjectLibrary", "TeachingAssignment",
-    "TimetableConfig", "TimetableSlot", "TimetableMasterConfig",
-    "TimetableOverride",
     "StudentModel", "STUDENT_STATUSES", "STUDENT_STATUS_LABELS",
     "TeacherModel",
     "AttendanceModel",

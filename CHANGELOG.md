@@ -43,6 +43,7 @@ release, rename `[Unreleased]` to the new version and date.
 - Module — feature description
 
 ### Changed
+- Fee Reminders — the billing month is a dropdown of months that still have unpaid fees (plus the current month) instead of a typed box.
 - Module — behaviour change description
 
 ### Fixed
@@ -51,6 +52,69 @@ release, rename `[Unreleased]` to the new version and date.
 ### Security
 - Anything affecting data protection or access control
 ```
+
+---
+
+## [Unreleased]
+
+### Added
+- Admission No — automatic numbering with a switch in Settings > General (Automatic Admission No) and a pattern the school chooses: prefix (e.g. alberoni-26-, or alberoni-{YY}- for the current year), number of digits and start number. ON: new students get alberoni-26-0001, alberoni-26-0002 ... by themselves and the box on Add Student is read-only; OFF: typed by hand as before. Existing numbers are never changed.
+- Admission form — download a student's admission form as PDF or Excel from the student's profile page (details, admission fee / books / uniform summary, signature lines).
+- Admission — books and uniform per class: set once in Fees > Admission Fee Settings (books price, uniform price per set, default number of sets). The Add Student form fills them from the class; books, sets and price can still be changed for each student.
+- Admission — one receipt for everything: admission fee, books and uniform are paid together and printed on a single A4 receipt with an item table (qty, price, amount, paid, balance).
+- Admission — part payments: a payment settles admission fee first, then books, then uniform; whatever is left stays pending and is received later from Admission Fees, with a new receipt each time.
+- Admission — the student's admission page can change books and uniform (never below what was already received); the register shows a Books + Uniform column and the export adds the same column at the end.
+
+### Changed
+- Admission — a class with only books or uniform (no admission fee) now also switches the admission feature on.
+- Automation — the Quick Broadcast tab was removed; the Message Queue & Logs table is now a DataTable (search, sort, page size) and keeps its page, search and sort after Approve / Reject / Retry, until you leave the page.
+- Automation — the late-arrival WhatsApp message now includes the arrival time and minutes late (for example "at 8:47 AM (17 minutes late)"); templates saved earlier get the time added automatically.
+- Classes — after saving a class, section, subject or fee, the same classes stay open and the page returns to the same scroll position.
+- Fees — Billing Month is now a dropdown listing the current month and the months that still have unpaid fees (newest first); "Set Monthly Fee for Entire Class" moved up beside the other header buttons.
+
+## [2.3.0] - 2026-10-16
+
+Subscription licensing — each school's license now says which modules it
+includes and how many WhatsApp messages it may send, and a forgotten
+administrator login can be recovered safely without internet.
+
+### Added
+- Licensing — a license can include or leave out individual modules: Expenses,
+  Payroll, Financial overview & insights, Inventory & other income, Admission
+  fees, the Principal's dashboard, Attendance, Exams & results, ID cards &
+  certificates, Timetable, Parent portal, WhatsApp automation, the School
+  Assistant and bulk Import. A module that is not in the plan disappears from
+  the menu and shows a "Not included in your plan" page if opened directly.
+  Licenses issued before this release keep every module.
+- License page — shows the plan, the key revision, which modules are included
+  and the WhatsApp usage.
+- WhatsApp — daily and monthly sending limits set by the license, to protect the
+  school's number from being blocked. Messages over the limit are not lost: they
+  stay in the queue and go out automatically the next day or month. The
+  Automation page shows how many have been used (for example "Today 37 / 100").
+  Test messages count towards the limit too.
+- Login — **Forgot username / password?** recovery that works offline. The school
+  sends the vendor a request code, the vendor replies with a one-time reset
+  token, and the school then picks the administrator account (the username is
+  shown) and sets a new password. It also works while the license is expired.
+- Licensing — a newer key for the same license replaces an older one; an older
+  key can no longer be applied by mistake.
+- Vendor tools — a **License Manager dashboard** that runs only on the vendor's
+  own laptop: schools, plans, issuing / renewing / updating keys, moving a
+  school to a new computer, payments, renewal reminders and password-recovery
+  tokens. It is not part of the installer.
+
+### Changed
+- Licensing — the command-line tool `tools/license_admin.py` can now set modules,
+  plan, revision and WhatsApp limits (`--features`, `--plan`, `--rev`,
+  `--wa-daily`, `--wa-monthly`).
+
+### Security
+- Recovery — reset tokens are signed by the vendor, work once, only on the school's
+  own computer, and expire; wrong tokens are throttled. No password is ever
+  revealed or stored by the vendor.
+- Vendor tools — the license signing key is kept encrypted on the vendor's laptop,
+  and the product build is tested never to include the dashboard or its data.
 
 ---
 

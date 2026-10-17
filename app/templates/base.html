@@ -93,59 +93,77 @@
             <!-- Navigation -->
             <ul class="nav flex-column mt-3">
                 {% if role == 'parent' %}
-                <li class="nav-item mb-1">
+                {% if has_feature('parent_portal') %}
+<li class="nav-item mb-1">
                     <a href="{{ url_for('main.portal') }}" class="nav-link text-white {% if request.endpoint == 'main.portal' %}active{% endif %}">
                         <span class="nav-icon nav-icon-overview"><i class="fas fa-child"></i></span> <span class="nav-label">My Child</span>
                     </a>
                 </li>
+{% endif %}
                 {% elif role == 'owner' %}
-                <li class="nav-item mb-1">
+                {% if has_feature('executive') %}
+<li class="nav-item mb-1">
                     <a href="{{ url_for('main.executive_dashboard') }}" class="nav-link text-white {% if 'executive' in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-overview"><i class="fas fa-crown"></i></span> <span class="nav-label">Executive Dashboard</span>
                     </a>
                 </li>
+{% endif %}
                 {% elif role == 'accountant' %}
                 <li class="nav-item mb-1">
                     <a href="{{ url_for('main.fees_list') }}" class="nav-link text-white {% if 'fee' in request.endpoint and 'reminder' not in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-finance"><i class="fas fa-wallet"></i></span> <span class="nav-label">Fees Management</span>
                     </a>
                 </li>
-                <li class="nav-item mb-1">
+                {% if has_feature('expenses') %}
+<li class="nav-item mb-1">
                     <a href="{{ url_for('main.expenses_list') }}" class="nav-link text-white {% if request.endpoint and 'expense' in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-finance"><i class="fas fa-file-invoice-dollar"></i></span> <span class="nav-label">Expenses</span>
                     </a>
                 </li>
-                <li class="nav-item mb-1">
+{% endif %}
+                {% if has_feature('payroll') %}
+<li class="nav-item mb-1">
                     <a href="{{ url_for('main.payroll_page') }}" class="nav-link text-white {% if request.endpoint and 'payroll' in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-finance"><i class="fas fa-money-check-dollar"></i></span> <span class="nav-label">Payroll</span>
                     </a>
                 </li>
+{% endif %}
                 <li class="nav-item mb-1">
-                    <a href="{{ url_for('main.financials_summary') }}" class="nav-link text-white {% if request.endpoint and 'financials' in request.endpoint %}active{% endif %}">
+                    {% if has_feature('financial_reports') %}
+<a href="{{ url_for('main.financials_summary') }}" class="nav-link text-white {% if request.endpoint and 'financials' in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-finance"><i class="fas fa-chart-line"></i></span> <span class="nav-label">Financial Overview</span>
                     </a>
-                        <li class="nav-item">
+{% endif %}
+                        {% if has_feature('inventory_other_income') %}
+<li class="nav-item">
                             <a class="nav-link" href="{{ url_for('main.other_income_page') }}">
                                 <span class="nav-icon nav-icon-finance"><i class="fas fa-wallet"></i></span> <span class="nav-label">Other Income</span>
                             </a>
                         </li>
-                        <li class="nav-item">
+{% endif %}
+                        {% if has_feature('admission_fees') %}
+<li class="nav-item">
                             <a class="nav-link" href="{{ url_for('main.admission_register') }}">
                                 <span class="nav-icon nav-icon-finance"><i class="fas fa-door-open"></i></span> <span class="nav-label">Admission Fees</span>
                             </a>
                         </li>
+{% endif %}
                         {% if config.get('FEATURE_INVENTORY_SALES') %}
-                        <li class="nav-item">
+                        {% if has_feature('inventory_other_income') %}
+<li class="nav-item">
                             <a class="nav-link" href="{{ url_for('main.inventory_page') }}">
                                 <span class="nav-icon nav-icon-finance"><i class="fas fa-boxes-stacked"></i></span> <span class="nav-label">Inventory &amp; Sales</span>
                             </a>
                         </li>
+{% endif %}
                         {% endif %}
-                        <li class="nav-item">
+                        {% if has_feature('financial_reports') %}
+<li class="nav-item">
                             <a class="nav-link" href="{{ url_for('main.financials_insights') }}">
                                 <span class="nav-icon nav-icon-finance"><i class="fas fa-lightbulb"></i></span> <span class="nav-label">Financial Insights</span>
                             </a>
                         </li>
+{% endif %}
                 </li>
                 <li class="nav-item mb-1">
                     <a href="{{ url_for('main.reports_hub', tab='finance') }}" class="nav-link text-white {% if 'reports_hub' in request.endpoint %}active{% endif %}">
@@ -179,50 +197,64 @@
 
                 <li class="nav-item"><div class="nav-divider"></div></li>
 
-                <li class="nav-item mb-1">
+                {% if has_feature('attendance') %}
+<li class="nav-item mb-1">
                     <a href="{{ url_for('main.student_attendance') }}" class="nav-link text-white {% if 'attendance' in request.endpoint and 'summary' not in request.endpoint and 'report' not in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-attendance"><i class="fas fa-clipboard-check"></i></span> <span class="nav-label">Daily Attendance</span>
                     </a>
                 </li>
-                <li class="nav-item mb-1">
+{% endif %}
+                {% if has_feature('attendance') %}
+<li class="nav-item mb-1">
                     <a href="{{ url_for('main.attendance_summary') }}" class="nav-link text-white {% if 'summary' in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-attendance"><i class="fas fa-calendar-alt"></i></span> <span class="nav-label">Attendance Summary</span>
                     </a>
                 </li>
+{% endif %}
 
                 <li class="nav-item"><div class="nav-divider"></div></li>
 
-                <li class="nav-item mb-1">
+                {% if has_feature('exams') %}
+<li class="nav-item mb-1">
                     <a href="{{ url_for('main.tests_list') }}" class="nav-link text-white {% if 'test' in request.endpoint and 'report' not in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-assess"><i class="fas fa-file-alt"></i></span> <span class="nav-label">Testing &amp; Marks Hub</span>
                     </a>
                 </li>
-                <li class="nav-item mb-1">
+{% endif %}
+                {% if has_feature('exams') %}
+<li class="nav-item mb-1">
                     <a href="{{ url_for('main.class_results_matrix') }}" class="nav-link text-white {% if 'results' in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-assess"><i class="fas fa-chart-line"></i></span> <span class="nav-label">Class Results &amp; Reports</span>
                     </a>
                 </li>
+{% endif %}
                 <li class="nav-item mb-1">
                     <a href="{{ url_for('main.reports_hub') }}" class="nav-link text-white {% if 'reports_hub' in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-assess"><i class="fas fa-chart-bar"></i></span> <span class="nav-label">Analytics &amp; Exports</span>
                     </a>
                 </li>
-                <li class="nav-item mb-1">
+                {% if has_feature('documents') %}
+<li class="nav-item mb-1">
                     <a href="{{ url_for('main.documents_hub') }}" class="nav-link text-white {% if 'documents' in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-docs"><i class="fas fa-id-card"></i></span> <span class="nav-label">ID Cards &amp; Certificates</span>
                     </a>
                 </li>
+{% endif %}
                 {% if role == 'admin' %}
-                <li class="nav-item mb-1">
+                {% if has_feature('whatsapp') %}
+<li class="nav-item mb-1">
                     <a href="{{ url_for('main.automation_panel') }}" class="nav-link text-white {% if request.endpoint == 'main.automation_panel' %}active{% endif %}">
                         <span class="nav-icon nav-icon-automation"><i class="fab fa-whatsapp"></i></span> <span class="nav-label">WhatsApp Automation</span>
                     </a>
                 </li>
-                <li class="nav-item mb-1">
+{% endif %}
+                {% if has_feature('assistant') %}
+<li class="nav-item mb-1">
                     <a href="{{ url_for('main.assistant_page') }}" class="nav-link text-white {% if request.endpoint in ('main.assistant_page',) %}active{% endif %}">
                         <span class="nav-icon nav-icon-system"><i class="fas fa-robot"></i></span> <span class="nav-label">School Assistant</span>
                     </a>
                 </li>
+{% endif %}
                 {% endif %}
 
                 {% if role == 'admin' %}
@@ -233,42 +265,56 @@
                         <span class="nav-icon nav-icon-finance"><i class="fas fa-wallet"></i></span> <span class="nav-label">Fees Management</span>
                     </a>
                 </li>
-                <li class="nav-item mb-1">
+                {% if has_feature('expenses') %}
+<li class="nav-item mb-1">
                     <a href="{{ url_for('main.expenses_list') }}" class="nav-link text-white {% if request.endpoint and 'expense' in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-finance"><i class="fas fa-file-invoice-dollar"></i></span> <span class="nav-label">Expenses</span>
                     </a>
                 </li>
-                <li class="nav-item mb-1">
+{% endif %}
+                {% if has_feature('payroll') %}
+<li class="nav-item mb-1">
                     <a href="{{ url_for('main.payroll_page') }}" class="nav-link text-white {% if request.endpoint and 'payroll' in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-finance"><i class="fas fa-money-check-dollar"></i></span> <span class="nav-label">Payroll</span>
                     </a>
                 </li>
+{% endif %}
                 <li class="nav-item mb-1">
-                    <a href="{{ url_for('main.financials_summary') }}" class="nav-link text-white {% if request.endpoint and 'financials' in request.endpoint %}active{% endif %}">
+                    {% if has_feature('financial_reports') %}
+<a href="{{ url_for('main.financials_summary') }}" class="nav-link text-white {% if request.endpoint and 'financials' in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-finance"><i class="fas fa-chart-line"></i></span> <span class="nav-label">Financial Overview</span>
                     </a>
-                        <li class="nav-item">
+{% endif %}
+                        {% if has_feature('inventory_other_income') %}
+<li class="nav-item">
                             <a class="nav-link" href="{{ url_for('main.other_income_page') }}">
                                 <span class="nav-icon nav-icon-finance"><i class="fas fa-wallet"></i></span> <span class="nav-label">Other Income</span>
                             </a>
                         </li>
-                        <li class="nav-item">
+{% endif %}
+                        {% if has_feature('admission_fees') %}
+<li class="nav-item">
                             <a class="nav-link" href="{{ url_for('main.admission_register') }}">
                                 <span class="nav-icon nav-icon-finance"><i class="fas fa-door-open"></i></span> <span class="nav-label">Admission Fees</span>
                             </a>
                         </li>
+{% endif %}
                         {% if config.get('FEATURE_INVENTORY_SALES') %}
-                        <li class="nav-item">
+                        {% if has_feature('inventory_other_income') %}
+<li class="nav-item">
                             <a class="nav-link" href="{{ url_for('main.inventory_page') }}">
                                 <span class="nav-icon nav-icon-finance"><i class="fas fa-boxes-stacked"></i></span> <span class="nav-label">Inventory &amp; Sales</span>
                             </a>
                         </li>
+{% endif %}
                         {% endif %}
-                        <li class="nav-item">
+                        {% if has_feature('financial_reports') %}
+<li class="nav-item">
                             <a class="nav-link" href="{{ url_for('main.financials_insights') }}">
                                 <span class="nav-icon nav-icon-finance"><i class="fas fa-lightbulb"></i></span> <span class="nav-label">Financial Insights</span>
                             </a>
                         </li>
+{% endif %}
                 </li>
                 {% endif %}
                 {% endif %}
@@ -562,6 +608,16 @@
                 var pageLength = $table.data('page-length');
                 if (pageLength) {
                     options.pageLength = parseInt(pageLength, 10);
+                }
+
+                // Opt-in (data-state-save="true", table needs an id): remember
+                // the page, page length, search and sort for this browser tab,
+                // so a form POST that reloads the page (approve, retry, save)
+                // lands on the same page instead of jumping back to page 1.
+                var stateSave = $table.data('state-save');
+                if ((stateSave === true || stateSave === 'true' || stateSave === '1') && this.id) {
+                    options.stateSave = true;
+                    options.stateDuration = -1;   // sessionStorage: until the tab closes
                 }
                 
                 $table.DataTable(options);

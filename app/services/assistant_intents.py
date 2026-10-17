@@ -548,33 +548,6 @@ INTENTS = [
         },
     },
     {
-        'id': 'howto_timetable',
-        'howto': True,
-        'title': 'Timetable',
-        'examples': ['timetable kaise banate hain?'],
-        'keywords': {
-            'timetable': 3, 'schedule': 2, 'periods': 1.5, 'period': 1.5,
-        },
-        'phrases': {},
-        'min_score': 3,
-        'guide': {
-            'title_en': 'Create a timetable', 'title_ur': 'Timetable banana',
-            'steps_en': [
-                'Set periods per day in School Settings > Academic > Timetable Periods.',
-                'Make sure teachers are assigned to subjects in "Classes & Subjects".',
-                'Open "Timetables", tick the classes and use Generate.',
-                'Edit any cell by hand and save.',
-            ],
-            'steps_ur': [
-                'School Settings > Academic > Timetable Periods mein roz ke periods set karein.',
-                '"Classes & Subjects" mein teachers ko subjects par lagayein.',
-                '"Timetables" kholein, classes tick karein aur Generate dabayein.',
-                'Kisi bhi cell ko hath se badal kar save karein.',
-            ],
-            'endpoint': 'main.timetables_hub', 'link_label': 'Timetables',
-        },
-    },
-    {
         'id': 'howto_users',
         'howto': True,
         'title': 'Users / Password',

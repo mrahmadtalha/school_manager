@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h3 mb-0">Overview</h1>
+<a class="btn btn-dark" href="{{ url_for('school_new') }}"><i class="fas fa-plus me-1"></i>Add school</a></div>
+<div class="row g-3 mb-4">
+{% for label, key, color in [('Active','active','success'),('Expiring ≤30 days','soon','warning'),('In grace','grace','warning'),('Expired','expired','danger'),('No license yet','none','secondary')] %}
+<div class="col-6 col-md"><div class="card border-0 shadow-sm"><div class="card-body py-3"><div class="text-muted small">{{ label }}</div><div class="h3 mb-0 text-{{ color }}">{{ counts[key] }}</div></div></div></div>
+{% endfor %}</div>
+<div class="card border-0 shadow-sm"><div class="card-body">
+<h2 class="h5">Needs attention</h2>
+{% if attention %}
+<div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>School</th><th>Status</th><th>Expires</th><th>Plan</th><th></th></tr></thead><tbody>
+{% for i in attention %}<tr>
+<td><a href="{{ url_for('school_detail', school_id=i.school.id) }}">{{ i.school.name }}</a><div class="small text-muted">{{ i.school.phone or '' }} {{ i.school.city or '' }}</div></td>
+<td><span class="badge bg-{{ 'danger' if i.code=='expired' else 'warning text-dark' }}">{{ i.label }}</span> <span class="small text-muted">{{ i.days_left }} d</span></td>
+<td>{{ i.school.expires|nicedate }}</td><td>{{ i.school.plan|niceplan }}</td>
+<td class="text-end"><textarea id="rem{{ i.school.id }}" class="d-none">{{ i.reminder }}</textarea>
+<button class="btn btn-sm btn-outline-secondary" onclick="copyFrom('rem{{ i.school.id }}',this)"><i class="fas fa-copy me-1"></i>Reminder</button></td></tr>{% endfor %}
+</tbody></table></div>
+{% else %}<p class="text-muted mb-0">Nothing needs attention right now.</p>{% endif %}
+</div></div>
+{% endblock %}
