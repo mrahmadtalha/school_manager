@@ -60,6 +60,7 @@ def create_app(config=None):
 
     store = Store(data_dir)
     store.seed_plans(features_mod.DEFAULT_PLANS)
+    store.sync_premium_plan(features_mod.ALL_FEATURES)
     keystore = KeyStore(data_dir, keys_dir / 'license_private.key',
                         config.get('PUBLIC_KEY') or project_public_key(), lic,
                         kdf_n=config.get('KDF_N', 2 ** 15))
@@ -95,7 +96,7 @@ def create_app(config=None):
 
     @app.context_processor
     def _inject():
-        return {'csrf_token': session.get('csrf', ''), 'catalog': features_mod.FEATURE_CATALOG,
+        return {'csrf_token': session.get('csrf', ''), 'catalog': features_mod.FEATURE_CATALOG, 'role_catalog': features_mod.ROLE_CATALOG,
                 'today': vendor.today(), 'reasons': issuer.REASONS}
 
     app.jinja_env.filters['fromjson'] = lambda text: json.loads(text) if text else []
@@ -213,6 +214,7 @@ def create_app(config=None):
                 'plan': latest['plan'] or '', 'features': json.loads(latest['features']),
                 'wa_daily': latest['wa_daily'], 'wa_monthly': latest['wa_monthly'],
                 'grace_days': latest['grace_days'],
+                'roles': (json.loads(latest['roles']) if latest['roles'] else list(features_mod.ALL_ROLES)),
             }
         else:
             form = {
@@ -222,6 +224,7 @@ def create_app(config=None):
                 'wa_daily': base_plan['wa_daily'] if base_plan else None,
                 'wa_monthly': base_plan['wa_monthly'] if base_plan else None,
                 'grace_days': lic.DEFAULT_GRACE_DAYS,
+                'roles': list(features_mod.ALL_ROLES),
             }
         form['period'] = '1m' if school['billing'] == 'monthly' else '1y'
         status = issuer.license_status(latest['expires'] if latest else None,
@@ -230,6 +233,7 @@ def create_app(config=None):
             'school.html', school=school, latest=latest, status=status, form=form, plans=plans,
             periods=issuer.PERIOD_LABELS, licenses=store.licenses_for(school_id),
             payments=store.payments_for(school_id), recoveries=store.recoveries(school_id),
+            inspections=store.inspections_for(school_id), inspection_hours=issuer.INSPECTION_HOURS,
             reminder=(issuer.reminder_text(school['name'], latest['expires'], status[2]) if latest else ''))
 
     @app.route('/schools/<int:school_id>/edit', methods=['POST'])
@@ -259,12 +263,40 @@ def create_app(config=None):
                 plan=form.get('plan') or '', features=form.getlist('features'),
                 wa_daily=form.get('wa_daily'), wa_monthly=form.get('wa_monthly'),
                 period=form.get('period') or 'keep', custom_expires=form.get('custom_expires'),
-                grace_days=form.get('grace_days'), note=form.get('note'), today=vendor.today())
+                grace_days=form.get('grace_days'), note=form.get('note'), today=vendor.today(),
+                roles=form.getlist('roles') if form.get('roles_present') else None,
+                notice=form.get('notice'))
         except issuer.IssueError as err:
             flash(err.args[0], 'danger')
             return redirect(url_for('school_detail', school_id=school_id))
         flash('Key issued. Send it to the school below.', 'success')
         return redirect(url_for('key_view', row_id=row_id))
+
+    @app.route('/schools/<int:school_id>/inspection', methods=['POST'])
+    def school_inspection(school_id):
+        _get_school_or_404(school_id)
+        try:
+            row_id, _expires = issuer.issue_inspection(
+                store, vendor.private_key, school_id, hours=request.form.get('hours'),
+                machine_code=request.form.get('machine_code'), note=request.form.get('note'))
+        except issuer.IssueError as err:
+            flash(err.args[0], 'danger')
+            return redirect(url_for('school_detail', school_id=school_id))
+        flash('Inspection key issued. Send it to the school below.', 'success')
+        return redirect(url_for('inspection_view', row_id=row_id))
+
+    @app.route('/inspections/<int:row_id>')
+    def inspection_view(row_id):
+        row = store.inspection(row_id)
+        if row is None:
+            abort(404)
+        school = store.school(row['school_id'])
+        message = (f"Assalam o Alaikum! Here is a short, view-only inspection key for {school['name']} "
+                   f"(valid until {datetime.fromisoformat(row['expires_at']):%d %b %Y %H:%M}).\n\n"
+                   "How to apply it: open School Manager > License > paste the key below > Activate. "
+                   "The software shows 'Inspection mode' and everything can be viewed but not changed; "
+                   "it ends by itself.\n\n" + row['key_text'])
+        return render_template('inspection.html', row=row, school=school, message=message)
 
     @app.route('/schools/<int:school_id>/payment', methods=['POST'])
     def school_payment(school_id):

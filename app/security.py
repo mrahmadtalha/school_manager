@@ -12,8 +12,8 @@ from functools import wraps
 from flask import abort, current_app, jsonify, redirect, request, url_for
 from flask_login import current_user
 
-from app.models.admin import (ROLE_ACCOUNTANT, ROLE_ADMIN, ROLE_OWNER,
-                             ROLE_PARENT, ROLE_TEACHER)
+from app.models.admin import (ROLE_ACCOUNTANT, ROLE_ADMIN, ROLE_GUARD,
+                             ROLE_OWNER, ROLE_PARENT, ROLE_TEACHER)
 
 __all__ = [
     'ROLE_ADMIN', 'ROLE_TEACHER', 'ROLE_PARENT', 'ROLE_OWNER', 'ROLE_ACCOUNTANT',
@@ -30,8 +30,14 @@ PUBLIC_ENDPOINTS = {
     # to reach without a login (and must work while the license is locked).
     'auth.recover',
     'auth.recover_reset',
+    # The English / Urdu button on the login page (the route only stores the choice).
+    'main.set_language',
     'static',
     'main.healthz',
+    # Guard app sign-in (the route checks the password itself).
+    'main.qr_api_login',
+    # Guard app connecting by the QR code shown on the computer (signed, short-lived).
+    'main.qr_api_pair',
     # The route itself decides who may use it: open on a fresh install (so the
     # first license can be activated), administrators only afterwards.
     'main.license_page',
@@ -42,6 +48,7 @@ PUBLIC_ENDPOINTS = {
 SHARED_ENDPOINTS = {
     'main.dashboard',
     'main.portal',
+    'main.set_language',
     'auth.logout',
     'auth.change_password',
 }
@@ -62,7 +69,7 @@ TEACHER_ENDPOINTS = {
     'main.classes_list',
     # attendance
     'main.teacher_attendance', 'main.teacher_attendance_summary', 'main.student_attendance',
-    'main.lock_attendance', 'main.attendance_summary',
+    'main.lock_attendance', 'main.attendance_summary', 'main.qr_attendance_report',
     'main.export_class_attendance_pdf', 'main.export_class_attendance_excel',
     'main.export_class_attendance_csv', 'main.export_teacher_attendance_pdf',
     'main.export_teacher_attendance_excel', 'main.export_teacher_attendance_csv',
@@ -123,12 +130,22 @@ OWNER_ENDPOINTS = {
     'main.admission_receipt', 'main.admission_export',
 }
 
+# Endpoints the gate guard's phone app may reach (and nothing else).
+GUARD_ENDPOINTS = {
+    'main.qr_api_ping', 'main.qr_api_scan', 'main.qr_api_logout',
+    'main.qr_student_photo', 'main.qr_guard_home',
+}
+
 ROUTE_ROLES = {}
 for _endpoint in SHARED_ENDPOINTS:
     ROUTE_ROLES[_endpoint] = {ROLE_ADMIN, ROLE_TEACHER, ROLE_PARENT,
                               ROLE_OWNER, ROLE_ACCOUNTANT}
 for _endpoint in TEACHER_ENDPOINTS - SHARED_ENDPOINTS:
     ROUTE_ROLES[_endpoint] = {ROLE_ADMIN, ROLE_TEACHER}
+for _endpoint in GUARD_ENDPOINTS:
+    ROUTE_ROLES[_endpoint] = {ROLE_ADMIN, ROLE_GUARD}
+for _endpoint in ('auth.logout', 'auth.change_password'):
+    ROUTE_ROLES[_endpoint].add(ROLE_GUARD)
 for _endpoint in ACCOUNTANT_ENDPOINTS:
     ROUTE_ROLES.setdefault(_endpoint, set()).update({ROLE_ADMIN, ROLE_ACCOUNTANT})
 for _endpoint in OWNER_ENDPOINTS:

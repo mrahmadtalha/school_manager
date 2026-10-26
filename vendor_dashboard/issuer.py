@@ -21,6 +21,8 @@ REASONS = {
     'move': 'Move to a new computer',
 }
 RECOVERY_HOURS = (1, 6, 24, 72)
+INSPECTION_HOURS = (6, 24, 48, 72)
+REMINDER_DAYS = lic.REMINDER_MILESTONES        # what the school's own reminders use
 
 
 class IssueError(Exception):
@@ -42,6 +44,10 @@ def compute_expiry(period, custom_date, current_expires, today):
     expiry, so paying early never loses days and paying late never gives
     free ones.
     """
+    if custom_date:
+        # A date typed in "Custom expiry" always wins over the validity dropdown, so a key
+        # can never end up with a different expiry from the one the vendor typed.
+        return custom_date
     if period == 'keep':
         if not current_expires:
             raise IssueError('There is no current expiry to keep - choose a renewal period or a date.')
@@ -111,7 +117,8 @@ def _optional_int(value):
 
 
 def issue_key(store, private_key, school_id, *, reason, machine_code, plan, features,
-              wa_daily, wa_monthly, period, custom_expires, grace_days, note, today=None):
+              wa_daily, wa_monthly, period, custom_expires, grace_days, note, today=None,
+              roles=None, notice=None):
     """Sign a new key revision for a school and record it.  Returns the row id."""
     today = today or date.today()
     school = store.school(school_id)
@@ -124,6 +131,7 @@ def issue_key(store, private_key, school_id, *, reason, machine_code, plan, feat
     machine = lic.format_machine_code(machine)
 
     wanted = features_mod.normalize_features(features) or []
+    wanted_roles = features_mod.normalize_roles(roles)       # None = every role (legacy)
     wa_daily, wa_monthly = _optional_int(wa_daily), _optional_int(wa_monthly)
     try:
         grace = max(0, min(lic.MAX_GRACE_DAYS, int(grace_days if grace_days not in (None, '') else lic.DEFAULT_GRACE_DAYS)))
@@ -150,14 +158,51 @@ def issue_key(store, private_key, school_id, *, reason, machine_code, plan, feat
     payload = admin_tool.build_payload(
         license_id=license_id, licensee=school['name'], machine_code=machine,
         issued=today, expires=expires, grace_days=grace, rev=rev,
-        plan=plan or None, features=wanted, wa_daily=wa_daily, wa_monthly=wa_monthly)
+        plan=plan or None, features=wanted, wa_daily=wa_daily, wa_monthly=wa_monthly,
+        roles=wanted_roles, notice=notice)
     key_text = admin_tool.sign_license(private_key, payload)
 
     return store.add_license(
         school_id=school_id, license_id=license_id, rev=rev, reason=reason, plan=plan or '',
         machine_code=machine, issued=today.isoformat(), expires=expires.isoformat(),
-        grace_days=grace, features=wanted, wa_daily=wa_daily, wa_monthly=wa_monthly,
+        grace_days=grace, features=wanted, roles=wanted_roles, wa_daily=wa_daily, wa_monthly=wa_monthly,
+        key_text=key_text, note=note or '', notice=payload.get('notice') or '')
+
+
+# -- inspection keys -------------------------------------------------------------
+
+def issue_inspection(store, private_key, school_id, *, hours, machine_code=None, note=None, now=None):
+    """Sign a short, view-only inspection key for a school and record it.
+
+    Returns ``(row_id, expires_at)``.  The key only works on the school's own computer and,
+    when the school has a license, only together with that license.
+    """
+    school = store.school(school_id)
+    if school is None:
+        raise IssueError('School not found.')
+    try:
+        hours = int(hours)
+    except (TypeError, ValueError):
+        raise IssueError('Choose how long the inspection key stays valid.')
+    if hours not in INSPECTION_HOURS:
+        raise IssueError('Choose how long the inspection key stays valid.')
+    latest = store.latest_license(school_id)
+    machine = lic.normalize_machine_code(
+        machine_code or (latest['machine_code'] if latest else '') or school['machine_code'] or '')
+    if len(machine) != 16:
+        raise IssueError('This school has no machine code yet - enter it (7F3A-91BC-0D42-E8A5).')
+    machine = lic.format_machine_code(machine)
+    license_id = (latest['license_id'] if latest else school['license_id']) or ''
+    now = int(now if now is not None else time.time())
+    inspection_id, key_text, issued_ts, expires_ts = admin_tool.build_inspection_key(
+        private_key, licensee=school['name'], machine_code=machine, hours=hours,
+        license_id=license_id, now_ts=now)
+    row_id = store.add_inspection(
+        school_id=school_id, inspection_id=inspection_id, license_id=license_id,
+        machine_code=machine, issued_at=datetime.fromtimestamp(issued_ts).isoformat(timespec='seconds'),
+        expires_at=datetime.fromtimestamp(expires_ts).isoformat(timespec='seconds'),
         key_text=key_text, note=note or '')
+    return row_id, datetime.fromtimestamp(expires_ts)
 
 
 # -- password recovery -----------------------------------------------------------

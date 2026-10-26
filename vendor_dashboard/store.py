@@ -55,6 +55,14 @@ CREATE TABLE IF NOT EXISTS plans (
     features TEXT NOT NULL,
     wa_daily INTEGER, wa_monthly INTEGER
 );
+CREATE TABLE IF NOT EXISTS inspections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    school_id INTEGER NOT NULL REFERENCES schools(id),
+    inspection_id TEXT NOT NULL,
+    license_id TEXT, machine_code TEXT,
+    issued_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+    key_text TEXT NOT NULL, note TEXT
+);
 CREATE INDEX IF NOT EXISTS idx_licenses_school ON licenses(school_id, license_id, rev);
 """
 
@@ -70,6 +78,11 @@ class Store:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         with self.conn() as c:
             c.executescript(SCHEMA)
+            columns = {row[1] for row in c.execute('PRAGMA table_info(licenses)')}
+            if 'roles' not in columns:       # older vendor.db: add the roles column
+                c.execute('ALTER TABLE licenses ADD COLUMN roles TEXT')
+            if 'notice' not in columns:      # older vendor.db: add the notice column
+                c.execute('ALTER TABLE licenses ADD COLUMN notice TEXT')
 
     @contextmanager
     def conn(self):
@@ -94,6 +107,18 @@ class Store:
                 c.execute('INSERT INTO plans VALUES (?,?,?,?,?)',
                           (name, plan['label'], json.dumps(plan['features']),
                            plan['wa_daily'], plan['wa_monthly']))
+
+    def sync_premium_plan(self, all_features):
+        """Keep the Premium plan = every feature, also those added after the plan was first saved.
+
+        Plans are stored once in the dashboard's own database, so a plan saved before a feature
+        existed would silently leave that feature out of every new Premium key.
+        """
+        wanted = list(all_features)
+        with self.conn() as c:
+            row = c.execute("SELECT features FROM plans WHERE name = 'premium'").fetchone()
+            if row is not None and json.loads(row['features']) != wanted:
+                c.execute("UPDATE plans SET features = ? WHERE name = 'premium'", (json.dumps(wanted),))
 
     def plans(self):
         with self.conn() as c:
@@ -180,14 +205,35 @@ class Store:
             cursor = c.execute(
                 'INSERT INTO licenses (school_id, license_id, rev, reason, plan, machine_code, '
                 'issued, expires, grace_days, features, wa_daily, wa_monthly, key_text, note, '
-                'created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                'created_at, roles, notice) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 (f['school_id'], f['license_id'], f['rev'], f.get('reason'), f.get('plan'),
                  f['machine_code'], f['issued'], f['expires'], f['grace_days'],
                  json.dumps(f['features']), f.get('wa_daily'), f.get('wa_monthly'),
-                 f.get('key_text'), f.get('note'), _now()))
+                 f.get('key_text'), f.get('note'), _now(),
+                 None if f.get('roles') is None else json.dumps(f['roles']),
+                 f.get('notice') or None))
             c.execute('UPDATE schools SET license_id=?, machine_code=? WHERE id=?',
                       (f['license_id'], f['machine_code'], f['school_id']))
             return cursor.lastrowid
+
+    # -- inspection keys -----------------------------------------------------------
+    def add_inspection(self, **f):
+        with self.conn() as c:
+            cursor = c.execute(
+                'INSERT INTO inspections (school_id, inspection_id, license_id, machine_code, '
+                'issued_at, expires_at, key_text, note) VALUES (?,?,?,?,?,?,?,?)',
+                (f['school_id'], f['inspection_id'], f.get('license_id'), f.get('machine_code'),
+                 f['issued_at'], f['expires_at'], f['key_text'], f.get('note')))
+            return cursor.lastrowid
+
+    def inspection(self, row_id):
+        with self.conn() as c:
+            return c.execute('SELECT * FROM inspections WHERE id=?', (row_id,)).fetchone()
+
+    def inspections_for(self, school_id, limit=10):
+        with self.conn() as c:
+            return c.execute('SELECT * FROM inspections WHERE school_id=? ORDER BY id DESC LIMIT ?',
+                             (school_id, limit)).fetchall()
 
     def license_id_count(self):
         with self.conn() as c:

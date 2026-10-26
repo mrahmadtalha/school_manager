@@ -14,3 +14,6 @@ class AttendanceModel(db.Model):
     is_locked = db.Column(db.Boolean, default=False)
     late_time = db.Column(db.String(10), nullable=True)
     late_minutes = db.Column(db.Integer, nullable=True)
+    # Time of the guard's QR scan. Only the scan writes it; a teacher saving the
+    # sheet by hand never changes or clears it.
+    qr_time = db.Column(db.String(10), nullable=True)

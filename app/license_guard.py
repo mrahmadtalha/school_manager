@@ -20,12 +20,13 @@ threads are unaffected.
 
 from pathlib import Path
 
-from flask import g, has_request_context, jsonify, redirect, render_template, request, url_for
+from flask import flash, g, has_request_context, jsonify, redirect, render_template, request, url_for
+from flask_login import current_user, logout_user
 from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from app.database import db
-from app.services.features import FEATURE_LABELS, feature_for_endpoint
+from app.services.features import FEATURE_LABELS, ROLE_LABELS_VENDOR, feature_for_endpoint, is_export_endpoint
 from app.services.licensing import LicenseManager, default_public_key
 
 SAFE_METHODS = {'GET', 'HEAD', 'OPTIONS'}
@@ -155,9 +156,22 @@ def install_license_guard(app):
         g.license_read_only = status.read_only
         endpoint = request.endpoint
 
+        # Role switches: a role the license does not include cannot be used at this
+        # school (administrators always can).  The person is signed out with a clear message.
+        if (endpoint is not None and endpoint not in ALWAYS_OPEN_ENDPOINTS
+                and getattr(current_user, 'is_authenticated', False)
+                and not status.role_enabled(getattr(current_user, 'role', 'admin'))):
+            role = ROLE_LABELS_VENDOR.get(current_user.role, current_user.role)
+            logout_user()
+            flash('The "%s" role is not included in this school\'s license, so this account '
+                  'cannot be used. Please contact your administrator.' % role, 'danger')
+            return redirect(url_for('auth.login'))
+
         # Feature switches: a module the license does not include is closed
         # for everyone, whatever the license state, even by typing its URL.
         if endpoint is not None and endpoint not in ALWAYS_OPEN_ENDPOINTS:
+            if is_export_endpoint(endpoint) and not status.feature_enabled('data_export'):
+                return _feature_locked_response('data_export', status)
             feature = feature_for_endpoint(endpoint, _view_module(endpoint))
             if feature and not status.feature_enabled(feature):
                 if endpoint == 'main.whatsapp_pending_messages':

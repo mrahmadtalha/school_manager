@@ -1,6 +1,6 @@
 """Administrator user & role management."""
 
-from flask import flash, redirect, render_template, request, url_for
+from flask import flash, g, redirect, render_template, request, url_for
 from flask_login import current_user
 
 from app.database import db
@@ -26,6 +26,12 @@ def _teacher_choices():
             .all())
 
 
+def _role_in_license(role):
+    """False when this school's license switches that role off."""
+    status = g.get('license_status')
+    return status is None or status.role_enabled(role)
+
+
 @main.route('/users')
 @role_required(ROLE_ADMIN)
 def users_list():
@@ -39,9 +45,11 @@ def users_list():
         'parents': sum(1 for user in users if user.role == 'parent'),
         'owners': sum(1 for user in users if user.role == 'owner'),
         'accountants': sum(1 for user in users if user.role == 'accountant'),
+        'guards': sum(1 for user in users if user.role == 'guard'),
     }
     recent_user_activity = audit_service.query_logs(entity_type='AdminUser', limit=6)
     return render_template('users.html', users=users, roles=ROLES,
+                           disabled_roles=[r for r in ROLES if not _role_in_license(r)],
                            role_labels=ROLE_LABELS, students=_student_choices(),
                            teachers=_teacher_choices(), stats=stats,
                            recent_user_activity=recent_user_activity)
@@ -69,6 +77,9 @@ def create_user():
         return redirect(url_for('main.users_list'))
     if role not in ROLES:
         flash('Unknown role.', 'danger')
+        return redirect(url_for('main.users_list'))
+    if not _role_in_license(role):
+        flash('The "%s" role is not included in this school\'s license.' % ROLE_LABELS.get(role, role), 'danger')
         return redirect(url_for('main.users_list'))
     problem = password_problem(password)
     if problem:
@@ -197,6 +208,9 @@ def edit_user(user_id):
     role = (request.form.get('role') or user.role).strip()
     if role not in ROLES:
         flash('Unknown role.', 'danger')
+        return redirect(url_for('main.users_list'))
+    if role != user.role and not _role_in_license(role):
+        flash('The "%s" role is not included in this school\'s license.' % ROLE_LABELS.get(role, role), 'danger')
         return redirect(url_for('main.users_list'))
 
     # Self-lockout protection: an administrator can never demote themselves.

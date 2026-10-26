@@ -7,7 +7,7 @@ from flask_login import current_user
 from app.database import db
 from app.models import (
     AutomationSettings, ClassModel, FeeRecordModel, FeeTransaction, MessageQueue, StudentModel,
-    ROLE_ACCOUNTANT, ROLE_ADMIN, TXN_CHARGE, TXN_PAYMENT,
+    ROLE_ACCOUNTANT, ROLE_ADMIN, TXN_ADJUSTMENT, TXN_CHARGE, TXN_PAYMENT,
 )
 from app.routes import main
 from app.security import role_required
@@ -18,7 +18,7 @@ from app.services.fee_ledger import (
     DuplicateReferenceError, advance_credit_enabled, current_month, ensure_charge,
     ledger_totals, next_reference, payment_allocation_lines,
     payment_allocation_summary,
-    record_refund, record_writeoff, reconcile, recompute_fee_record, record_payment,
+    record_adjustment, record_refund, record_writeoff, reconcile, recompute_fee_record, record_payment,
     orphaned_settlements, repair_allocations,
     reference_in_use, set_month_charge, student_credit_paisa, student_dues_months,
     student_month_outstanding_paisa, student_outstanding_paisa, student_summary,
@@ -329,6 +329,80 @@ def generate_monthly_charges():
                             class_id=class_filter or None))
 
 
+@main.route('/fees/extra-charge', methods=['POST'])
+@role_required(ROLE_ADMIN, ROLE_ACCOUNTANT)
+def add_extra_charge():
+    """One-off charge (trip, event, party...) added to a month's fee.
+
+    It is an ordinary ledger *adjustment*: it is owed like the monthly fee,
+    payments settle it, it shows on the fee list and receipt, and it can be
+    voided with a reason.  The student's standing monthly fee is never touched.
+    Applies to every active student of the class, or to one student when
+    ``student_id`` is posted.  Posting the same event twice does not charge a
+    student twice.
+    """
+    month_year = (request.form.get('month_year') or '').strip() or current_month()
+    event_name = (request.form.get('event_name') or '').strip()[:80]
+    class_id = request.form.get('class_id', type=int)
+    student_id = request.form.get('student_id', type=int)
+    back = url_for('main.fees_list', class_id=class_id or None, month_year=month_year)
+
+    try:
+        amount = float(request.form.get('amount') or 0)
+    except ValueError:
+        amount = 0.0
+    if not event_name:
+        flash('Type the name of the event or trip (for example "Picnic").', 'danger')
+        return redirect(back)
+    if amount <= 0:
+        flash('The extra charge must be more than zero.', 'danger')
+        return redirect(back)
+
+    query = StudentModel.query.filter_by(is_active=True)
+    if student_id:
+        query = query.filter_by(id=student_id)
+    elif class_id:
+        query = query.filter_by(class_id=class_id)
+    else:
+        flash('Choose a class first.', 'danger')
+        return redirect(back)
+    students = query.all()
+    if not students:
+        flash('No active students found for this charge.', 'warning')
+        return redirect(back)
+
+    note = f'Extra charge: {event_name}'
+    added = skipped = 0
+    for student in students:
+        already = FeeTransaction.query.filter_by(
+            student_id=student.id, month_year=month_year,
+            txn_type=TXN_ADJUSTMENT, note=note, is_void=False).first()
+        if already:
+            skipped += 1
+            continue
+        # The month's normal charge must exist first, so the extra amount is
+        # an addition to the fee and not the only charge of the month.
+        if (student.monthly_fee or 0) > 0:
+            ensure_charge(student, month_year)
+        record_adjustment(student, month_year, amount, note=note)
+        recompute_fee_record(student.id, month_year)
+        added += 1
+
+    if added:
+        log_action('charge', entity_type='FeeTransaction',
+                   summary=f'Extra charge "{event_name}" of Rs. {amount:,.0f} added for '
+                           f'{added} student(s) in {month_year}',
+                   after={'event': event_name, 'amount': round(amount, 2),
+                          'students': added, 'month_year': month_year})
+    db.session.commit()
+    message = (f'"{event_name}": Rs. {amount:,.0f} added to {month_year} for {added} student(s). '
+               'It is part of their fee now; the monthly fee on the student record is unchanged.')
+    if skipped:
+        message += f' {skipped} already had this charge and were skipped.'
+    flash(message, 'success' if added else 'info')
+    return redirect(back)
+
+
 @main.route('/fees/class-bulk-update', methods=['POST'])
 def bulk_update_class_fees():
     class_id = request.form.get('class_id', type=int)
@@ -460,7 +534,13 @@ def pay_fee(student_id):
                                           txn_type=TXN_CHARGE, is_void=False)
                                .order_by(FeeTransaction.id.asc()).first())
             existing_amount = existing_charge.amount if existing_charge else 0.0
-            if existing_charge is None or abs(due_override - existing_amount) > 0.005:
+            # The form shows the month's WHOLE due: the monthly charge plus any
+            # extra charge / adjustment (event, trip, fine).  Compare against that
+            # whole figure, otherwise a month with an extra charge would look like
+            # a changed fee on every payment.
+            month_total, _paid_so_far, _written_off = ledger_totals(student.id, month_year)
+            extras = round(month_total - existing_amount, 2)
+            if existing_charge is None or abs(due_override - month_total) > 0.005:
                 # Explicit charge change: a month with payments must be
                 # corrected by voiding the payment, never by rewriting the charge.
                 has_payments = FeeTransaction.query.filter_by(
@@ -470,8 +550,24 @@ def pay_fee(student_id):
                     flash(f'{month_year} already has payments, so its charged amount can no '
                           'longer be overwritten. Void the payment first if the charge is wrong.', 'danger')
                     return redirect(request.referrer or url_for('main.fees_list', month_year=month_year))
-                student.monthly_fee = due_override
-                set_month_charge(student, month_year, due_override)
+                # The change belongs to THIS month only.  The student's standing
+                # monthly fee is touched only when none was ever set (the first
+                # fee typed into an empty field), so a one-off amount can no
+                # longer change every future month.
+                # The typed figure is the month's whole due, so the monthly
+                # charge itself is that figure minus the extras already in it.
+                new_charge = round(due_override - (extras if existing_charge else 0.0), 2)
+                if new_charge <= 0:
+                    flash('The month due cannot be lower than its extra charges '
+                          f'(Rs. {extras:,.0f}). Void the extra charge first.', 'danger')
+                    return redirect(request.referrer or url_for('main.fees_list', month_year=month_year))
+                if not (student.monthly_fee or 0) > 0:
+                    student.monthly_fee = new_charge
+                else:
+                    flash(f'{month_year} charge changed to Rs. {new_charge:,.0f}. '
+                          f'The monthly fee on the student record '
+                          f'(Rs. {student.monthly_fee:,.0f}) was not changed.', 'info')
+                set_month_charge(student, month_year, new_charge)
 
     ensure_charge(student, month_year)
     # Overpayment is allowed on purpose: whatever the charges of this month do

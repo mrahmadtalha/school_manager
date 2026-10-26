@@ -1,0 +1,23 @@
+{# "Where does this money go?" - one small map shared by the four money pages.
+   Set `map_active` ('admission' | 'other_income' | 'inventory' | 'expenses') before including. #}
+{% set _steps = [
+  ('admission', 'fa-door-open', 'Admission Fees', 'main.admission_register', 'Money from a new student: admission fee + books + uniform. Each student has a receipt.'),
+  ('inventory', 'fa-boxes-stacked', 'Inventory', 'main.inventory_page', 'Stock you buy to sell again (uniform, books, canteen items), what you owe suppliers, and what you sell later.'),
+  ('other_income', 'fa-wallet', 'Other Income', 'main.other_income_page', 'Everything else that comes in: events, trips, canteen totals, ID card / certificate fees. Admission receipts also show here.'),
+  ('expenses', 'fa-file-invoice-dollar', 'Expenses', 'main.expenses_list', 'Money the school spends for its own use: bills, rent, repairs, stationery. Not stock for resale.'),
+] %}
+<details class="mb-3 su-map">
+    <summary class="small fw-semibold text-primary" style="cursor:pointer"><i class="fas fa-circle-question me-1"></i>Which page do I use? How are these pages connected?</summary>
+    <div class="su-tiles mt-2">
+        {% for key, icon, label, endpoint, text in _steps %}
+        <a href="{{ url_for(endpoint) }}" class="su-tile text-decoration-none text-reset {{ 'border-primary' if key == map_active }}">
+            <div class="su-label"><i class="fas {{ icon }} me-1"></i>{{ label }}{% if key == map_active %} <span class="badge bg-primary ms-1">you are here</span>{% endif %}</div>
+            <div class="su-hint mt-1">{{ text }}</div>
+        </a>
+        {% endfor %}
+    </div>
+    <div class="small text-muted mt-2">
+        <strong>Simple rule:</strong> buying stock to resell goes in <em>Inventory</em> (not Expenses). Its cost is counted only when the item leaves the shelf.
+        If you pay the supplier part now, the rest shows as <em>Supplier dues</em>. All four pages add up on the <a href="{{ url_for('main.financials_summary') }}">Financial Overview</a>.
+    </div>
+</details>

@@ -24,6 +24,52 @@ def active_categories():
             .order_by(OtherIncomeCategory.name).all())
 
 
+# Categories whose money is recorded on another page.  Typing it here as well
+# would count it twice (or leave a receipt that belongs to no student).
+MANAGED_ADMISSION = 'admission fee'
+MANAGED_ID_CARDS = 'id cards'
+MANAGED_CERTIFICATES = 'certificates'
+MANAGED_CANTEEN = 'canteen'
+
+
+def managed_elsewhere(category):
+    """``None`` when the category may be typed on the Other Income page, else
+    ``(message, endpoint, anchor)`` telling the user where it is recorded."""
+    name = ((getattr(category, 'name', None) or '').strip()).lower()
+    if name == MANAGED_ADMISSION:
+        return ('Admission money is received from the student\'s own Admission '
+                'Fees page (so the student\'s balance goes down and a receipt is printed).',
+                'main.admission_register', '')
+    if name in (MANAGED_ID_CARDS, MANAGED_CERTIFICATES):
+        from app.models.issued_document import DOC_CERTIFICATE, DOC_ID_CARD
+        from app.services import document_fees
+        if name == MANAGED_ID_CARDS:
+            gated = document_fees.is_gated(DOC_ID_CARD)
+        else:
+            gated = (document_fees.is_gated(DOC_CERTIFICATE)
+                     or any(document_fees.is_gated(DOC_CERTIFICATE, ct)
+                            for ct in document_fees.CERT_TYPES))
+        if gated:
+            return ('A fee is set for this on the Documents page, so the money is '
+                    'recorded there when the card / certificate is issued.',
+                    'main.documents_hub', '')
+    return None
+
+
+def manual_categories():
+    """Active categories that may be typed on the Other Income page."""
+    from app.services import canteen_service
+    result = []
+    for category in active_categories():
+        if managed_elsewhere(category) is not None:
+            continue
+        if (canteen_service.is_canteen_income_category(category)
+                and not canteen_service.is_open_for_other_income()):
+            continue
+        result.append(category)
+    return result
+
+
 def record_income(category, amount_rupees, income_date, description=None,
                   actor=None):
     """Append an other-income row (paisa, never float)."""

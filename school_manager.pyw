@@ -140,6 +140,20 @@ def _open_browser_when_ready(launch, port, app, profile_dir):
         webbrowser.open(url)
 
 
+def _bind_host(app):
+    """127.0.0.1 normally; 0.0.0.0 when the school lets guard phones connect (QR attendance)."""
+    try:
+        with app.app_context():
+            from app.services.qr_attendance import lan_access_wanted
+            if lan_access_wanted():
+                _log('Guard phone access is ON: listening on the school network '
+                     '(only the guard app address is reachable from other devices).')
+                return '0.0.0.0'
+    except Exception:
+        _log('Could not read the guard phone access setting; staying on this computer only.')
+    return HOST
+
+
 def _serve_with_waitress(app, host, port):
     # create_server (instead of serve) lets the /shutdown route stop the
     # accept loop cleanly, so the whole process exits gracefully.
@@ -355,10 +369,17 @@ def main(argv=None):
                            app, profile_dir),
                      daemon=True).start()
 
+    bind_host = _bind_host(app)
+    if bind_host == '0.0.0.0':
+        try:   # lets guard phones find this computer again if its address changes
+            from app.services.qr_pairing import start_discovery_responder
+            start_discovery_responder(port)
+        except Exception:
+            _log('Guard phone discovery could not start (phones must use the QR code).')
     try:
-        _serve_with_waitress(app, HOST, port)
+        _serve_with_waitress(app, bind_host, port)
     except ImportError:
-        _serve_with_werkzeug(app, HOST, port)
+        _serve_with_werkzeug(app, bind_host, port)
     return 0
 
 

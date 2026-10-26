@@ -7,6 +7,27 @@ from app.services.teacher_payroll import get_school_working_days
 from app.services.whatsapp_automation import queue_automation_message
 
 
+def _policy_flag(settings, name):
+    """School attendance-policy flags default to True when unset (older databases)."""
+    value = getattr(settings, name, None)
+    return True if value is None else bool(value)
+
+
+def late_after_cutoff_enabled(settings=None):
+    """True when a check-in after the cutoff is shown as Late (otherwise it stays Present)."""
+    return _policy_flag(settings or SchoolSettings.query.first(), 'late_after_cutoff')
+
+
+def late_counts_as_present(settings=None):
+    """True when attendance % counts Present + Late as attended."""
+    return _policy_flag(settings or SchoolSettings.query.first(), 'late_counts_as_present')
+
+
+def attended_statuses(settings=None):
+    """The statuses that count as 'attended' in every attendance percentage."""
+    return ('Present', 'Late') if late_counts_as_present(settings) else ('Present',)
+
+
 def evaluate_checkin_attendance(status, checkin_time, settings=None):
     """Apply school start time and grace period to a submitted check-in time."""
     normalized_status = (status or 'Present').strip().capitalize()
@@ -34,7 +55,8 @@ def evaluate_checkin_attendance(status, checkin_time, settings=None):
     except (TypeError, ValueError):
         grace_minutes = 0
 
-    if normalized_status == 'Present' and late_seconds > grace_minutes * 60:
+    if (normalized_status == 'Present' and late_seconds > grace_minutes * 60
+            and late_after_cutoff_enabled(settings)):
         normalized_status = 'Late'
     late_minutes = (late_seconds + 59) // 60
     precision = 'seconds' if checkin.second else 'minutes'
@@ -51,6 +73,7 @@ def build_student_attendance_summary(class_id, start_date, end_date):
     class_obj = ClassModel.query.get_or_404(class_id)
     students = StudentModel.query.filter_by(is_active=True, class_id=class_id).all()
     settings = SchoolSettings.query.first() or type('DefaultSettings', (), {'weekend_off': True, 'custom_off_days': ''})()
+    counts_late = late_counts_as_present(settings)
 
     all_dates = get_school_working_days(start_date, end_date, settings)
 
@@ -89,7 +112,8 @@ def build_student_attendance_summary(class_id, start_date, end_date):
         row['total_late_minutes'] = sum(
             minutes or 0 for d, minutes in row['daily_late_minutes'].items()
             if row['daily_status'].get(d) == 'Late')
-        row['percentage'] = round((p_count / taken) * 100, 1) if taken > 0 else 0
+        attended = p_count + (l_count if counts_late else 0)
+        row['percentage'] = round((attended / taken) * 100, 1) if taken > 0 else 0
         row['is_at_risk'] = bool(taken > 0 and row['percentage'] < 75.0)
         matrix_data.append(row)
         
@@ -124,6 +148,7 @@ def build_school_attendance_summary(start_date, end_date):
     grouped with a per-student class reference for the whole-school view.
     """
     settings = SchoolSettings.query.first() or type('DefaultSettings', (), {'weekend_off': True, 'custom_off_days': ''})()
+    counts_late = late_counts_as_present(settings)
     all_dates = get_school_working_days(start_date, end_date, settings)
 
     students = StudentModel.query.filter_by(is_active=True).all()
@@ -161,7 +186,8 @@ def build_school_attendance_summary(start_date, end_date):
         row['total_late_minutes'] = sum(
             minutes or 0 for d, minutes in row['daily_late_minutes'].items()
             if row['daily_status'].get(d) == 'Late')
-        row['percentage'] = round((p_count / taken) * 100, 1) if taken > 0 else 0
+        attended = p_count + (l_count if counts_late else 0)
+        row['percentage'] = round((attended / taken) * 100, 1) if taken > 0 else 0
         row['is_at_risk'] = bool(taken > 0 and row['percentage'] < 75.0)
         matrix_data.append(row)
 
@@ -200,6 +226,7 @@ def build_teacher_attendance_summary(start_date, end_date):
     """
     teachers = TeacherModel.query.filter_by(is_active=True).all()
     settings = SchoolSettings.query.first() or type('DefaultSettings', (), {'weekend_off': True, 'custom_off_days': ''})()
+    counts_late = late_counts_as_present(settings)
 
     all_dates = get_school_working_days(start_date, end_date, settings)
 
@@ -236,7 +263,8 @@ def build_teacher_attendance_summary(start_date, end_date):
         row['total_late_minutes'] = sum(
             minutes or 0 for d, minutes in row['daily_late_minutes'].items()
             if row['daily_status'].get(d) == 'Late')
-        row['percentage'] = round((p_count / taken) * 100, 1) if taken > 0 else 0
+        attended = p_count + (l_count if counts_late else 0)
+        row['percentage'] = round((attended / taken) * 100, 1) if taken > 0 else 0
         matrix_data.append(row)
 
     return {
@@ -273,6 +301,12 @@ def save_student_attendance(selected_class_id, attendance_date, form_dict, class
                     f'checkin_time_{student_id}',
                     form_dict.get(f'late_time_{student_id}', ''),
                 ).strip()
+                # The guard's QR scan time is never lost: if the sheet comes back
+                # without a check-in time, fall back to the scan time. record.qr_time
+                # itself is never written here.
+                if (not checkin_time and record is not None and record.qr_time
+                        and (status or '').strip().capitalize() in ('Present', 'Late')):
+                    checkin_time = record.qr_time
                 status, checkin_time, late_minutes = evaluate_checkin_attendance(
                     status, checkin_time, settings)
                 previous_status = record.status if record else None
@@ -399,6 +433,13 @@ def get_daily_teacher_attendance_details(attendance_date):
         {r.target_id: r.late_time for r in records if r.late_time},
         {r.target_id: r.late_minutes for r in records if r.late_minutes is not None},
     )
+
+
+def get_daily_student_qr_times(class_id, attendance_date):
+    """Guard QR scan times for a class on one date ({student_id: 'HH:MM'})."""
+    records = AttendanceModel.query.filter_by(
+        target_type='student', class_id=class_id, date=attendance_date).all()
+    return {r.target_id: r.qr_time for r in records if r.qr_time}
 
 
 def get_daily_student_late_minutes(class_id, attendance_date):

@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#EEF3EF"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- green header -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_header"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingTop="48dp"
+            android:paddingBottom="64dp">
+
+            <ImageView
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_qr" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="School Guard"
+                android:textColor="#FFFFFF"
+                android:textSize="28sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Student attendance by QR code"
+                android:textColor="#CFE8D2"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <!-- connect card, overlapping the header -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="-36dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="24dp"
+            app:cardBackgroundColor="#FFFFFF"
+            app:cardCornerRadius="18dp"
+            app:cardElevation="6dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Connect to the school computer"
+                    android:textColor="#1B1B1B"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="The phone and the computer must be on the same Wi-Fi."
+                    android:textColor="#546E7A"
+                    android:textSize="14sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/scanQrButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp"
+                    android:layout_marginTop="20dp"
+                    android:text="Scan QR to connect"
+                    android:textSize="18sp"
+                    app:cornerRadius="14dp"
+                    app:icon="@drawable/ic_qr"
+                    app:iconGravity="textStart"
+                    app:iconPadding="12dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="On the school computer open: Attendance, then QR Scans, then Guard phone connection."
+                    android:textColor="#607D8B"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/statusText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/manualToggle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:padding="14dp"
+                    android:text="Connect by typing the address instead"
+                    android:textColor="#1B5E20"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:id="@+id/manualPanel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <EditText
+                        android:id="@+id/serverInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="Server address, e.g. http://192.168.100.2:8000"
+                        android:importantForAutofill="no"
+                        android:inputType="textUri"
+                        android:minHeight="52dp"
+                        android:textColor="#1B1B1B"
+                        android:textColorHint="#90A4AE" />
+
+                    <EditText
+                        android:id="@+id/userInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="Guard username"
+                        android:importantForAutofill="no"
+                        android:inputType="textNoSuggestions"
+                        android:minHeight="52dp"
+                        android:textColor="#1B1B1B"
+                        android:textColorHint="#90A4AE" />
+
+                    <EditText
+                        android:id="@+id/passInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="Password"
+                        android:importantForAutofill="no"
+                        android:inputType="textPassword"
+                        android:minHeight="52dp"
+                        android:textColor="#1B1B1B"
+                        android:textColorHint="#90A4AE" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/connectButton"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="56dp"
+                        android:layout_marginTop="14dp"
+                        android:text="Connect"
+                        android:textColor="#1B5E20"
+                        app:cornerRadius="14dp"
+                        app:strokeColor="#1B5E20" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+    </LinearLayout>
+</ScrollView>

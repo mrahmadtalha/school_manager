@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.Guard" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/guard_primary</item>
+        <item name="colorPrimaryDark">@color/guard_primary_dark</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="android:statusBarColor">@color/guard_primary_dark</item>
+    </style>
+</resources>

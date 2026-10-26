@@ -1,8 +1,22 @@
-{# Shown at the top of every page for staff when the license needs attention.
-   Administrators see details and a link to renew; teachers only see the
-   read-only notice; parents and anonymous visitors see nothing. #}
+{# Shown at the top of every page.
+   * Inspection mode (a view-only key from the vendor): everybody who is signed in sees it.
+   * License problems / expiry: administrators see details and a link to renew; teachers
+     only see the read-only notice; parents and anonymous visitors see nothing.
+   * The vendor's notice and the 30 / 14 / 7 / 3 / 1-day expiry reminder: administrators only. #}
 {% set _banner_role = current_user.role if current_user and current_user.is_authenticated else 'anonymous' %}
-{% if license_status and license_status.needs_attention and _banner_role in ('admin', 'teacher') %}
+{% if license_status and license_status.inspection and _banner_role != 'anonymous' %}
+<div class="alert alert-info d-flex flex-wrap align-items-center gap-2 no-print" role="alert" id="inspectionBanner">
+    <i class="fas fa-magnifying-glass"></i>
+    <div class="flex-grow-1">
+        <strong>Inspection mode.</strong> This is a view-only session for checking the records:
+        everything can be viewed but nothing can be changed.
+        {% if license_status.inspection_until %}It ends on {{ license_status.inspection_until.strftime('%d %b %Y, %H:%M') }} UTC.{% endif %}
+    </div>
+    {% if _banner_role == 'admin' %}
+    <a class="btn btn-sm btn-dark" href="{{ url_for('main.license_page') }}">License</a>
+    {% endif %}
+</div>
+{% elif license_status and license_status.needs_attention and _banner_role in ('admin', 'teacher') %}
     {% if _banner_role == 'admin' %}
     <div class="alert alert-{{ license_status.level }} d-flex flex-wrap align-items-center gap-2" role="alert">
         <i class="fas fa-id-card"></i>
@@ -24,5 +38,72 @@
         This computer's date looks earlier than expected. Please correct the Windows date and time,
         otherwise the license may show the wrong expiry.
     </div>
+    {% endif %}
+{% endif %}
+
+{% if _banner_role == 'admin' and license_status and not license_status.inspection %}
+    {# A short message the vendor attached to the key (for example "Renewal due"). #}
+    {% if license_status.notice %}
+    <div class="alert alert-info alert-dismissible fade show no-print" role="alert" id="vendorNotice"
+         data-notice-key="{{ license_status.license_id }}|{{ license_status.rev }}|{{ license_status.notice|length }}">
+        <i class="fas fa-bullhorn me-1"></i>
+        <strong>Notice from your software provider:</strong> {{ license_status.notice }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" id="vendorNoticeClose"></button>
+    </div>
+    {% endif %}
+
+    {# Expiry reminder pop-up: once for each stage (30, 14, 7, 3 and 1 day before the end). #}
+    {% if license_status.reminder_stage and request.endpoint != 'main.license_page' %}
+    <div class="modal fade no-print" id="licenseReminderModal" tabindex="-1" aria-hidden="true"
+         data-reminder-key="{{ license_status.license_id }}" data-reminder-stage="{{ license_status.reminder_stage }}">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title"><i class="fas fa-bell me-2"></i>License renewal reminder</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">Your School Manager license
+                        {% if license_status.days_left == 0 %}expires <strong>today</strong>{% else %}expires in
+                        <strong>{{ license_status.days_left }} day{{ '' if license_status.days_left == 1 else 's' }}</strong>{% endif %}
+                        ({{ license_status.expires.strftime('%d %b %Y') }}).</p>
+                    <p class="mb-0 text-muted small">Please arrange the renewal so that work is not interrupted.
+                        After the grace period the software becomes read-only.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Remind me later</button>
+                    <a class="btn btn-dark" href="{{ url_for('main.license_page') }}">Manage license</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% if license_status.notice or license_status.reminder_stage %}
+    <script>
+    window.addEventListener('load', function () {
+        var store;
+        try { store = window.localStorage; store.getItem('sm.lic.probe'); } catch (e) { return; }
+        // Vendor notice: hidden for the rest of this browser session once it is closed.
+        var notice = document.getElementById('vendorNotice');
+        if (notice) {
+            var nkey = 'sm.lic.notice.' + notice.getAttribute('data-notice-key');
+            try {
+                if (window.sessionStorage.getItem(nkey) === '1') { notice.remove(); }
+                else { document.getElementById('vendorNoticeClose').addEventListener('click', function () {
+                    try { window.sessionStorage.setItem(nkey, '1'); } catch (e) {} }); }
+            } catch (e) {}
+        }
+        // Expiry reminder: shown once per stage, then remembered on this computer.
+        var box = document.getElementById('licenseReminderModal');
+        if (box && window.bootstrap) {
+            var rkey = 'sm.lic.reminder.' + box.getAttribute('data-reminder-key');
+            var stage = box.getAttribute('data-reminder-stage');
+            if (store.getItem(rkey) !== stage) {
+                box.addEventListener('hidden.bs.modal', function () { try { store.setItem(rkey, stage); } catch (e) {} });
+                new window.bootstrap.Modal(box).show();
+            }
+        }
+    });
+    </script>
     {% endif %}
 {% endif %}

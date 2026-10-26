@@ -1,242 +1,488 @@
 {% extends "base.html" %}
 {% block content %}
+{% include "_simple_ui.html" %}
+{# Money shown without paisa when it is a whole number, with paisa when it is not. #}
+{% macro rs(value) -%}
+{%- set v = value or 0 -%}
+{{ '{:,.0f}'.format(v) if (v == (v | round(0))) else '{:,.2f}'.format(v) }}
+{%- endmacro %}
+{% set palette = ['#2563eb', '#0d9488', '#d97706', '#7c3aed', '#db2777', '#16a34a', '#0891b2', '#dc2626', '#4f46e5', '#65a30d'] %}
+{% set cat_id = {} %}
+{% for row in all_categories %}{% set _ = cat_id.update({row.category.name: row.category.id}) %}{% endfor %}
+{% set has_filter = filters.q or filters.category_id or ((not month) and (filters.date_from or filters.date_to)) %}
+<style>
+    /* Expenses — same "staff room" family as Teachers: one toolbar, big plain numbers,
+       Cards or Table, labelled buttons. Everything is scoped under .ex-page. */
+    .ex-page [class*="dashboard-head"] { background: none !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; margin: 0.25rem 0 1.1rem !important; align-items: flex-end !important; }
+    .ex-page [class*="dashboard-head"] .eyebrow { margin-bottom: 0.3rem !important; }
+    .ex-page [class*="dashboard-head"] h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; line-height: 1.1; }
+    .ex-page [class*="dashboard-head"] h1 i { display: none; }
+    .ex-page [class*="dashboard-head"] .btn { border-radius: 12px; font-weight: 700; box-shadow: none; }
+    .ex-page .btn-outline-secondary { background: #fff; }
+    .ex-page .dropdown-menu { border-radius: 14px; border-color: #e2e8f0; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12); padding: 0.4rem; }
+    .ex-page .dropdown-item { border-radius: 9px; font-size: 0.9rem; padding: 0.45rem 0.7rem; }
+
+    .ex-note { display: flex; gap: 0.8rem; align-items: flex-start; background: #f0f7ff; border: 1px solid #d3e6fb; border-left: 4px solid #3b82f6; border-radius: 14px; padding: 0.7rem 1rem; margin-bottom: 0.9rem; color: #1e3a5f; font-size: 0.88rem; }
+    .ex-note i { margin-top: 0.2rem; color: #3b82f6; }
+
+    /* period + filters */
+    .ex-bar { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.8rem 0.9rem; margin-bottom: 0.9rem; }
+    .ex-bar-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.7rem; }
+    .ex-period { font-weight: 800; color: #0f172a; font-size: 1.05rem; }
+    .ex-period small { display: block; font-weight: 500; color: #64748b; font-size: 0.82rem; }
+    .ex-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; }
+    .ex-nav .btn { box-shadow: none; border-radius: 12px; }
+    .ex-nav .form-select { height: 2.4rem; border-radius: 12px; border-color: #e2e8f0; background-color: #f8fafc; font-weight: 700; min-width: 11rem; }
+    .ex-seg { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; }
+    .ex-seg a, .ex-seg button { margin: 0; padding: 0.4rem 0.85rem; border: 0; background: transparent; border-radius: 9px; font-size: 0.85rem; font-weight: 600; color: #475569; cursor: pointer; text-decoration: none; white-space: nowrap; }
+    .ex-seg a.is-on, .ex-seg button[aria-pressed="true"] { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+    .ex-seg a:focus-visible, .ex-seg button:focus-visible { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 1px; }
+    .ex-filters { margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px dashed #e2e8f0; }
+    .ex-filters form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
+    .ex-search { position: relative; flex: 1 1 16rem; min-width: 13rem; }
+    .ex-search i { position: absolute; left: 0.95rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+    .ex-search input { padding-left: 2.5rem; height: 2.6rem; border-radius: 12px; border-color: #e2e8f0; background: #f8fafc; }
+    .ex-search input:focus { background: #fff; }
+    .ex-filters .form-select, .ex-filters .form-control.ex-date { height: 2.6rem; border-radius: 12px; border-color: #e2e8f0; background-color: #f8fafc; }
+    .ex-filters .ex-cat { width: auto; min-width: 11rem; max-width: 15rem; }
+    .ex-filters .btn { height: 2.6rem; border-radius: 12px; box-shadow: none; display: inline-flex; align-items: center; }
+    .ex-dates { flex-basis: 100%; }
+    .ex-dates summary { cursor: pointer; font-size: 0.84rem; color: #64748b; }
+    .ex-dates .ex-dates-row { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.6rem; }
+    .ex-dates label { font-size: 0.78rem; font-weight: 700; color: #475569; margin-bottom: 0.2rem; display: block; }
+
+    /* summary */
+    .ex-band { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .ex-stat { padding: 0.85rem 1.2rem; display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+    .ex-stat + .ex-stat { border-left: 1px solid #eef2f7; }
+    .ex-num { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .ex-num small { font-size: 0.9rem; font-weight: 700; color: #94a3b8; letter-spacing: 0; }
+    .ex-lab { font-size: 0.8rem; color: #64748b; }
+    .ex-mix { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.8rem 1.1rem 0.9rem; margin-bottom: 0.9rem; }
+    .ex-mix-title { font-size: 0.8rem; font-weight: 700; color: #475569; margin-bottom: 0.45rem; }
+    .ex-mixbar { display: flex; height: 12px; border-radius: 99px; overflow: hidden; background: #eef2f7; gap: 2px; }
+    .ex-mixbar i { display: block; height: 100%; min-width: 4px; background: var(--ex-c); transform-origin: left center; animation: ex-grow 0.7s cubic-bezier(.2, .7, .2, 1) both; }
+    .ex-legend { display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; margin-top: 0.65rem; }
+    .ex-legend a { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.15rem 0.65rem; border: 1px solid #e2e8f0; border-radius: 99px; background: #fff; font-size: 0.8rem; color: #334155; text-decoration: none; font-variant-numeric: tabular-nums; }
+    .ex-legend a:hover { border-color: var(--ex-c); background: #f8fafc; }
+    .ex-legend a.is-on { border-color: var(--ex-c); background: #f1f5f9; font-weight: 700; }
+    .ex-legend .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ex-c); display: inline-block; }
+    .ex-legend b { color: #0f172a; }
+    @keyframes ex-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+    /* count line + view switch */
+    .ex-count { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; padding: 0.1rem 0.1rem 0.7rem; font-size: 0.86rem; color: #64748b; }
+    .ex-count strong { color: #0f172a; }
+    .ex-mode-cards .ex-tablewrap { display: none; }
+    .ex-mode-table .ex-cardswrap { display: none; }
+
+    /* cards */
+    .ex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); gap: 0.9rem; }
+    .ex-card { position: relative; display: flex; flex-direction: column; gap: 0.55rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.95rem 1rem 0.8rem 1.25rem; overflow: hidden; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+    .ex-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--ex-c); }
+    .ex-card[hidden] { display: none; }
+    .ex-card.is-open { cursor: pointer; }
+    .ex-card:hover, .ex-card:focus-within { border-color: var(--ex-c); box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08); }
+    .ex-card-top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .ex-pill { display: inline-block; padding: 0.1rem 0.65rem; border-radius: 99px; background: #f1f5f9; border: 1px solid #e2e8f0; color: #334155; font-size: 0.78rem; font-weight: 700; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    .ex-pill::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ex-c); margin-right: 0.4rem; }
+    .ex-when { font-size: 0.8rem; color: #64748b; white-space: nowrap; }
+    .ex-money { font-size: 1.55rem; font-weight: 800; letter-spacing: -0.03em; color: #0f172a; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .ex-money small { font-size: 0.85rem; font-weight: 700; color: #94a3b8; letter-spacing: 0; margin-right: 0.2rem; }
+    .ex-what { margin: 0; font-size: 0.9rem; color: #334155; line-height: 1.35; min-height: 1.2rem; word-break: break-word; }
+    .ex-what.is-none { color: #94a3b8; }
+    .ex-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+    .ex-chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.1rem 0.6rem; border-radius: 99px; background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; font-size: 0.76rem; font-weight: 600; white-space: nowrap; }
+    .ex-foot { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; padding-top: 0.6rem; margin-top: auto; border-top: 1px dashed #e2e8f0; }
+    .ex-by { font-size: 0.76rem; color: #64748b; margin-top: -0.1rem; }
+    .ex-acts { position: relative; z-index: 2; display: inline-flex; gap: 0.3rem; align-items: center; }
+    .ex-acts .btn { border-radius: 10px; font-weight: 600; font-size: 0.8rem; padding: 0.25rem 0.6rem; white-space: nowrap; box-shadow: none; }
+    .ex-payroll { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; font-weight: 700; color: #1d4ed8; text-decoration: none; }
+
+    /* table */
+    .ex-panel { background: #fff; border: 1px solid #e2e8f0 !important; border-radius: 18px; box-shadow: none !important; overflow: hidden; }
+    .ex-panel .table thead th { background: #f8fafc !important; color: #64748b; font-size: 0.76rem; font-weight: 700; text-transform: none; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+    .ex-panel .table > :not(caption) > * > * { padding: 0.65rem 0.75rem; border-bottom-color: #f1f5f9; }
+    .ex-panel .table tbody tr:hover > * { background: rgba(var(--bs-primary-rgb), 0.045); }
+    .ex-panel td.ex-date, .ex-panel td.ex-amt { white-space: nowrap; }
+    .ex-panel td.ex-amt { font-variant-numeric: tabular-nums; }
+    .ex-panel .dataTables_length, .ex-panel .dataTables_filter { display: none; }
+    .ex-cat-badge { display: inline-block; padding: 0.12rem 0.65rem; border-radius: 99px; background: #f1f5f9; border: 1px solid #e2e8f0; color: #334155; font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
+
+    .ex-empty { text-align: center; padding: 3rem 1rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; color: #64748b; }
+    .ex-empty .ex-empty-icon { width: 72px; height: 72px; border-radius: 24px; margin: 0 auto 0.9rem; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); }
+    .ex-empty p { font-weight: 700; color: #334155; margin-bottom: 0.3rem; }
+    .ex-empty .ex-empty-sub { font-weight: 400; font-size: 0.9rem; margin-bottom: 1rem; }
+
+    /* forms (Add / Edit / Void) */
+    .ex-form .ex-q { font-size: 0.88rem; font-weight: 700; color: #0f172a; margin-bottom: 0.3rem; display: block; }
+    .ex-form .ex-q small { font-weight: 500; color: #64748b; }
+    .ex-form .form-control, .ex-form .form-select { border-radius: 12px; border-color: #cbd5e1; min-height: 2.8rem; }
+    .ex-form .ex-amount { font-size: 1.5rem; font-weight: 800; height: 3.4rem; font-variant-numeric: tabular-nums; }
+    .ex-form .ex-words { min-height: 1.2rem; font-size: 0.82rem; color: #475569; margin-top: 0.25rem; font-weight: 600; }
+    .ex-form .ex-quick { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
+    .ex-form .ex-quick button { border: 1px solid #e2e8f0; background: #fff; border-radius: 99px; padding: 0.15rem 0.8rem; font-size: 0.8rem; font-weight: 600; color: #475569; }
+    .ex-form .ex-quick button:hover { border-color: rgb(var(--bs-primary-rgb)); color: rgb(var(--bs-primary-rgb)); }
+    .ex-form .ex-pay { display: flex; gap: 0.5rem; }
+    .ex-form .ex-pay input { position: absolute; opacity: 0; pointer-events: none; }
+    .ex-form .ex-pay label { flex: 1; text-align: center; margin: 0; padding: 0.6rem 0.4rem; border: 2px solid #e2e8f0; border-radius: 12px; font-weight: 700; font-size: 0.9rem; color: #475569; cursor: pointer; background: #fff; }
+    .ex-form .ex-pay input:checked + label { border-color: rgb(var(--bs-primary-rgb)); background: rgba(var(--bs-primary-rgb), 0.08); color: #0f172a; }
+    .ex-form .ex-pay input:focus-visible + label { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 2px; }
+    .ex-page .modal .modal-content { border-radius: 20px; border: 0; }
+    .ex-page .modal .modal-header { border-bottom: 1px solid #eef2f7; }
+    .ex-page .modal .modal-footer { border-top: 1px solid #eef2f7; }
+    .ex-page .modal .btn { border-radius: 12px; font-weight: 700; }
+    .ex-reasons { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+    .ex-reasons button { border: 1px solid #e2e8f0; background: #fff; border-radius: 99px; padding: 0.15rem 0.8rem; font-size: 0.8rem; font-weight: 600; color: #475569; }
+    .ex-reasons button:hover { border-color: #dc2626; color: #dc2626; }
+
+    @media (max-width: 991.98px) {
+        .ex-band { grid-template-columns: 1fr 1fr; }
+        .ex-stat:nth-child(3) { border-left: 0; border-top: 1px solid #eef2f7; }
+        .ex-stat:nth-child(4) { border-top: 1px solid #eef2f7; }
+    }
+    @media (max-width: 575.98px) {
+        .ex-band { grid-template-columns: 1fr; }
+        .ex-stat + .ex-stat { border-left: 0; border-top: 1px solid #eef2f7; }
+        .ex-grid { grid-template-columns: 1fr; }
+    }
+</style>
+<div class="ex-page">
 
 <!-- Header -->
 <div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
     <div>
         <p class="eyebrow mb-2">Finance</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-file-invoice-dollar text-primary me-2"></i>Expense Tracker</h1>
-        <p class="text-muted small mb-0">Log and review day-to-day school spending.</p>
+        <h1 class="h2 fw-bold text-dark mb-1">Expense Tracker</h1>
+        <p class="text-muted small mb-0">Write down the money the school spends: bills, rent, repairs, stationery.</p>
     </div>
     <div class="btn-toolbar mb-2 mb-md-0 gap-2">
         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addExpenseModal">
             <i class="fas fa-plus me-1"></i> Add Expense
         </button>
         {% if previous_month_expenses %}
-        <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal"
+        <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="modal"
                 data-bs-target="#continueExpenseModal"
-                title="Copy one of {{ previous_month_label }}'s expenses into a new entry">
+                title="Copy one of {{ previous_month_label }}'s expenses into a new entry (for bills that repeat every month)">
             <i class="fas fa-rotate-right me-1"></i> Continue Previous Month
-            <span class="badge bg-light text-success ms-1">{{ previous_month_expenses|length }}</span>
+            <span class="badge bg-success ms-1">{{ previous_month_expenses|length }}</span>
         </button>
         {% else %}
-        <button type="button" class="btn btn-outline-success btn-sm" disabled
+        <button type="button" class="btn btn-outline-secondary btn-sm" disabled
                 title="No expenses were recorded in {{ previous_month_label }}">
             <i class="fas fa-rotate-right me-1"></i> Continue Previous Month
         </button>
         {% endif %}
-        <a class="btn btn-outline-success btn-sm"
-           href="{{ url_for('main.expenses_export_csv', date_from=filters.date_from or None, date_to=filters.date_to or None, category_id=filters.category_id or None, q=filters.q or None, all=('1' if show_all else None)) }}">
-            <i class="fas fa-file-csv me-1"></i> Export CSV
-        </a>
-        <a class="btn btn-outline-danger btn-sm"
-           href="{{ url_for('main.expenses_export_pdf', date_from=filters.date_from or None, date_to=filters.date_to or None, category_id=filters.category_id or None, q=filters.q or None, all=('1' if show_all else None)) }}">
-            <i class="fas fa-file-pdf me-1"></i> Export PDF
-        </a>
-    </div>
-</div>
-
-<!-- Summary cards -->
-<div class="row g-3 mb-3">
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <div class="text-muted small text-uppercase fw-bold">Total (filtered)</div>
-                <div class="h3 fw-bold mb-1">Rs. {{ '{:,.0f}'.format(summary.total) }}</div>
-                <div class="text-muted small">{{ summary.count }} entr{{ 'y' if summary.count == 1 else 'ies' }}</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <div class="text-muted small text-uppercase fw-bold">Largest Category</div>
-                {% if summary.top %}
-                <div class="h3 fw-bold mb-1">Rs. {{ '{:,.0f}'.format(summary.top.total) }}</div>
-                <div class="text-muted small">{{ summary.top.name }}</div>
-                {% else %}
-                <div class="h3 fw-bold mb-1">—</div>
-                <div class="text-muted small">No entries in range</div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <div class="text-muted small text-uppercase fw-bold">Average per Entry</div>
-                <div class="h3 fw-bold mb-1">Rs. {{ '{:,.0f}'.format(summary.total / summary.count) if summary.count else '0' }}</div>
-                <div class="text-muted small">across filtered entries</div>
-            </div>
+        <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="modal"
+                data-bs-target="#categoriesModal" id="categoriesButton">
+            <i class="fas fa-tags me-1"></i>Categories
+            <span class="badge bg-secondary ms-1">{{ all_categories|length }}</span>
+        </button>
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-download me-1"></i> Export
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><h6 class="dropdown-header">{{ month_label }}{% if has_filter %} (with your filters){% endif %}</h6></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.expenses_export_csv', date_from=filters.date_from or None, date_to=filters.date_to or None, category_id=filters.category_id or None, q=filters.q or None, all=('1' if show_all else None)) }}"><i class="fas fa-file-csv text-success me-2"></i>Excel / CSV file</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.expenses_export_xlsx', date_from=filters.date_from or None, date_to=filters.date_to or None, category_id=filters.category_id or None, q=filters.q or None, all=('1' if show_all else None)) }}"><i class="fas fa-file-excel text-success me-2"></i>Excel workbook (.xlsx)</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.expenses_export_pdf', date_from=filters.date_from or None, date_to=filters.date_to or None, category_id=filters.category_id or None, q=filters.q or None, all=('1' if show_all else None)) }}"><i class="fas fa-file-pdf text-danger me-2"></i>PDF to print</a></li>
+            </ul>
         </div>
     </div>
 </div>
 
-<!-- Month navigation: the page opens on the current month -->
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-body py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <div>
-            <div class="fw-bold"><i class="fas fa-calendar-days me-2 text-primary"></i>Showing: {{ month_label }}</div>
-            <div class="text-muted small">
-                {% if show_all %}
-                Every expense on record. Pick a month to focus on one period.
-                {% else %}
-                {{ summary.count }} entr{{ 'y' if summary.count == 1 else 'ies' }} in this period — Rs. {{ '{:,.0f}'.format(summary.total) }}
-                {% endif %}
-            </div>
+{% set map_active = 'expenses' %}{% include '_money_map.html' %}
+
+{% if stock_info %}
+<div class="ex-note">
+    <i class="fas fa-boxes-stacked"></i>
+    <div>
+        <strong>Buying uniform, books or canteen stock to sell?</strong> Do not enter it here - use
+        <a href="{{ url_for('main.inventory_page') }}" class="fw-bold">Inventory &rarr; Buy stock</a>
+        (it also tracks what you still owe the supplier). Entering it in both places would count the money twice.
+        <div class="mt-1">
+            Paid to suppliers for stock{% if month_label %} in {{ month_label }}{% endif %}: <strong>Rs. {{ '{:,.0f}'.format(stock_info.paid) }}</strong>
+            &middot; Still owed to suppliers: <strong class="{{ 'text-danger' if stock_info.dues }}">Rs. {{ '{:,.0f}'.format(stock_info.dues) }}</strong>
+            <span class="text-muted">(these are not in the expense total below)</span>
         </div>
-        <div class="d-flex align-items-center gap-2 flex-wrap">
+    </div>
+</div>
+{% endif %}
+
+<!-- Step 1: which month?  Step 2: narrow it down (optional) -->
+<div class="ex-bar">
+    <div class="ex-bar-top">
+        <div class="ex-period">
+            <i class="fas fa-calendar-days me-2 text-primary"></i>Showing: {{ month_label }}
+            <small>{% if show_all %}Every expense on record. Pick a month to look at one period.{% else %}{{ summary.count }} entr{{ 'y' if summary.count == 1 else 'ies' }} in this period &mdash; Rs. {{ rs(summary.total) }}{% endif %}</small>
+        </div>
+        <div class="ex-nav">
             {% if not show_all %}
-            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.expenses_list', month=prev_month) }}" title="Previous month">
-                <i class="fas fa-chevron-left me-1"></i>Previous
-            </a>
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.expenses_list', month=prev_month, category_id=filters.category_id or None, q=filters.q or None) }}" title="Previous month"><i class="fas fa-chevron-left me-1"></i>Previous</a>
             {% endif %}
-            <form method="get" action="{{ url_for('main.expenses_list') }}" class="d-flex gap-2">
+            <form method="get" action="{{ url_for('main.expenses_list') }}" class="m-0">
                 <input type="hidden" name="category_id" value="{{ filters.category_id or '' }}">
                 <input type="hidden" name="q" value="{{ filters.q or '' }}">
-                <input type="month" class="form-control form-control-sm" name="month"
-                       value="{{ month }}" style="width: 165px;" aria-label="Choose month">
-                <button class="btn btn-primary btn-sm">Show</button>
-            </form>
-            {% if not show_all %}
-            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.expenses_list', month=next_month) }}" title="Next month">
-                Next<i class="fas fa-chevron-right ms-1"></i>
-            </a>
-            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('main.expenses_list') }}" title="Jump back to this month">
-                This Month
-            </a>
-            {% endif %}
-            <a class="btn btn-outline-dark btn-sm" href="{{ url_for('main.expenses_list', all=1) }}" title="Show every expense ever recorded">
-                <i class="fas fa-clock-rotate-left me-1"></i>All History
-            </a>
-        </div>
-    </div>
-</div>
-
-<!-- Filters -->
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-body py-3">
-        <form method="GET" action="{{ url_for('main.expenses_list') }}" class="row g-2 align-items-end">
-            <div class="col-md-3">
-                <label class="form-label small fw-bold mb-1">From</label>
-                <input type="date" class="form-control form-control-sm" name="date_from" value="{{ filters.date_from }}">
-            </div>
-            <div class="col-md-3">
-                <label class="form-label small fw-bold mb-1">To</label>
-                <input type="date" class="form-control form-control-sm" name="date_to" value="{{ filters.date_to }}">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-bold mb-1">Category</label>
-                <select class="form-select form-select-sm" name="category_id">
-                    <option value="">All categories</option>
-                    {% for c in filter_categories %}
-                    <option value="{{ c.id }}" {% if filters.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                <select class="form-select form-select-sm" name="month" aria-label="Choose month" onchange="this.form.submit()">
+                    {% if show_all or not month %}<option value="" selected disabled>All months</option>{% endif %}
+                    {% for key, label in month_options %}
+                    <option value="{{ key }}" {% if key == month %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                 </select>
+                <noscript><button class="btn btn-primary btn-sm">Show</button></noscript>
+            </form>
+            {% if not show_all %}
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.expenses_list', month=next_month, category_id=filters.category_id or None, q=filters.q or None) }}" title="Next month">Next<i class="fas fa-chevron-right ms-1"></i></a>
+            {% endif %}
+            <div class="ex-seg" role="group" aria-label="Period">
+                <a href="{{ url_for('main.expenses_list') }}" class="{{ 'is-on' if (not show_all and month == current_month and not has_filter) }}" title="Jump back to this month">This Month</a>
+                <a href="{{ url_for('main.expenses_list', all=1) }}" class="{{ 'is-on' if show_all }}" title="Show every expense ever recorded"><i class="fas fa-clock-rotate-left me-1"></i>All History</a>
             </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-bold mb-1">Search</label>
-                <input type="text" class="form-control form-control-sm" name="q" value="{{ filters.q }}" placeholder="Receipt / description">
+        </div>
+    </div>
+    <div class="ex-filters">
+        <form method="GET" action="{{ url_for('main.expenses_list') }}" id="exFilterForm">
+            {% if month and not show_all %}<input type="hidden" name="month" value="{{ month }}">{% endif %}
+            {% if show_all %}<input type="hidden" name="all" value="1">{% endif %}
+            <div class="ex-search">
+                <i class="fas fa-search"></i>
+                <input type="text" class="form-control" id="exSearch" name="q" value="{{ filters.q }}" aria-label="Search" placeholder="Search: a word, an amount or a bill number…" autocomplete="off">
             </div>
-            <div class="col-md-2 d-flex gap-2">
-                <button class="btn btn-dark btn-sm flex-fill"><i class="fas fa-filter me-1"></i>Apply</button>
-                <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.expenses_list') }}" title="Back to this month with no other filters">Clear</a>
-            </div>
+            <select class="form-select ex-cat" id="exCat" name="category_id" aria-label="Type of expense" onchange="this.form.submit()">
+                <option value="">All types of expense</option>
+                {% for c in filter_categories %}
+                <option value="{{ c.id }}" {% if filters.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+            </select>
+            <button class="btn btn-dark"><i class="fas fa-filter me-1"></i>Apply</button>
+            {% if has_filter %}
+            <a class="btn btn-outline-secondary" href="{{ url_for('main.expenses_list', month=(month or None), all=('1' if show_all else None)) }}" title="Remove the search and filters"><i class="fas fa-xmark me-1"></i>Clear</a>
+            {% endif %}
+            <details class="ex-dates"{% if (not month) and (filters.date_from or filters.date_to) %} open{% endif %}>
+                <summary>Choose exact dates (From – To)</summary>
+                <div class="ex-dates-row">
+                    <div><label for="exFrom">From</label><input type="date" class="form-control ex-date" id="exFrom" name="date_from" value="{{ '' if month else filters.date_from }}"></div>
+                    <div><label for="exTo">To</label><input type="date" class="form-control ex-date" id="exTo" name="date_to" value="{{ '' if month else filters.date_to }}"></div>
+                </div>
+            </details>
         </form>
     </div>
 </div>
 
-<!-- Expenses table -->
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-header bg-dark text-white fw-bold border-0 d-flex justify-content-between align-items-center">
-        <span><i class="fas fa-list me-2"></i>Expenses</span>
-        <span class="badge bg-light text-dark">{{ expenses|length }} shown</span>
+<!-- Summary -->
+<div class="ex-band">
+    <div class="ex-stat">
+        <span class="ex-num">Rs. {{ rs(summary.total) }}</span>
+        <span class="ex-lab">Total spent{% if not show_all %} in {{ month_label }}{% endif %}</span>
     </div>
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle datatable" id="expenseMainTable" data-page-length="25">
-                <thead class="table-light">
-                    <tr>
-                        <th>Date</th>
-                        <th>Category</th>
-                        <th class="text-end">Amount (Rs.)</th>
-                        <th>Method</th>
-                        <th>Receipt No</th>
-                        <th>Description</th>
-                        <th>Logged By</th>
-                        <th class="no-sort text-center">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for e in expenses %}
-                    <tr>
-                        <td data-order="{{ e.date.isoformat() if e.date else '' }}">{{ e.date.strftime('%d %b %Y') if e.date else '—' }}</td>
-                        <td><span class="badge border bg-secondary-subtle text-dark">{{ e.category.name if e.category else '—' }}</span></td>
-                        <td class="text-end fw-bold">{{ '{:,.0f}'.format(e.amount or 0) }}</td>
-                        <td>{{ e.payment_method }}</td>
-                        <td class="font-monospace small">{{ e.receipt_no or '—' }}</td>
-                        <td class="text-muted small">{{ e.description or '—' }}</td>
-                        <td class="small">{{ e.logged_by_name or '—' }}</td>
-                        <td class="text-center text-nowrap">
-                            {% if e.is_void %}
-                            <span class="badge bg-secondary" title="{{ e.void_reason or '' }}">Voided</span>
-                            {% else %}
-                            <button class="btn btn-sm btn-outline-success me-1 continue-expense-btn"
-                                    data-bs-toggle="modal" data-bs-target="#addExpenseModal"
-                                    data-source-id="{{ e.id }}"
-                                    data-category-id="{{ e.category_id }}"
-                                    data-amount="{{ '%.2f'|format(e.amount or 0) }}"
-                                    data-method="{{ e.payment_method }}"
-                                    data-receipt="{{ e.receipt_no or '' }}"
-                                    data-description="{{ e.description or '' }}"
-                                    data-source-date="{{ e.date.strftime('%d %b %Y') if e.date else '' }}"
-                                    title="Copy this into a new expense for today" aria-label="Copy this into a new expense for today"><i class="fas fa-rotate-right"></i></button>
-                            <button class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editExpenseModal"
-                                    data-action="{{ url_for('main.expenses_edit', id=e.id) }}"
-                                    data-category-id="{{ e.category_id }}"
-                                    data-amount="{{ '%.2f'|format(e.amount or 0) }}"
-                                    data-date="{{ e.date.isoformat() if e.date else '' }}"
-                                    data-method="{{ e.payment_method }}"
-                                    data-receipt="{{ e.receipt_no or '' }}"
-                                    data-description="{{ e.description or '' }}"
-                                    title="Edit" aria-label="Edit"><i class="fas fa-pen"></i></button>
-                            <form method="post" action="{{ url_for('main.expenses_void', id=e.id) }}" class="d-inline void-expense-form"
-                                  data-name="{{ e.category.name if e.category else '' }}">
-                                <input type="hidden" name="void_reason">
-                                <button class="btn btn-sm btn-outline-danger" title="Void (kept in history)"
-                                        aria-label="Void"><i class="fas fa-ban"></i></button>
-                            </form>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% if not expenses %}
-        <p class="text-muted small mb-0">No expenses match the current filters.</p>
+    <div class="ex-stat">
+        <span class="ex-num">{{ summary.count }}</span>
+        <span class="ex-lab">Expense{{ '' if summary.count == 1 else 's' }} recorded</span>
+    </div>
+    <div class="ex-stat">
+        {% if summary.top %}
+        <span class="ex-num">Rs. {{ rs(summary.top.total) }}{% if summary.total %} <small>{{ (summary.top.total * 100 / summary.total) | round | int }}%</small>{% endif %}</span>
+        <span class="ex-lab">Biggest spending: <b>{{ summary.top.name }}</b></span>
+        {% else %}
+        <span class="ex-num">&mdash;</span><span class="ex-lab">Biggest spending: nothing yet</span>
         {% endif %}
     </div>
+    <div class="ex-stat">
+        <span class="ex-num">Rs. {{ rs(summary.total / summary.count) if summary.count else '0' }}</span>
+        <span class="ex-lab">Average per expense</span>
+    </div>
 </div>
 
-<!-- Categories: kept behind a button so the page stays focused on expenses -->
-<div class="d-flex justify-content-end mb-4">
-    <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="modal"
-            data-bs-target="#categoriesModal" id="categoriesButton">
-        <i class="fas fa-tags me-1"></i>Categories
-        <span class="badge bg-secondary ms-1">{{ all_categories|length }}</span>
-    </button>
+{% set mix = summary.by_category.items() | sort(attribute='1.total', reverse=true) | list %}
+{% if mix | length > 1 and summary.total %}
+<div class="ex-mix">
+    <div class="ex-mix-title">Where did the money go? <span class="fw-normal text-muted">Tap a type to see only those expenses.</span></div>
+    <div class="ex-mixbar" role="img" aria-label="Spending by type">
+        {% for name, row in mix %}<i style="--ex-c: {{ palette[(cat_id.get(name) or 0) % palette | length] }}; width: {{ (row.total * 100 / summary.total) | round(1) }}%" title="{{ name }}: Rs. {{ rs(row.total) }}"></i>{% endfor %}
+    </div>
+    <div class="ex-legend">
+        {% for name, row in mix %}
+        <a style="--ex-c: {{ palette[(cat_id.get(name) or 0) % palette | length] }}" class="{{ 'is-on' if cat_id.get(name) and filters.category_id == cat_id.get(name) }}"
+           href="{{ url_for('main.expenses_list', month=(month or None), all=('1' if show_all else None), category_id=cat_id.get(name)) }}"><span class="dot"></span>{{ name }} <b>Rs. {{ rs(row.total) }}</b></a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="ex-count">
+    <span>Showing <strong id="visibleCount">{{ expenses | length }}</strong> expense(s){% if filters.q %} for "<strong>{{ filters.q }}</strong>"{% endif %}</span>
+    <div class="ex-seg" role="group" aria-label="View">
+        <button type="button" data-ex-view="cards" aria-pressed="true"><i class="fas fa-table-cells-large me-1"></i>Cards</button>
+        <button type="button" data-ex-view="table" aria-pressed="false"><i class="fas fa-table-list me-1"></i>Table</button>
+    </div>
 </div>
 
-<!-- Categories modal -->
+<div id="exBody" class="ex-mode-cards">
+
+    <!-- Cards view -->
+    <div class="ex-cardswrap">
+        {% if expenses %}
+        <div class="ex-grid" id="exGrid">
+            {% for e in expenses %}
+            {% set is_payroll = e.salary_payment %}
+            {% set cname = e.category.name if e.category else '—' %}
+            {% set blob = [cname, e.description, e.receipt_no, e.payment_method, e.logged_by_name, '{:,.0f}'.format(e.amount or 0), (e.amount or 0) | string, (e.date.strftime('%d %b %Y') if e.date else '')] | select | join(' ') | lower %}
+            <article class="ex-card{% if not e.is_void and not is_payroll %} is-open{% endif %}" style="--ex-c: {{ palette[(e.category_id or 0) % palette | length] }}" data-search="{{ blob }}">
+                <div class="ex-card-top">
+                    <span class="ex-pill">{{ cname }}</span>
+                    <span class="ex-when">{{ e.date.strftime('%d %b %Y') if e.date else '—' }}</span>
+                </div>
+                <div class="ex-money"><small>Rs.</small>{{ rs(e.amount) }}</div>
+                <p class="ex-what{% if not e.description %} is-none{% endif %}">{{ e.description or 'No note written' }}</p>
+                <div class="ex-chips">
+                    <span class="ex-chip"><i class="fas fa-{{ 'building-columns' if e.payment_method == 'Bank' else ('money-check' if e.payment_method == 'Cheque' else 'money-bill-wave') }}"></i>{{ e.payment_method }}</span>
+                    {% if e.receipt_no %}<span class="ex-chip"><i class="fas fa-receipt"></i>{{ e.receipt_no }}</span>{% endif %}
+                </div>
+                {% if e.logged_by_name %}<div class="ex-by">Entered by {{ e.logged_by_name }}</div>{% endif %}
+                <div class="ex-foot">
+                    <span class="ex-acts">
+                        {% if e.is_void %}
+                        <span class="badge bg-secondary" title="{{ e.void_reason or '' }}">Voided</span>
+                        {% elif is_payroll %}
+                        <a class="ex-payroll" href="{{ url_for('main.payroll_page') }}" title="This is a salary payment. Change it from Payroll."><i class="fas fa-user-tie"></i>From Payroll</a>
+                        {% else %}
+                        <button type="button" class="btn btn-sm btn-outline-success continue-expense-btn"
+                                data-bs-toggle="modal" data-bs-target="#addExpenseModal"
+                                data-source-id="{{ e.id }}"
+                                data-category-id="{{ e.category_id }}"
+                                data-amount="{{ '%.2f'|format(e.amount or 0) }}"
+                                data-method="{{ e.payment_method }}"
+                                data-receipt="{{ e.receipt_no or '' }}"
+                                data-description="{{ e.description or '' }}"
+                                data-source-date="{{ e.date.strftime('%d %b %Y') if e.date else '' }}"
+                                title="Copy this into a new expense for today"><i class="fas fa-rotate-right me-1"></i>Copy</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary ex-edit-btn" data-bs-toggle="modal" data-bs-target="#editExpenseModal"
+                                data-action="{{ url_for('main.expenses_edit', id=e.id) }}"
+                                data-category-id="{{ e.category_id }}"
+                                data-amount="{{ '%.2f'|format(e.amount or 0) }}"
+                                data-date="{{ e.date.isoformat() if e.date else '' }}"
+                                data-method="{{ e.payment_method }}"
+                                data-receipt="{{ e.receipt_no or '' }}"
+                                data-description="{{ e.description or '' }}"
+                                title="Change this expense"><i class="fas fa-pen me-1"></i>Edit</button>
+                        <form method="post" action="{{ url_for('main.expenses_void', id=e.id) }}" class="d-inline void-expense-form"
+                              data-name="{{ cname }}" data-amount="{{ rs(e.amount) }}">
+                            <input type="hidden" name="void_reason">
+                            <button class="btn btn-sm btn-outline-danger" title="Cancel this entry (it stays in history)"><i class="fas fa-ban me-1"></i>Void</button>
+                        </form>
+                        {% endif %}
+                    </span>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Table view -->
+    <div class="ex-tablewrap">
+    <div class="card ex-panel mb-4">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle datatable mb-0" id="expenseMainTable" data-page-length="25" data-order='[[0,"desc"]]'>
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3">Date</th>
+                            <th>Category</th>
+                            <th class="text-end">Amount (Rs.)</th>
+                            <th>Paid by</th>
+                            <th>Receipt No</th>
+                            <th>Description</th>
+                            <th>Entered by</th>
+                            <th class="no-sort text-end pe-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for e in expenses %}
+                        {% set is_payroll = e.salary_payment %}
+                        {% set cname = e.category.name if e.category else '—' %}
+                        {% set blob = [cname, e.description, e.receipt_no, e.payment_method, e.logged_by_name, '{:,.0f}'.format(e.amount or 0), (e.amount or 0) | string, (e.date.strftime('%d %b %Y') if e.date else '')] | select | join(' ') | lower %}
+                        <tr data-search="{{ blob }}">
+                            <td class="ex-date ps-3" data-order="{{ e.date.isoformat() if e.date else '' }}">{{ e.date.strftime('%d %b %Y') if e.date else '—' }}</td>
+                            <td><span class="ex-cat-badge">{{ cname }}</span></td>
+                            <td class="text-end fw-bold ex-amt" data-order="{{ e.amount or 0 }}">{{ rs(e.amount) }}</td>
+                            <td>{{ e.payment_method }}</td>
+                            <td class="font-monospace small">{{ e.receipt_no or '—' }}</td>
+                            <td class="text-muted small">{{ e.description or '—' }}</td>
+                            <td class="small">{{ e.logged_by_name or '—' }}</td>
+                            <td class="text-end text-nowrap pe-3"><div class="ex-acts">
+                                {% if e.is_void %}
+                                <span class="badge bg-secondary" title="{{ e.void_reason or '' }}">Voided</span>
+                                {% elif is_payroll %}
+                                <a class="ex-payroll" href="{{ url_for('main.payroll_page') }}" title="This is a salary payment. Change it from Payroll."><i class="fas fa-user-tie"></i>From Payroll</a>
+                                {% else %}
+                                <button class="btn btn-sm btn-outline-success continue-expense-btn"
+                                        data-bs-toggle="modal" data-bs-target="#addExpenseModal"
+                                        data-source-id="{{ e.id }}"
+                                        data-category-id="{{ e.category_id }}"
+                                        data-amount="{{ '%.2f'|format(e.amount or 0) }}"
+                                        data-method="{{ e.payment_method }}"
+                                        data-receipt="{{ e.receipt_no or '' }}"
+                                        data-description="{{ e.description or '' }}"
+                                        data-source-date="{{ e.date.strftime('%d %b %Y') if e.date else '' }}"
+                                        title="Copy this into a new expense for today" aria-label="Copy this into a new expense for today"><i class="fas fa-rotate-right me-1"></i>Copy</button>
+                                <button class="btn btn-sm btn-outline-secondary ex-edit-btn" data-bs-toggle="modal" data-bs-target="#editExpenseModal"
+                                        data-action="{{ url_for('main.expenses_edit', id=e.id) }}"
+                                        data-category-id="{{ e.category_id }}"
+                                        data-amount="{{ '%.2f'|format(e.amount or 0) }}"
+                                        data-date="{{ e.date.isoformat() if e.date else '' }}"
+                                        data-method="{{ e.payment_method }}"
+                                        data-receipt="{{ e.receipt_no or '' }}"
+                                        data-description="{{ e.description or '' }}"
+                                        title="Edit" aria-label="Edit"><i class="fas fa-pen me-1"></i>Edit</button>
+                                <form method="post" action="{{ url_for('main.expenses_void', id=e.id) }}" class="d-inline void-expense-form"
+                                      data-name="{{ cname }}" data-amount="{{ rs(e.amount) }}">
+                                    <input type="hidden" name="void_reason">
+                                    <button class="btn btn-sm btn-outline-danger" title="Void (kept in history)"
+                                            aria-label="Void"><i class="fas fa-ban me-1"></i>Void</button>
+                                </form>
+                                {% endif %}
+                            </div></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    </div>
+</div>
+
+{% if not expenses %}
+<div class="ex-empty mb-4">
+    <div class="ex-empty-icon"><i class="fas fa-file-invoice-dollar"></i></div>
+    {% if has_filter %}
+    <p>Nothing found{% if not show_all %} in {{ month_label }}{% endif %} for this search.</p>
+    <div class="ex-empty-sub">Try a different word, or look through every month.</div>
+    <a class="btn btn-primary btn-sm" href="{{ url_for('main.expenses_list', all=1, category_id=filters.category_id or None, q=filters.q or None) }}"><i class="fas fa-clock-rotate-left me-1"></i>Search all months</a>
+    <a class="btn btn-outline-secondary btn-sm ms-1" href="{{ url_for('main.expenses_list', month=(month or None), all=('1' if show_all else None)) }}">Clear search</a>
+    {% else %}
+    <p>No expenses written down{% if not show_all %} for {{ month_label }}{% endif %} yet.</p>
+    <div class="ex-empty-sub">Press the button and write the first one. It takes about 20 seconds.</div>
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addExpenseModal"><i class="fas fa-plus me-1"></i>Add an expense</button>
+    {% if previous_month_expenses %}
+    <button type="button" class="btn btn-outline-success btn-sm ms-1" data-bs-toggle="modal" data-bs-target="#continueExpenseModal"><i class="fas fa-rotate-right me-1"></i>Copy from {{ previous_month_label }}</button>
+    {% endif %}
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Categories modal: kept behind the Categories button so the page stays about expenses -->
 <div class="modal fade" id="categoriesModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
-            <div class="modal-header bg-secondary text-white">
+            <div class="modal-header">
                 <h5 class="modal-title"><i class="fas fa-tags me-2"></i>Expense Categories</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <p class="text-muted small">A category is the <em>type</em> of expense, for example Electricity or Repairs. Add the ones your school needs.</p>
                 <form method="post" action="{{ url_for('main.expenses_categories_add') }}" class="row g-2 align-items-end mb-3">
                     <div class="col-md-4">
                         <label class="form-label small fw-bold mb-1">New Category</label>
@@ -304,18 +550,18 @@
     </div>
 </div>
 
-<!-- Continue previous month's expense: pick one, then edit before saving -->
+<!-- Continue previous month's expense: pick one, then check it before saving -->
 <div class="modal fade" id="continueExpenseModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
-            <div class="modal-header bg-success text-white">
+            <div class="modal-header">
                 <h5 class="modal-title"><i class="fas fa-rotate-right me-2"></i>Continue an Expense from {{ previous_month_label }}</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p class="text-muted small">
-                    Pick an expense below. Its details are copied into a <strong>new</strong> expense for today,
-                    which you can edit before saving. The original entry is never changed.
+                    Good for bills that come every month. Pick one below. Its details are copied into a <strong>new</strong> expense for today,
+                    which you can check and change before saving. The old entry is never changed.
                 </p>
                 <div class="table-responsive">
                     <table class="table table-sm table-hover align-middle mb-0">
@@ -333,7 +579,7 @@
                             {% for e in previous_month_expenses %}
                             <tr>
                                 <td class="text-nowrap">{{ e.date.strftime('%d %b %Y') if e.date else '—' }}</td>
-                                <td><span class="badge border bg-secondary-subtle text-dark">{{ e.category.name if e.category else '—' }}</span></td>
+                                <td><span class="ex-cat-badge">{{ e.category.name if e.category else '—' }}</span></td>
                                 <td class="text-end fw-bold">{{ '{:,.0f}'.format(e.amount or 0) }}</td>
                                 <td>{{ e.payment_method }}</td>
                                 <td class="text-muted small">{{ e.description or '—' }}</td>
@@ -365,116 +611,123 @@
     </div>
 </div>
 
-<!-- Add Expense modal -->
+<!-- Add Expense: plain questions, top to bottom -->
 <div class="modal fade" id="addExpenseModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="post" action="{{ url_for('main.expenses_add') }}">
-                <div class="modal-header bg-dark text-white">
+            <form method="post" action="{{ url_for('main.expenses_add') }}" class="ex-form" autocomplete="off">
+                <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-plus me-2"></i>Add Expense</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-success py-2 px-3 small d-none" data-continue-note></div>
                     <input type="hidden" name="continue_from" value="">
-                    <div class="row g-3">
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">Category</label>
-                            <select class="form-select form-select-sm" name="category_id" required>
-                                {% for c in filter_categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
-                            </select>
+                    <div class="mb-3">
+                        <label class="ex-q" for="addCategory">1. What kind of expense is it?</label>
+                        <select class="form-select" id="addCategory" name="category_id" required>
+                            <option value="" disabled selected>Choose… (for example Electricity)</option>
+                            {% for c in filter_categories if not c.is_system %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="ex-q" for="addAmount">2. How much did you pay? <small>(Rs.)</small></label>
+                        <input type="number" class="form-control ex-amount" id="addAmount" name="amount" step="0.01" min="0.01" inputmode="decimal" placeholder="0" required data-amount-input>
+                        <div class="ex-words" data-amount-words></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="ex-q" for="addDescription">3. What was it for? <small>(optional, a few words)</small></label>
+                        <input type="text" class="form-control" id="addDescription" name="description" maxlength="255" placeholder="e.g. September electricity bill">
+                    </div>
+                    <div class="mb-3">
+                        <label class="ex-q" for="addDate">4. On which day?</label>
+                        <input type="date" class="form-control" id="addDate" name="date" value="{{ today.strftime('%Y-%m-%d') }}" required>
+                        <div class="ex-quick"><button type="button" data-quick-date="0">Today</button><button type="button" data-quick-date="-1">Yesterday</button></div>
+                    </div>
+                    <div class="mb-3">
+                        <span class="ex-q">5. How did you pay?</span>
+                        <div class="ex-pay">
+                            {% for m in payment_methods %}
+                            <input type="radio" name="payment_method" id="addPay{{ loop.index }}" value="{{ m }}" {% if loop.first %}checked{% endif %} required>
+                            <label for="addPay{{ loop.index }}">{{ m }}</label>
+                            {% endfor %}
                         </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">Amount (Rs.)</label>
-                            <input type="number" class="form-control form-control-sm" name="amount" step="0.01" min="0.01" required>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">Date</label>
-                            <input type="date" class="form-control form-control-sm" name="date" value="{{ today.strftime('%Y-%m-%d') }}" required>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">Payment Method</label>
-                            <select class="form-select form-select-sm" name="payment_method" required>
-                                {% for m in payment_methods %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">Receipt No (optional)</label>
-                            <input type="text" class="form-control form-control-sm" name="receipt_no" maxlength="80">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">Description (optional)</label>
-                            <input type="text" class="form-control form-control-sm" name="description" maxlength="255">
-                        </div>
+                    </div>
+                    <div class="mb-1">
+                        <label class="ex-q" for="addReceipt">Bill or receipt number <small>(optional)</small></label>
+                        <input type="text" class="form-control" id="addReceipt" name="receipt_no" maxlength="80" placeholder="Only if the bill has a number">
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                    <button class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>Save Expense</button>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-primary"><i class="fas fa-save me-1"></i>Save Expense</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- Edit Expense modal -->
+<!-- Edit Expense -->
 <div class="modal fade" id="editExpenseModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="post" action="">
-                <div class="modal-header bg-primary text-white">
+            <form method="post" action="" class="ex-form" autocomplete="off">
+                <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-pen me-2"></i>Edit Expense</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="row g-3">
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">Category</label>
-                            <select class="form-select form-select-sm" name="category_id" required>
-                                {% for c in all_categories if c.category.is_active and not c.category.is_system %}<option value="{{ c.category.id }}">{{ c.category.name }}</option>{% endfor %}
-                            </select>
+                    <div class="mb-3">
+                        <label class="ex-q" for="editCategory">What kind of expense is it?</label>
+                        <select class="form-select" id="editCategory" name="category_id" required>
+                            {% for c in all_categories if c.category.is_active and not c.category.is_system %}<option value="{{ c.category.id }}">{{ c.category.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="ex-q" for="editAmount">How much did you pay? <small>(Rs.)</small></label>
+                        <input type="number" class="form-control ex-amount" id="editAmount" name="amount" step="0.01" min="0.01" inputmode="decimal" required data-amount-input>
+                        <div class="ex-words" data-amount-words></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="ex-q" for="editDescription">What was it for? <small>(optional)</small></label>
+                        <input type="text" class="form-control" id="editDescription" name="description" maxlength="255">
+                    </div>
+                    <div class="mb-3">
+                        <label class="ex-q" for="editDate">On which day?</label>
+                        <input type="date" class="form-control" id="editDate" name="date" required>
+                        <div class="ex-quick"><button type="button" data-quick-date="0">Today</button><button type="button" data-quick-date="-1">Yesterday</button></div>
+                    </div>
+                    <div class="mb-3">
+                        <span class="ex-q">How did you pay?</span>
+                        <div class="ex-pay">
+                            {% for m in payment_methods %}
+                            <input type="radio" name="payment_method" id="editPay{{ loop.index }}" value="{{ m }}" required>
+                            <label for="editPay{{ loop.index }}">{{ m }}</label>
+                            {% endfor %}
                         </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">Amount (Rs.)</label>
-                            <input type="number" class="form-control form-control-sm" name="amount" step="0.01" min="0.01" required>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">Date</label>
-                            <input type="date" class="form-control form-control-sm" name="date" required>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">Payment Method</label>
-                            <select class="form-select form-select-sm" name="payment_method" required>
-                                {% for m in payment_methods %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">Receipt No (optional)</label>
-                            <input type="text" class="form-control form-control-sm" name="receipt_no" maxlength="80">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small fw-bold">Description (optional)</label>
-                            <input type="text" class="form-control form-control-sm" name="description" maxlength="255">
-                        </div>
+                    </div>
+                    <div class="mb-1">
+                        <label class="ex-q" for="editReceipt">Bill or receipt number <small>(optional)</small></label>
+                        <input type="text" class="form-control" id="editReceipt" name="receipt_no" maxlength="80">
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                    <button class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i>Save</button>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-primary"><i class="fas fa-save me-1"></i>Save</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- Edit Category modal -->
+<!-- Edit Category -->
 <div class="modal fade" id="editCategoryModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-sm">
         <div class="modal-content">
             <form method="post" action="">
-                <div class="modal-header bg-primary text-white">
+                <div class="modal-header">
                     <h5 class="modal-title">Edit Category</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
@@ -495,79 +748,247 @@
     </div>
 </div>
 
+<!-- Void: ask for the reason in a proper box (kept in history, never deleted) -->
+<div class="modal fade" id="voidExpenseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-danger"><i class="fas fa-ban me-2"></i>Void this expense?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body ex-form">
+                <p class="mb-2">Use this when an entry was written by mistake. It will be removed from every total, but it stays in the history. You can not delete it.</p>
+                <p class="fw-bold mb-3" data-void-summary></p>
+                <label class="ex-q" for="voidReasonInput">Reason for voiding this expense <small>(required)</small></label>
+                <input type="text" class="form-control" id="voidReasonInput" maxlength="255" placeholder="Write a short reason">
+                <div class="ex-reasons">
+                    <button type="button" data-reason="Entered by mistake">Entered by mistake</button>
+                    <button type="button" data-reason="Wrong amount">Wrong amount</button>
+                    <button type="button" data-reason="Entered twice">Entered twice</button>
+                </div>
+                <div class="text-danger small mt-2 d-none" data-void-error>Please write a reason first.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">No, keep it</button>
+                <button type="button" class="btn btn-danger" data-void-confirm><i class="fas fa-ban me-1"></i>Void expense</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
+(function () {
+    var body = document.getElementById('exBody');
+    var input = document.getElementById('exSearch');
+    var KEY = 'ex-expenses-view';
+    var term = '';
+
+    function saved() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
+    function remember(mode) { try { localStorage.setItem(KEY, mode); } catch (e) {} }
+    function table() {
+        return (window.jQuery && jQuery.fn.dataTable && jQuery.fn.dataTable.isDataTable('#expenseMainTable'))
+            ? jQuery('#expenseMainTable').DataTable() : null;
+    }
+    function matches(blob) { return !term || (blob || '').indexOf(term) !== -1; }
+
+    // Cards or table; the choice is remembered in this browser.
+    function setView(mode, persist) {
+        if (!body) return;
+        body.classList.toggle('ex-mode-table', mode === 'table');
+        body.classList.toggle('ex-mode-cards', mode !== 'table');
+        document.querySelectorAll('[data-ex-view]').forEach(function (button) {
+            button.setAttribute('aria-pressed', button.getAttribute('data-ex-view') === mode ? 'true' : 'false');
+        });
+        if (persist) remember(mode);
+        var dt = table();
+        if (mode === 'table' && dt) dt.columns.adjust();
+    }
+    setView(saved() === 'table' ? 'table' : 'cards', false);
+    document.querySelectorAll('[data-ex-view]').forEach(function (button) {
+        button.addEventListener('click', function () { setView(button.getAttribute('data-ex-view'), true); });
+    });
+
+    // Instant search: one rule for the cards and the table rows.
+    document.addEventListener('DOMContentLoaded', function () {
+        if (window.jQuery && jQuery.fn.dataTable) {
+            jQuery.fn.dataTable.ext.search.push(function (settings, data, index) {
+                if (!settings.nTable || settings.nTable.id !== 'expenseMainTable') return true;
+                var row = settings.aoData[index] && settings.aoData[index].nTr;
+                return matches(row ? row.getAttribute('data-search') : '');
+            });
+        }
+    });
+    if (input) {
+        input.addEventListener('input', function () {
+            term = this.value.toLowerCase().trim();
+            var visible = 0;
+            document.querySelectorAll('.ex-card').forEach(function (card) {
+                var show = matches(card.getAttribute('data-search'));
+                card.hidden = !show;
+                if (show) visible++;
+            });
+            var counter = document.getElementById('visibleCount');
+            if (counter) counter.textContent = visible;
+            var dt = table();
+            if (dt) dt.draw();
+        });
+    }
+
+    // A whole card opens Edit; buttons and links keep their own job.
+    document.addEventListener('click', function (event) {
+        var card = event.target.closest('.ex-card.is-open');
+        if (!card || event.target.closest('a, button, form, input, select, label')) return;
+        if (window.getSelection && String(window.getSelection())) return;
+        var edit = card.querySelector('.ex-edit-btn');
+        if (edit) edit.click();
+    });
+})();
+
 document.addEventListener('DOMContentLoaded', function () {
     var addModal = document.getElementById('addExpenseModal');
+    var editModal = document.getElementById('editExpenseModal');
+    var voidModal = document.getElementById('voidExpenseModal');
+    var keepFilled = false;   // true while a "continue / copy" is filling the Add form
 
-    // Opening a "continue" button copies that expense into the Add form.
-    // Handled on click (rather than only via modal events) so the jump from
-    // the pick-list modal to the Add modal is explicit and dependable.
+    function setRadio(form, value) {
+        var radios = form.querySelectorAll('input[name="payment_method"]');
+        var found = false;
+        radios.forEach(function (r) { if (r.value === value) { r.checked = true; found = true; } });
+        if (!found && radios.length) radios[0].checked = true;
+    }
+    function isoDay(offset) {
+        var d = new Date(); d.setDate(d.getDate() + offset);
+        return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    }
+    function showWords(form) {
+        var field = form.querySelector('[data-amount-input]');
+        var out = form.querySelector('[data-amount-words]');
+        if (!field || !out) return;
+        var n = parseFloat(field.value);
+        out.textContent = (n > 0) ? 'Rs. ' + n.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '';
+    }
+
+    // Live amount, and Today / Yesterday shortcuts, in both forms.
+    document.querySelectorAll('.ex-form').forEach(function (form) {
+        var field = form.querySelector('[data-amount-input]');
+        if (field) field.addEventListener('input', function () { showWords(form); });
+        form.querySelectorAll('[data-quick-date]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var date = form.querySelector('[name="date"]');
+                if (date) date.value = isoDay(parseInt(btn.getAttribute('data-quick-date'), 10));
+            });
+        });
+    });
+
+    // "Copy" / "Continue": fill the Add form from an old expense (the date stays today).
     document.querySelectorAll('.continue-expense-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
             if (!addModal) return;
             var form = addModal.querySelector('form');
+            keepFilled = true;
+            form.reset();
             form.querySelector('[name="category_id"]').value = btn.getAttribute('data-category-id');
             form.querySelector('[name="amount"]').value = btn.getAttribute('data-amount');
-            form.querySelector('[name="payment_method"]').value = btn.getAttribute('data-method');
+            setRadio(form, btn.getAttribute('data-method'));
             form.querySelector('[name="receipt_no"]').value = btn.getAttribute('data-receipt') || '';
             form.querySelector('[name="description"]').value = btn.getAttribute('data-description') || '';
-            // The date keeps its default (today): this is a NEW expense.
             form.querySelector('[name="continue_from"]').value = btn.getAttribute('data-source-id') || '';
+            showWords(form);
             var note = addModal.querySelector('[data-continue-note]');
             if (note) {
                 note.textContent = 'Copied from expense #' + btn.getAttribute('data-source-id') +
                     ' (' + (btn.getAttribute('data-source-date') || 'an earlier month') +
-                    '). Every field below is editable — saving creates a new expense and leaves the original untouched.';
+                    '). Check every field. Saving makes a new expense and leaves the old one as it is.';
                 note.classList.remove('d-none');
             }
-            // Close the pick list if it was open, then show the Add form.
-            var openPicker = document.getElementById('continueExpenseModal');
-            if (openPicker && window.bootstrap) {
-                var pickerInstance = bootstrap.Modal.getInstance(openPicker);
+            var picker = document.getElementById('continueExpenseModal');
+            if (picker && window.bootstrap) {
+                var pickerInstance = bootstrap.Modal.getInstance(picker);
                 if (pickerInstance) pickerInstance.hide();
             }
-            if (window.bootstrap) {
+            if (window.bootstrap && !btn.hasAttribute('data-bs-toggle')) {
                 bootstrap.Modal.getOrCreateInstance(addModal).show();
             }
         });
     });
 
     if (addModal) {
-        addModal.addEventListener('show.bs.modal', function (event) {
-            var btn = event.relatedTarget;
-            // Opened from the plain "Add Expense" button: start clean.
-            if (btn && btn.classList.contains('continue-expense-btn')) return;
-            var form = addModal.querySelector('form');
+        addModal.addEventListener('show.bs.modal', function () {
+            if (keepFilled) return;                       // opened by Copy / Continue
+            var form = addModal.querySelector('form');    // plain "Add Expense": start clean
+            form.reset();
             var note = addModal.querySelector('[data-continue-note]');
-            var sourceField = form.querySelector('[name="continue_from"]');
-            if (sourceField) sourceField.value = '';
             if (note) { note.classList.add('d-none'); note.textContent = ''; }
+            showWords(form);
         });
+        addModal.addEventListener('shown.bs.modal', function () {
+            var first = addModal.querySelector(keepFilled ? '[name="amount"]' : '[name="category_id"]');
+            if (first) first.focus();
+        });
+        addModal.addEventListener('hidden.bs.modal', function () { keepFilled = false; });
     }
 
-    var editModal = document.getElementById('editExpenseModal');
     if (editModal) {
         editModal.addEventListener('show.bs.modal', function (event) {
             var btn = event.relatedTarget;
-            if (!btn) return;
+            if (!btn || !btn.getAttribute('data-action')) return;
             var form = editModal.querySelector('form');
             form.action = btn.getAttribute('data-action');
             form.querySelector('[name="category_id"]').value = btn.getAttribute('data-category-id');
             form.querySelector('[name="amount"]').value = btn.getAttribute('data-amount');
             form.querySelector('[name="date"]').value = btn.getAttribute('data-date');
-            form.querySelector('[name="payment_method"]').value = btn.getAttribute('data-method');
+            setRadio(form, btn.getAttribute('data-method'));
             form.querySelector('[name="receipt_no"]').value = btn.getAttribute('data-receipt') || '';
             form.querySelector('[name="description"]').value = btn.getAttribute('data-description') || '';
+            showWords(form);
         });
     }
+
+    // Void: a proper box asks for the reason; the form is then sent as before.
+    var pendingVoid = null;
+    var reasonField = document.getElementById('voidReasonInput');
+    var reasonError = voidModal ? voidModal.querySelector('[data-void-error]') : null;
     document.querySelectorAll('form.void-expense-form').forEach(function (form) {
         form.addEventListener('submit', function (event) {
             if (form.querySelector('[name="void_reason"]').value) return;
-            var reason = window.prompt('Reason for voiding this expense (required, kept in history):', '');
-            if (reason === null || !reason.trim()) { event.preventDefault(); return; }
-            form.querySelector('[name="void_reason"]').value = reason.trim();
+            event.preventDefault();
+            if (!voidModal || !window.bootstrap) {
+                var reason = window.prompt('Reason for voiding this expense (required, kept in history):', '');
+                if (reason === null || !reason.trim()) return;
+                form.querySelector('[name="void_reason"]').value = reason.trim();
+                form.submit();
+                return;
+            }
+            pendingVoid = form;
+            var summary = voidModal.querySelector('[data-void-summary]');
+            if (summary) summary.textContent = (form.getAttribute('data-name') || '') + ' \u2014 Rs. ' + (form.getAttribute('data-amount') || '');
+            if (reasonField) reasonField.value = '';
+            if (reasonError) reasonError.classList.add('d-none');
+            bootstrap.Modal.getOrCreateInstance(voidModal).show();
         });
     });
+    if (voidModal) {
+        voidModal.addEventListener('shown.bs.modal', function () { if (reasonField) reasonField.focus(); });
+        voidModal.querySelectorAll('[data-reason]').forEach(function (chip) {
+            chip.addEventListener('click', function () {
+                if (reasonField) { reasonField.value = chip.getAttribute('data-reason'); reasonField.focus(); }
+                if (reasonError) reasonError.classList.add('d-none');
+            });
+        });
+        function confirmVoid() {
+            var text = reasonField ? reasonField.value.trim() : '';
+            if (!text) { if (reasonError) reasonError.classList.remove('d-none'); if (reasonField) reasonField.focus(); return; }
+            if (!pendingVoid) return;
+            pendingVoid.querySelector('[name="void_reason"]').value = text;
+            var form = pendingVoid; pendingVoid = null;
+            form.submit();
+        }
+        var confirmBtn = voidModal.querySelector('[data-void-confirm]');
+        if (confirmBtn) confirmBtn.addEventListener('click', confirmVoid);
+        if (reasonField) reasonField.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') { event.preventDefault(); confirmVoid(); }
+        });
+    }
 
     var editCatModal = document.getElementById('editCategoryModal');
     if (editCatModal) {
@@ -582,5 +1003,5 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 </script>
-
+</div>{# /.ex-page #}
 {% endblock %}

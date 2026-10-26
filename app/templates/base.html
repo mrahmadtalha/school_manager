@@ -248,13 +248,7 @@
                     </a>
                 </li>
 {% endif %}
-                {% if has_feature('assistant') %}
-<li class="nav-item mb-1">
-                    <a href="{{ url_for('main.assistant_page') }}" class="nav-link text-white {% if request.endpoint in ('main.assistant_page',) %}active{% endif %}">
-                        <span class="nav-icon nav-icon-system"><i class="fas fa-robot"></i></span> <span class="nav-label">School Assistant</span>
-                    </a>
-                </li>
-{% endif %}
+                {# The School Assistant is a floating button in the bottom corner now (_assistant_widget.html). #}
                 {% endif %}
 
                 {% if role == 'admin' %}
@@ -319,6 +313,17 @@
                 {% endif %}
                 {% endif %}
 
+                <!-- Language: English / Urdu -->
+                {% if has_feature('language_switch') %}
+                <li class="nav-item mt-3">
+                    <a class="nav-link" href="{{ url_for('main.set_language', code=('en' if ui_lang == 'ur' else 'ur')) }}"
+                       title="{{ 'English' if ui_lang == 'ur' else 'اردو' }}">
+                        <span class="nav-icon"><i class="fas fa-language"></i></span>
+                        <span class="nav-label">{{ 'English' if ui_lang == 'ur' else 'اردو' }}</span>
+                    </a>
+                </li>
+                {% endif %}
+
                 <!-- Bottom system section -->
                 <li class="nav-item mt-3"><div class="nav-divider sidebar-footer-divider"></div></li>
                 <li class="nav-item">
@@ -332,12 +337,16 @@
                         </div>
                     </div>
                 </li>
-                {% if role == 'admin' %}
+                {% if role == 'admin' and has_feature('audit_log_view') %}
                 <li class="nav-item mb-1">
                     <a href="{{ url_for('main.audit_log') }}" class="nav-link text-white {% if 'audit' in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-system"><i class="fas fa-clipboard-list"></i></span> <span class="nav-label">Audit Log</span>
                     </a>
                 </li>
+                {% endif %}
+                {# Users, settings and the License page must always be reachable by the administrator,
+                   whatever features the license switches on or off. #}
+                {% if role == 'admin' %}
                 <li class="nav-item mb-1">
                     <a href="{{ url_for('main.users_list') }}" class="nav-link text-white {% if 'user' in request.endpoint %}active{% endif %}">
                         <span class="nav-icon nav-icon-system"><i class="fas fa-users-cog"></i></span> <span class="nav-label">Users &amp; Roles</span>
@@ -454,6 +463,10 @@
         </div>
     </div>
 </div>
+
+{% if current_user.is_authenticated and current_user.role == 'admin' and has_feature('assistant') and request.endpoint != 'main.assistant_page' %}
+{% include '_assistant_widget.html' %}
+{% endif %}
 
 <!-- Scripts -->
 <script src="{{ url_for('static', filename='vendor/jquery/jquery-3.7.0.min.js') }}"></script>

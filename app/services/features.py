@@ -36,6 +36,8 @@ FEATURE_CATALOG = (
      'Read-only executive dashboard for the owner role.', 'Finance'),
     ('attendance', 'Attendance',
      'Student and teacher attendance, summaries and exports.', 'Academics'),
+    ('qr_attendance', 'QR attendance',
+     'Gate guard phone app scans student QR ID cards and marks attendance; daily QR report.', 'Academics'),
     ('exams', 'Exams, marks & results',
      'Tests, term examinations, class results and report cards.', 'Academics'),
     ('documents', 'ID cards & certificates',
@@ -50,7 +52,17 @@ FEATURE_CATALOG = (
      'Built-in question-and-answer assistant.', 'Tools'),
     ('data_import', 'Bulk data import',
      'Import students and teachers from Excel/CSV.', 'Tools'),
+    ('data_export', 'Data export',
+     'Download lists and sheets as Excel / CSV / PDF (students, fees, attendance, results ...).', 'Tools'),
+    ('language_switch', 'Urdu / English switch',
+     'The language button in the sidebar; without it the school stays in English.', 'Tools'),
+    ('audit_log_view', 'Audit log viewer',
+     'Lets the school open and export its Audit Log. The log is ALWAYS recorded; this only controls viewing.', 'Tools'),
 )
+
+#: Features added after the first release.  A key issued before they existed does not
+#: list them, so they stay ON for those keys (nothing a school had is taken away).
+FEATURES_ADDED_LATER = ('data_export', 'language_switch', 'audit_log_view')
 
 ALL_FEATURES = tuple(item[0] for item in FEATURE_CATALOG)
 FEATURE_LABELS = {key: label for key, label, _desc, _group in FEATURE_CATALOG}
@@ -65,12 +77,14 @@ MODULE_FEATURES = {
     'app.routes.admission_fees': 'admission_fees',
     'app.routes.executive': 'executive',
     'app.routes.attendance': 'attendance',
+    'app.routes.qr_attendance': 'qr_attendance',
     'app.routes.examinations': 'exams',
     'app.routes.term_exams': 'exams',
     'app.routes.documents': 'documents',
     'app.routes.timetable_sheet': 'timetable',
     'app.routes.portal': 'parent_portal',
     'app.routes.assistant': 'assistant',
+    'app.routes.audit': 'audit_log_view',
 }
 
 #: Single endpoints that live inside shared modules (reports, settings, ...).
@@ -103,6 +117,11 @@ ENDPOINT_FEATURES = {
 }
 
 
+def is_export_endpoint(endpoint):
+    """True for list / sheet download endpoints (their name contains "export")."""
+    return bool(endpoint) and 'export' in endpoint.split('.')[-1].lower()
+
+
 def feature_for_endpoint(endpoint, module=None):
     """Return the feature key guarding ``endpoint`` (or None for core pages)."""
     if not endpoint:
@@ -126,12 +145,41 @@ def normalize_features(value):
     return [key for key in ALL_FEATURES if key in wanted]
 
 
+# -- user roles -------------------------------------------------------------
+# (key, label, description).  The administrator role is always on, otherwise a school
+# could be locked out of its own software.
+ROLE_CATALOG = (
+    ('admin', 'Administrator', 'Full control of the school. Always on.'),
+    ('teacher', 'Teacher', 'Marks attendance and enters marks for own classes.'),
+    ('accountant', 'Accountant', 'Fees, receipts, expenses and payroll.'),
+    ('owner', 'Principal / Owner', 'Read-only executive dashboard and reports.'),
+    ('parent', 'Parent', 'Parent portal logins (own children only).'),
+    ('guard', 'Gate Guard', 'Guard phone app that scans student QR ID cards.'),
+)
+ALL_ROLES = tuple(item[0] for item in ROLE_CATALOG)
+ALWAYS_ON_ROLES = ('admin',)
+ROLE_LABELS_VENDOR = {key: label for key, label, _desc in ROLE_CATALOG}
+
+
+def normalize_roles(value):
+    """Clean a roles list: known keys only, catalog order, admin always included.
+
+    ``None`` stays ``None`` (legacy key = every role on).
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = [part.strip() for part in value.split(',')]
+    wanted = {str(item).strip() for item in (value or [])} | set(ALWAYS_ON_ROLES)
+    return [key for key in ALL_ROLES if key in wanted]
+
+
 # -- plan presets (starting points the dashboard can edit) ------------------
 
 DEFAULT_PLANS = {
     'basic': {
         'label': 'Basic',
-        'features': ['attendance', 'exams', 'documents', 'timetable'],
+        'features': ['attendance', 'exams', 'documents', 'timetable', 'data_export'],
         'wa_daily': 0,
         'wa_monthly': 0,
     },
@@ -139,7 +187,7 @@ DEFAULT_PLANS = {
         'label': 'Standard',
         'features': ['expenses', 'payroll', 'admission_fees', 'attendance',
                      'exams', 'documents', 'timetable', 'parent_portal',
-                     'whatsapp', 'data_import'],
+                     'whatsapp', 'data_import', 'data_export', 'language_switch'],
         'wa_daily': 100,
         'wa_monthly': 2000,
     },

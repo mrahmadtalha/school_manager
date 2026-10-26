@@ -18,7 +18,7 @@ from `vendor_keys/license_private.key` is imported and stored **encrypted**
 |---|---|
 | New school | Schools → Add school, then **Issue key** (reason: *First key*) |
 | Renewal (payment received) | School page → reason *Renewal* → pick +1 month / +1 year → Sign & issue |
-| Switch features / WhatsApp limits | School page → tick features, set limits → reason *Change features* → validity *Keep current expiry* |
+| Switch features / roles / WhatsApp limits | School page → switch features and **user roles** on or off, set limits → reason *Change features* → validity *Keep current expiry* |
 | School changed computer | School page → new machine code → reason *Move to a new computer* |
 | Forgot username/password | Recovery → paste their request code → verify them → issue token |
 | Who needs a reminder | Home → "Needs attention" → *Reminder* copies a ready message |
@@ -26,6 +26,26 @@ from `vendor_keys/license_private.key` is imported and stored **encrypted**
 Send the key (or the ready-made message) to the school; they open
 **License** in School Manager, paste it, and press Activate. No internet is
 needed on their side.
+
+## Features and roles you can switch per school
+* **Features** (modules): expenses, payroll, financial reports, inventory & other income, admission fees, owner dashboard, attendance, exams, ID cards & certificates, timetable, parent portal, WhatsApp, school assistant, bulk import, **data export**, **Urdu / English switch** and **audit log viewer**.
+* **Roles**: teacher, accountant, principal/owner and parent can each be switched off. A switched-off role cannot be created and its existing users are signed out with a message. **Administrator is always on** so a school can never be locked out.
+* **Audit log**: the log is always *recorded* on every school; the *Audit log viewer* switch only decides whether the school can open and export it. Switching the viewer off hides it but keeps the history for your own inspection.
+* Keys issued before these switches existed keep everything on (nothing is taken away).
+
+## Inspection key (view-only, short)
+School page → **Inspection key** → choose 6 / 24 / 48 / 72 hours → **Issue** → send the key.
+The school pastes it on *License* like a normal key. While it is valid: every module and the
+audit log can be opened, **nothing can be changed**, and an *Inspection mode* banner shows.
+It ends by itself, works only on that PC and with that school's license, and never replaces the
+real license (the real key keeps running underneath). Command line: `python tools/license_admin.py inspection-key --machine ... --licensee ... --hours 24`.
+
+## Notice and reminders
+* **Notice** (Issue key form): a short message (max 300 characters, e.g. *Renewal due on 25 Oct*) that
+  travels inside the key. The school's administrator sees it on every page until they close it
+  and always on the License page. Issue the next key with the box empty to clear it.
+* **Reminders** need nothing from you: the school's administrator gets a pop-up 30, 14, 7, 3 and 1 day
+  before the license ends. Schools need the NEW build to see notices, reminders and inspection keys.
 
 ## Good to know
 * Changes reach a school **only when it applies the new key** (the app is offline).

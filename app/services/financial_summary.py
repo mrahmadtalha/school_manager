@@ -285,7 +285,8 @@ def month_snapshot(month_year):
     from app.services.admission_fee import income_total as admission_income_total
     admission_fees = admission_income_total(start, end)
     from app.services import inventory_service
-    sales_revenue, sales_cogs = inventory_service.month_sales_totals(start, end)
+    stock = inventory_service.month_sales_breakdown(start, end)
+    sales_revenue, sales_cogs = stock['sales'], stock['cogs']
     purchases = inventory_service.month_purchase_totals(start, end)
     cash_in = _money(cash_in_fees + other_income + sales_revenue)
     expenses_paid = expenses_total(start, end)
@@ -308,8 +309,13 @@ def month_snapshot(month_year):
         'other_income': other_income,
         'sales': sales_revenue,
         'sales_cogs': sales_cogs,
-        'gross_profit': _money(sales_revenue - sales_cogs),
+        # Stock given inside admission packages is paid for by the admission
+        # fee: its cost is shown on its own and is NOT a loss on items sold.
+        'package_cogs': stock['package_cogs'],
+        'direct_cogs': stock['direct_cogs'],
+        'gross_profit': _money(sales_revenue - stock['direct_cogs']),
         'purchases': purchases,
+        'supplier_dues': _money(inventory_service.total_supplier_dues_paisa() / 100.0),
         'expenses': expenses_paid,
         'cash_out': cash_out,
         'salaries_paid': salaries_paid,
@@ -528,30 +534,33 @@ def _window_totals(start, end):
     sales_rows = (db.session.query(
             db.func.strftime('%Y-%m', Sale.sale_date),
             db.func.coalesce(db.func.sum(Sale.total_price_paisa), 0),
-            db.func.coalesce(db.func.sum(Sale.total_cost_paisa), 0))
-        .filter(Sale.sale_date >= start, Sale.sale_date <= end)
+            db.func.coalesce(db.func.sum(Sale.total_cost_paisa), 0),
+            db.func.coalesce(db.func.sum(db.case(
+                (Sale.source == 'admission', Sale.total_cost_paisa), else_=0)), 0))
+        .filter(Sale.sale_date >= start, Sale.sale_date <= end,
+                Sale.is_void.is_(False))
         .group_by(db.func.strftime('%Y-%m', Sale.sale_date)).all())
     sales_revenue = {key: _money(price / 100.0)
-                     for key, price, cogs in sales_rows}
+                     for key, price, cogs, package in sales_rows}
     sales_cogs = {key: _money(cogs / 100.0)
-                  for key, price, cogs in sales_rows}
+                  for key, price, cogs, package in sales_rows}
+    package_cogs = {key: _money(package / 100.0)
+                    for key, price, cogs, package in sales_rows}
 
-    purchase_rows = (db.session.query(
-            db.func.strftime('%Y-%m', Purchase.purchase_date),
-            db.func.coalesce(db.func.sum(Purchase.total_cost_paisa), 0))
-        .filter(Purchase.purchase_date >= start,
-                Purchase.purchase_date <= end)
-        .group_by(db.func.strftime('%Y-%m', Purchase.purchase_date)).all())
-    purchases = {key: _money(value / 100.0) for key, value in purchase_rows}
+    # Cash out to suppliers = paid on the purchase day + later instalments.
+    # The unpaid part stays a supplier due (see inventory_service.supplier_dues).
+    from app.services import inventory_service
+    purchases = inventory_service.purchase_payment_buckets(start, end)
 
     return {'revenue': revenue, 'expenses': expenses, 'payroll': payroll,
             'other_income': other_income, 'sales_revenue': sales_revenue,
-            'sales_cogs': sales_cogs, 'purchases': purchases}
+            'sales_cogs': sales_cogs, 'package_cogs': package_cogs,
+            'purchases': purchases}
 
 
 def period_snapshot(period, revenue, expenses, payroll, outstanding=None,
                     other_income=None, sales=None, sales_cogs=None,
-                    purchases=None):
+                    purchases=None, package_cogs=None):
     """Turn pre-aggregated month buckets into one period's figures.
 
     ``net`` is the CASH basis: Cash In (fee collections, other income and
@@ -571,6 +580,7 @@ def period_snapshot(period, revenue, expenses, payroll, outstanding=None,
                                     for m in months))
     sales_total = _money(sum((sales or {}).get(m, 0.0) for m in months))
     cogs_total = _money(sum((sales_cogs or {}).get(m, 0.0) for m in months))
+    package_total = _money(sum((package_cogs or {}).get(m, 0.0) for m in months))
     purchases_total = _money(sum((purchases or {}).get(m, 0.0) for m in months))
     cash_in_total = _money(revenue_total + other_income_total + sales_total)
     expenses_sum = _money(sum(expenses.get(m, 0.0) for m in months))
@@ -609,7 +619,8 @@ def period_snapshot(period, revenue, expenses, payroll, outstanding=None,
         'other_income': other_income_total,
         'sales': sales_total,
         'sales_cogs': cogs_total,
-        'gross_profit': _money(sales_total - cogs_total),
+        'package_cogs': package_total,
+        'gross_profit': _money(sales_total - (cogs_total - package_total)),
         'purchases': purchases_total,
         'expenses': expenses_sum,
         'payroll': payroll_total,
@@ -647,7 +658,8 @@ def period_snapshots(period_keys):
                             other_income=buckets['other_income'],
                             sales=buckets['sales_revenue'],
                             sales_cogs=buckets['sales_cogs'],
-                            purchases=buckets['purchases'])
+                            purchases=buckets['purchases'],
+                            package_cogs=buckets['package_cogs'])
             for period in periods]
 
 
@@ -1141,14 +1153,16 @@ def build_comparison(title, current_desc, previous_desc):
                               other_income=window['other_income'],
                               sales=window['sales_revenue'],
                               sales_cogs=window['sales_cogs'],
-                              purchases=window['purchases'])
+                              purchases=window['purchases'],
+                              package_cogs=window['package_cogs'])
     previous = period_snapshot(previous_desc, window['revenue'], window['expenses'],
                                window['payroll'],
                                outstanding=buckets['outstanding'],
                                other_income=window['other_income'],
                                sales=window['sales_revenue'],
                                sales_cogs=window['sales_cogs'],
-                               purchases=window['purchases'])
+                               purchases=window['purchases'],
+                               package_cogs=window['package_cogs'])
     for snap, desc in ((current, current_desc), (previous, previous_desc)):
         collected, arrears = _period_fee_collection(desc)
         snap['fee_collection'] = collected

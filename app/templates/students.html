@@ -11,32 +11,142 @@
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
 </div>
 {% endif %}
+{% if missing_admission_count %}
+<div class="alert alert-info d-flex align-items-center flex-wrap gap-2 py-2">
+    <span><i class="fas fa-hashtag me-1"></i><b>{{ missing_admission_count }}</b> students have no Admission No.</span>
+    <form method="post" action="{{ url_for('main.assign_missing_admission_numbers') }}" class="ms-auto"
+          data-confirm="Give an Admission No to {{ missing_admission_count }} students who have none, using the pattern saved in Settings (oldest admission first)? Numbers already given are not changed.">
+        <input type="hidden" name="return_to" value="students">
+        <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-wand-magic-sparkles me-1"></i> Give numbers to all</button>
+    </form>
+</div>
+{% endif %}
 <style>
-    .student-name-link { transition: color 0.15s ease-in-out; }
-    .student-name-link:hover { color: #1d4ed8 !important; text-decoration: underline !important; }
+    /* ------------------------------------------------------------------
+       Student directory — "register book" look.
+       Colours come from the school's brand (--bs-primary-rgb), so every
+       school sees its own accent.  Scoped under .sd- so nothing leaks.
+       ------------------------------------------------------------------ */
+    .sd-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0.25rem 0 1.1rem; }
+    .sd-head h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; margin: 0; line-height: 1.1; }
+    .sd-head p { margin: 0.35rem 0 0; color: #64748b; font-size: 0.92rem; }
+    .sd-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .sd-tools .btn { box-shadow: none; }
+    .sd-tools .btn-outline-secondary { background: #fff; }
+    .sd-tools .dropdown-menu { border-radius: 14px; border-color: #e2e8f0; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12); padding: 0.4rem; }
+    .sd-tools .dropdown-item { border-radius: 9px; font-size: 0.9rem; padding: 0.45rem 0.7rem; }
+
+    /* summary ribbon: one band, not four cards */
+    .sd-ribbon { display: grid; grid-template-columns: minmax(8rem, 0.7fr) minmax(14rem, 1.6fr) minmax(12rem, 1fr); background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .sd-stat { padding: 0.85rem 1.2rem; display: flex; flex-direction: column; justify-content: center; gap: 0.2rem; min-width: 0; color: inherit; text-decoration: none; }
+    .sd-stat + .sd-stat { border-left: 1px solid #eef2f7; }
+    .sd-num { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .sd-lab { font-size: 0.78rem; color: #64748b; }
+    .sd-bar { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: #eef2f7; margin: 0.35rem 0 0.3rem; }
+    .sd-bar i { display: block; height: 100%; transform-origin: left center; animation: sd-grow 0.7s cubic-bezier(.2, .7, .2, 1) both; }
+    .sd-bar .m { background: rgb(var(--bs-primary-rgb)); }
+    .sd-bar .f { background: #0d9488; }
+    .sd-bar .o { background: #94a3b8; }
+    .sd-legend { display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; font-size: 0.8rem; color: #475569; font-variant-numeric: tabular-nums; }
+    .sd-legend b { color: #0f172a; }
+    .sd-hint { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid rgb(var(--bs-primary-rgb)); border-radius: 14px; color: #475569; font-size: 0.88rem; }
+    .sd-hint b { color: #0f172a; }
+    .sd-legend .dot { display: inline-block; width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; margin-right: 0.3rem; vertical-align: middle; box-shadow: none; }
+    .sd-dues { border-left: 4px solid #f59e0b !important; background: #fffbf3; transition: background 0.15s ease; }
+    .sd-dues:hover { background: #fff4de; color: inherit; }
+    .sd-dues.is-on { background: #fde9bd; }
+    .sd-dues .sd-num { color: #92400e; }
+    .sd-dues .sd-lab b { color: #92400e; }
+    @keyframes sd-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+    /* filter bar */
+    .sd-filters { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.7rem; margin-bottom: 0.9rem; }
+    .sd-filters form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
+    .sd-search { position: relative; flex: 1 1 18rem; min-width: 14rem; }
+    .sd-search i { position: absolute; left: 0.95rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+    .sd-search input { padding-left: 2.5rem; height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background: #f8fafc; }
+    .sd-search input:focus { background: #fff; }
+    .sd-filters .form-select { height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background-color: #f8fafc; width: auto; min-width: 9.5rem; max-width: 14rem; }
+    .sd-seg { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; }
+    .sd-seg input { position: absolute; opacity: 0; pointer-events: none; }
+    .sd-seg label { margin: 0; padding: 0.4rem 0.8rem; border-radius: 9px; font-size: 0.85rem; font-weight: 600; color: #475569; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; }
+    .sd-seg input:checked + label { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+    .sd-seg input:focus-visible + label { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 1px; }
+    .sd-toggle { margin: 0; height: 2.7rem; display: inline-flex; align-items: center; gap: 0.45rem; padding: 0 0.95rem; border-radius: 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-size: 0.88rem; font-weight: 600; color: #475569; cursor: pointer; transition: all 0.15s ease; }
+    .btn-check:checked + .sd-toggle { background: #fde9bd; border-color: #f59e0b; color: #92400e; }
+    .btn-check:focus-visible + .sd-toggle { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 2px; }
+    .sd-filters .btn { box-shadow: none; height: 2.7rem; padding-top: 0; padding-bottom: 0; display: inline-flex; align-items: center; }
+
+    /* directory table */
+    .sd-panel { border: 1px solid #e2e8f0 !important; box-shadow: none !important; }
+    .sd-panel:hover { transform: none; }
+    .sd-count { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.7rem 1.1rem; border-bottom: 1px solid #eef2f7; font-size: 0.86rem; color: #64748b; }
+    .sd-count strong { color: #0f172a; }
+    .sd-panel.table-panel .table thead th { background: #f8fafc; color: #64748b; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.01em; text-transform: none; border-bottom: 1px solid #e2e8f0; }
+    .sd-panel.table-panel .table > :not(caption) > * > * { padding: 0.6rem 0.75rem; border-bottom-color: #f1f5f9; }
+    .sd-panel .student-row { cursor: pointer; }
+    .sd-panel .student-row:hover > td:first-child { box-shadow: inset 3px 0 0 rgb(var(--bs-primary-rgb)), inset 0 0 0 9999px var(--bs-table-bg-state, transparent); }
+    .sd-panel .student-row:hover > * { --bs-table-bg-state: rgba(var(--bs-primary-rgb), 0.045); }
+    .sd-roll { display: inline-block; min-width: 2.1rem; text-align: center; padding: 0.12rem 0.5rem; border-radius: 8px; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); font-weight: 800; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+    .sd-name-link { color: #0f172a; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem; }
+    .sd-name-link::after { content: "\203A"; font-size: 1.2rem; line-height: 1; opacity: 0; transform: translateX(-4px); transition: opacity 0.15s ease, transform 0.15s ease; color: rgb(var(--bs-primary-rgb)); }
+    .student-row:hover .sd-name-link, .sd-name-link:focus-visible { color: rgb(var(--bs-primary-rgb)); }
+    .student-row:hover .sd-name-link::after, .sd-name-link:focus-visible::after { opacity: 1; transform: none; }
+    html[lang="ur"] .sd-name-link::after { content: "\2039"; }
+    .sd-chip { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 99px; background: #f1f5f9; color: #334155; font-size: 0.78rem; font-weight: 600; border: 1px solid #e2e8f0; white-space: nowrap; }
+    .sd-chip-muted { background: #e2e8f0; color: #475569; margin-left: 0.4rem; }
+    .sd-chip-ok { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+    .sd-chip-due { background: #fff4de; border-color: #fcd34d; color: #92400e; }
+
+    /* the two row actions */
+    .sd-acts { display: inline-flex; gap: 0.3rem; }
+    .sd-act { width: 2.1rem; height: 2.1rem; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid #e2e8f0; background: #fff; color: #475569; font-size: 0.85rem; cursor: pointer; text-decoration: none; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+    .sd-act:hover { background: rgb(var(--bs-primary-rgb)); border-color: rgb(var(--bs-primary-rgb)); color: #fff; }
+    .sd-act.sd-act-archive:hover { background: #b45309; border-color: #b45309; }
+
+    .sd-empty { text-align: center; padding: 3.5rem 1rem; }
+    .sd-empty .sd-empty-icon { width: 76px; height: 76px; border-radius: 24px; margin: 0 auto 1rem; display: flex; align-items: center; justify-content: center; font-size: 1.9rem; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); }
+    .sd-empty p { font-weight: 700; color: #334155; margin-bottom: 1rem; }
+
+    @media (max-width: 991.98px) {
+        .sd-ribbon { grid-template-columns: 1fr 1fr; }
+        .sd-ribbon .sd-stat:nth-child(3) { grid-column: 1 / -1; border-left: 4px solid #f59e0b; border-top: 1px solid #eef2f7; }
+    }
+    @media (max-width: 575.98px) {
+        .sd-ribbon { grid-template-columns: 1fr; }
+        .sd-stat + .sd-stat { border-left: 0; border-top: 1px solid #eef2f7; }
+        .sd-ribbon .sd-stat:nth-child(3) { border-left: 4px solid #f59e0b; }
+        .sd-search { flex-basis: 100%; }
+        .sd-seg { width: 100%; }
+        .sd-seg label { flex: 1; text-align: center; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .sd-bar i { animation: none; }
+        .sd-name-link::after, .sd-act, .sd-seg label, .sd-toggle { transition: none; }
+    }
 </style>
 
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+{% set export_args = {'search': search or None,
+                     'class_id': selected_class or None,
+                     'section_id': selected_section or None,
+                     'gender': selected_gender or None,
+                     'status': selected_status or None,
+                     'has_dues': '1' if has_dues else None} %}
+{% set export_urls = {
+    'pdf': {'view': url_for('main.export_students_pdf', **export_args),
+            'all': url_for('main.export_students_pdf', cols='all', **export_args)},
+    'excel': {'view': url_for('main.export_students_excel', **export_args),
+              'all': url_for('main.export_students_excel', cols='all', **export_args)},
+    'csv': {'view': url_for('main.export_students_csv', **export_args),
+            'all': url_for('main.export_students_csv', cols='all', **export_args)},
+} %}
+
+<div class="sd-head">
     <div>
-        <p class="eyebrow mb-2">Student directory</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-user-graduate text-primary me-2"></i>Student Management</h1>
-        <p class="text-muted small mb-0">Track admissions, fees, and student records from one place.</p>
+        <h1>Student Management</h1>
+        <p>Track admissions, fees, and student records from one place.</p>
     </div>
-    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
-        {% set export_args = {'search': search or None,
-                             'class_id': selected_class or None,
-                             'section_id': selected_section or None,
-                             'gender': selected_gender or None,
-                             'status': selected_status or None,
-                             'has_dues': '1' if has_dues else None} %}
-        {% set export_urls = {
-            'pdf': {'view': url_for('main.export_students_pdf', **export_args),
-                    'all': url_for('main.export_students_pdf', cols='all', **export_args)},
-            'excel': {'view': url_for('main.export_students_excel', **export_args),
-                      'all': url_for('main.export_students_excel', cols='all', **export_args)},
-            'csv': {'view': url_for('main.export_students_csv', **export_args),
-                    'all': url_for('main.export_students_csv', cols='all', **export_args)},
-        } %}
+    <div class="sd-tools btn-toolbar">
         <div class="dropdown">
             <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
                 <i class="fas fa-download me-1"></i> Export Data
@@ -56,19 +166,20 @@
         {% with table_id = 'studentTable', export_urls = export_urls %}
         {% include '_column_picker.html' %}
         {% endwith %}
-        {% if has_feature('data_import') %}
-        <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#importModal">
-            <i class="fas fa-file-upload me-1"></i> Import Excel
-        </button>
-        {% endif %}
-        <a href="{{ url_for('main.archived_students_list') }}" class="btn btn-outline-warning btn-sm">
-            <i class="fas fa-archive me-1"></i> Archive Bin
-        </a>
-        {% if current_user.is_admin %}
-        <a href="{{ url_for('main.promotions_page') }}" class="btn btn-outline-primary btn-sm">
-            <i class="fas fa-arrow-up-right-dots me-1"></i> Promote Students
-        </a>
-        {% endif %}
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                <i class="fas fa-sliders me-1"></i> Manage
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                {% if has_feature('data_import') %}
+                <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#importModal"><i class="fas fa-file-upload text-success me-2"></i>Import Excel</button></li>
+                {% endif %}
+                <li><a class="dropdown-item" href="{{ url_for('main.archived_students_list') }}"><i class="fas fa-archive text-warning me-2"></i>Archive Bin</a></li>
+                {% if current_user.is_admin %}
+                <li><a class="dropdown-item" href="{{ url_for('main.promotions_page') }}"><i class="fas fa-arrow-up-right-dots text-primary me-2"></i>Promote Students</a></li>
+                {% endif %}
+            </ul>
+        </div>
         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addStudentModal">
             <i class="fas fa-plus me-1"></i> Add Student
         </button>
@@ -76,7 +187,7 @@
 </div>
 
 {# Plain-language guidance, following the pattern used on the Payroll page. #}
-<div class="alert alert-info py-2 px-3 no-print" role="status">
+<div class="alert alert-info sd-hint py-2 px-3 no-print" role="status">
     <b><i class="fas fa-circle-info me-1"></i>What to do now:</b>
     {% if students %}
     Use the search and filters to find a student, click a name to open their full report, or
@@ -87,113 +198,121 @@
     <b>Import Excel</b> to add a whole class at once from a spreadsheet.
     {% endif %}
 </div>
-<!-- Search & Filter Bar -->
-<div class="card shadow-sm mb-4 border-0 analytics-panel">
-    <div class="card-body py-3">
-        <form method="GET" action="{{ url_for('main.students_list') }}" id="filterForm" class="row g-2 align-items-end">
 
-            <!-- Live search box -->
-            <div class="col-md-4">
-                <label class="form-label fw-bold small text-muted mb-1"><i class="fas fa-search me-1"></i>Search</label>
-                <input type="text" class="form-control" name="search" id="searchInput"
-                       value="{{ search }}"
-                       placeholder="Name, roll no, father name, phone…"
-                       autocomplete="off">
-            </div>
-
-            <!-- Class filter -->
-            <div class="col-md-3">
-                <label class="form-label fw-bold small text-muted mb-1"><i class="fas fa-chalkboard me-1"></i>Class</label>
-                <select class="form-select" name="class_id" id="classSelect" onchange="this.form.submit()">
-                    <option value="">— All Classes —</option>
-                    {% for c in classes %}
-                    <option value="{{ c.id }}" {% if selected_class == c.id %}selected{% endif %}>{{ c.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <!-- Section filter (only shown when a class is selected) -->
-            {% if selected_class and sections %}
-            <div class="col-md-2">
-                <label class="form-label fw-bold small text-muted mb-1"><i class="fas fa-layer-group me-1"></i>Section</label>
-                <select class="form-select" name="section_id" onchange="this.form.submit()">
-                    <option value="">— All Sections —</option>
-                    {% for sec in sections %}
-                    <option value="{{ sec.id }}" {% if selected_section == sec.id %}selected{% endif %}>{{ sec.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            {% endif %}
-
-            <div class="col-md-2">
-                <label class="form-label fw-bold small text-muted mb-1"><i class="fas fa-venus-mars me-1"></i>Gender</label>
-                <select class="form-select" name="gender" onchange="this.form.submit()">
-                    <option value="">All Genders</option>
-                    {% for g in ('Male', 'Female', 'Other') %}
-                    <option value="{{ g }}" {% if selected_gender == g %}selected{% endif %}>{{ g }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <div class="col-md-2">
-                <label class="form-label fw-bold small text-muted mb-1"><i class="fas fa-circle-half-stroke me-1"></i>Status</label>
-                <select class="form-select" name="status" onchange="this.form.submit()">
-                    <option value="">Active students</option>
-                    <option value="all" {% if selected_status == 'all' %}selected{% endif %}>All students</option>
-                    <option value="enrolled" {% if selected_status == 'enrolled' %}selected{% endif %}>Enrolled</option>
-                    <option value="slc_issued" {% if selected_status == 'slc_issued' %}selected{% endif %}>SLC Issued</option>
-                    <option value="graduated" {% if selected_status == 'graduated' %}selected{% endif %}>Graduated</option>
-                    <option value="struck_off" {% if selected_status == 'struck_off' %}selected{% endif %}>Struck Off</option>
-                </select>
-            </div>
-
-            <div class="col-md-2">
-                <label class="form-label fw-bold small text-muted mb-1"><i class="fas fa-coins me-1"></i>Dues</label>
-                <div class="form-check form-switch mt-2">
-                    <input class="form-check-input" type="checkbox" name="has_dues" value="1" id="hasDuesToggle"
-                           {% if has_dues %}checked{% endif %} onchange="this.form.submit()">
-                    <label class="form-check-label small" for="hasDuesToggle">Has dues</label>
-                </div>
-            </div>
-
-            <div class="col-md-2">
-                <button type="submit" class="btn btn-dark w-100">
-                    <i class="fas fa-filter me-1"></i> Filter
-                </button>
-            </div>
-
-            {% if search or selected_class or selected_section or selected_gender or selected_status or has_dues %}
-            <div class="col-md-1">
-                <a href="{{ url_for('main.students_list') }}" class="btn btn-outline-secondary w-100" title="Clear filters">
-                    <i class="fas fa-times"></i>
-                </a>
-            </div>
-            {% endif %}
-        </form>
+{% set n_total = students | length %}
+{% if n_total %}
+{% set n_male = students | selectattr('gender', 'equalto', 'Male') | list | length %}
+{% set n_female = students | selectattr('gender', 'equalto', 'Female') | list | length %}
+{% set n_other = n_total - n_male - n_female %}
+{% set due_values = (dues_map or {}).values() | select('gt', 0) | list %}
+{% set dues_args = {'search': search or None, 'class_id': selected_class or None,
+                    'section_id': selected_section or None, 'gender': selected_gender or None,
+                    'status': selected_status or None,
+                    'has_dues': None if has_dues else '1'} %}
+<section class="sd-ribbon no-print" aria-label="Summary">
+    <div class="sd-stat">
+        <span class="sd-num">{{ n_total }}</span>
+        <span class="sd-lab">On this list</span>
     </div>
-</div>
-
-<!-- Result count -->
-<div class="d-flex justify-content-between align-items-center mb-2 px-1">
-    <span class="text-muted small">
-        Showing <strong id="visibleCount">{{ students | length }}</strong> student{% if students | length != 1 %}s{% endif %}
-        {% if search %} matching "<strong>{{ search }}</strong>"{% endif %}
-        {% if selected_class %}in <strong>{{ classes | selectattr('id','eq',selected_class) | map(attribute='name') | first }}</strong>{% endif %}
-    </span>
-    {% if search %}
-    <a href="{{ url_for('main.students_list', class_id=selected_class or '', section_id=selected_section or '') }}" class="btn btn-sm btn-outline-secondary">
-        <i class="fas fa-times me-1"></i> Clear Search
+    <div class="sd-stat">
+        <div class="sd-bar" role="img" aria-label="Male {{ n_male }}, Female {{ n_female }}, Other {{ n_other }}">
+            {% if n_male %}<i class="m" style="width: {{ (n_male * 100 / n_total) | round(1) }}%"></i>{% endif %}
+            {% if n_female %}<i class="f" style="width: {{ (n_female * 100 / n_total) | round(1) }}%"></i>{% endif %}
+            {% if n_other %}<i class="o" style="width: {{ (n_other * 100 / n_total) | round(1) }}%"></i>{% endif %}
+        </div>
+        <div class="sd-legend">
+            <span><span class="dot" style="background: rgb(var(--bs-primary-rgb))"></span>Boys <b>{{ n_male }}</b></span>
+            <span><span class="dot" style="background: #0d9488"></span>Girls <b>{{ n_female }}</b></span>
+            {% if n_other %}<span><span class="dot" style="background: #94a3b8"></span>Other <b>{{ n_other }}</b></span>{% endif %}
+        </div>
+    </div>
+    <a class="sd-stat sd-dues{% if has_dues %} is-on{% endif %}" href="{{ url_for('main.students_list', **dues_args) }}"
+       title="{{ 'Show everyone' if has_dues else 'Show only students with dues' }}">
+        <span class="sd-num">{{ due_values | length }}</span>
+        <span class="sd-lab">With dues{% if due_values %} · Total due <b>Rs {{ '{:,.0f}'.format(due_values | sum) }}</b>{% endif %}</span>
     </a>
-    {% endif %}
+</section>
+{% endif %}
+
+<!-- Search & Filter Bar -->
+<div class="sd-filters">
+    <form method="GET" action="{{ url_for('main.students_list') }}" id="filterForm">
+        <div class="sd-search">
+            <i class="fas fa-search"></i>
+            <input type="text" class="form-control" name="search" id="searchInput"
+                   value="{{ search }}" aria-label="Search"
+                   placeholder="Name, roll no, father name, phone…"
+                   autocomplete="off">
+        </div>
+
+        <select class="form-select" name="class_id" id="classSelect" aria-label="Class" onchange="this.form.submit()">
+            <option value="">— All Classes —</option>
+            {% for c in classes %}
+            <option value="{{ c.id }}" {% if selected_class == c.id %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
+
+        {% if selected_class and sections %}
+        <select class="form-select" name="section_id" aria-label="Section" onchange="this.form.submit()">
+            <option value="">— All Sections —</option>
+            {% for sec in sections %}
+            <option value="{{ sec.id }}" {% if selected_section == sec.id %}selected{% endif %}>{{ sec.name }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
+
+        <div class="sd-seg" role="group" aria-label="Gender">
+            {% for val, label in (('', 'All'), ('Male', 'Male'), ('Female', 'Female'), ('Other', 'Other')) %}
+            <input type="radio" name="gender" id="genderOpt{{ loop.index }}" value="{{ val }}"
+                   {% if (selected_gender or '') == val %}checked{% endif %} onchange="this.form.submit()">
+            <label for="genderOpt{{ loop.index }}">{{ label }}</label>
+            {% endfor %}
+        </div>
+
+        <select class="form-select" name="status" aria-label="Status" onchange="this.form.submit()">
+            <option value="">Active students</option>
+            <option value="all" {% if selected_status == 'all' %}selected{% endif %}>All students</option>
+            <option value="enrolled" {% if selected_status == 'enrolled' %}selected{% endif %}>Enrolled</option>
+            <option value="slc_issued" {% if selected_status == 'slc_issued' %}selected{% endif %}>SLC Issued</option>
+            <option value="graduated" {% if selected_status == 'graduated' %}selected{% endif %}>Graduated</option>
+            <option value="struck_off" {% if selected_status == 'struck_off' %}selected{% endif %}>Struck Off</option>
+        </select>
+
+        <input class="btn-check" type="checkbox" name="has_dues" value="1" id="hasDuesToggle"
+               {% if has_dues %}checked{% endif %} onchange="this.form.submit()">
+        <label class="sd-toggle" for="hasDuesToggle"><i class="fas fa-coins"></i>Has dues</label>
+
+        <button type="submit" class="btn btn-dark">
+            <i class="fas fa-filter me-1"></i> Filter
+        </button>
+
+        {% if search or selected_class or selected_section or selected_gender or selected_status or has_dues %}
+        <a href="{{ url_for('main.students_list') }}" class="btn btn-outline-secondary" title="Clear filters" aria-label="Clear filters">
+            <i class="fas fa-times"></i>
+        </a>
+        {% endif %}
+    </form>
 </div>
 
 <!-- Students Table -->
-<div class="card shadow-sm border-0 table-panel">
+<div class="card border-0 table-panel sd-panel">
+    <div class="sd-count">
+        <span>
+            Showing <strong id="visibleCount">{{ students | length }}</strong> student{% if students | length != 1 %}s{% endif %}
+            {% if search %} matching "<strong>{{ search }}</strong>"{% endif %}
+            {% if selected_class %}in <strong>{{ classes | selectattr('id','eq',selected_class) | map(attribute='name') | first }}</strong>{% endif %}
+        </span>
+        {% if search %}
+        <a href="{{ url_for('main.students_list', class_id=selected_class or '', section_id=selected_section or '') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-times me-1"></i> Clear Search
+        </a>
+        {% endif %}
+    </div>
     <div class="card-body p-0">
         {% if students %}
         <table class="table table-hover align-middle mb-0 datatable" id="studentTable"
                data-scroll-x="true" data-page-length="25">
-            <thead class="table-light">
+            <thead>
                 <tr>
                     {% for spec in student_field_specs %}
                     <th class="py-3 {{ column_classes(spec) }}{% if spec.key in ('photo', 'roll_number') %} ps-3{% endif %}"
@@ -205,19 +324,20 @@
             <tbody id="studentTableBody">
                 {% for student in students %}{% filter collapse_ws %}
                 <tr class="student-row"
+                    data-href="{{ url_for('main.student_detailed_report', id=student.id) }}"
                     data-name="{{ student.student_name | lower }}"
                     data-roll="{{ student.roll_number | lower }}"
                     data-father="{{ student.father_name | lower }}"
                     data-phone="{{ student.guardian_phone | lower }}">
-                    <td class="ps-3" data-col="photo">{{ avatar('student', student, 36) }}</td>
-                    <td class="font-monospace fw-bold text-primary" data-col="roll_number">{{ student.roll_number }}</td>
+                    <td class="ps-3" data-col="photo">{{ avatar('student', student, 38) }}</td>
+                    <td data-col="roll_number"><span class="sd-roll">{{ student.roll_number }}</span></td>
                     <td class="fw-bold" data-col="student_name">
                         <a href="{{ url_for('main.student_detailed_report', id=student.id) }}"
-                           class="text-decoration-none text-dark student-name-link">{{ student.student_name }}</a>
-                        {% if not student.is_active %}<span class="badge bg-secondary ms-1">Archived</span>{% endif %}
+                           class="sd-name-link student-name-link" title="Open full report">{{ student.student_name }}</a>
+                        {% if not student.is_active %}<span class="sd-chip sd-chip-muted">Archived</span>{% endif %}
                     </td>
                     <td class="text-muted" data-col="father_name">{{ student.father_name }}</td>
-                    <td data-col="class"><span class="badge bg-secondary">{{ student.class_info.name if student.class_info else 'N/A' }}</span></td>
+                    <td data-col="class"><span class="sd-chip">{{ student.class_info.name if student.class_info else 'N/A' }}</span></td>
                     {# Every remaining field is rendered from the same spec list as the
                        header, so column order always matches. #}
                     {% for spec in student_field_specs %}
@@ -234,19 +354,19 @@
                         {% elif spec.key == 'dues' %}
                             {% set dues = (dues_map or {}).get(student.id, 0) %}
                             {% if dues and dues > 0 %}
-                            <span class="badge bg-danger-subtle text-danger-emphasis border" title="Pending dues (live from fee ledger)">Rs {{ '{:,.0f}'.format(dues) }}</span>
+                            <span class="sd-chip sd-chip-due" title="Pending dues (live from fee ledger)">Rs {{ '{:,.0f}'.format(dues) }}</span>
                             {% else %}
                             <span class="text-muted small">—</span>
                             {% endif %}
                         {% elif spec.key == 'status' %}
-                            <span class="badge bg-light text-dark border">{{ student.status }}</span>
+                            <span class="sd-chip">{{ student.status }}</span>
                         {% elif spec.key == 'guardian_phone' %}
                             <span class="text-muted small">{{ student.guardian_phone }}</span>
                         {% elif spec.key == 'is_active' %}
                             {% if student.is_active %}
-                            <span class="badge bg-success-subtle text-success-emphasis border">Active</span>
+                            <span class="sd-chip sd-chip-ok">Active</span>
                             {% else %}
-                            <span class="badge bg-secondary">Archived</span>
+                            <span class="sd-chip sd-chip-muted">Archived</span>
                             {% endif %}
                         {% else %}
                             <span class="{{ 'col-inner' if spec.truncate else '' }}">{{ cell_text }}</span>
@@ -255,39 +375,33 @@
                     {% endif %}
                     {% endfor %}
                     <td class="text-end pe-3 {{ actions_col_class }}" data-col="actions">
-                        <a class="btn btn-sm btn-outline-secondary me-1" href="{{ url_for('main.export_student_id_cards', student_id=student.id) }}" title="Download ID card">
-                            <i class="fas fa-id-card"></i>
-                        </a>
-                        <a class="btn btn-sm btn-outline-dark me-1" href="{{ url_for('main.documents_hub', student_id=student.id, cert_type='bonafide') }}" title="Issue certificate">
-                            <i class="fas fa-certificate"></i>
-                        </a>
-                        <a class="btn btn-sm btn-outline-info me-1" href="{{ url_for('main.student_detailed_report', id=student.id) }}" title="View detailed report">
-                            <i class="fas fa-chart-line"></i>
-                        </a>
-                        {% if admission_manage and (admission_enabled or row_extras.admission_map.get(student.id)) %}
-                        <a class="btn btn-sm btn-outline-warning me-1" href="{{ url_for('main.admission_student', student_id=student.id) }}" title="Admission fee" aria-label="Admission fee">
-                            <i class="fas fa-door-open"></i>
-                        </a>
-                        {% endif %}
-                        <button type="button" class="btn btn-sm btn-outline-primary me-1"
-                                data-student-edit="{{ student.id }}" title="Edit" aria-label="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        {% if student.is_active %}
-                        <button type="button" class="btn btn-sm btn-outline-danger"
-                                data-student-archive="{{ student.id }}" title="Archive / Status Change" aria-label="Archive / Status Change">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                        {% endif %}
+                        <span class="sd-acts">
+                            <button type="button" class="sd-act"
+                                    data-student-edit="{{ student.id }}" title="Edit" aria-label="Edit">
+                                <i class="fas fa-pen"></i>
+                            </button>
+                            {% if admission_enabled and admission_manage %}
+                            <a class="sd-act" href="{{ url_for('main.admission_student', student_id=student.id) }}"
+                               title="Admission fee" aria-label="Admission fee">
+                                <i class="fas fa-receipt"></i>
+                            </a>
+                            {% endif %}
+                            {% if student.is_active %}
+                            <button type="button" class="sd-act sd-act-archive"
+                                    data-student-archive="{{ student.id }}" title="Archive / Status Change" aria-label="Archive / Status Change">
+                                <i class="fas fa-box-archive"></i>
+                            </button>
+                            {% endif %}
+                        </span>
                     </td>
                 </tr>
                 {% endfilter %}{% endfor %}
             </tbody>
         </table>
         {% else %}
-        <div class="text-center py-5">
-            <i class="fas fa-search fa-3x text-muted mb-3"></i>
-            <p class="text-muted fw-bold">No students found{% if search %} for "{{ search }}"{% endif %}.</p>
+        <div class="sd-empty">
+            <div class="sd-empty-icon"><i class="fas fa-user-graduate"></i></div>
+            <p>No students found{% if search %} for "{{ search }}"{% endif %}.</p>
             {% if search or selected_class %}
             <a href="{{ url_for('main.students_list') }}" class="btn btn-outline-secondary btn-sm">Clear Filters</a>
             {% endif %}
@@ -295,6 +409,17 @@
         {% endif %}
     </div>
 </div>
+
+<script>
+// A whole row opens the student's report; buttons and links keep their own job.
+document.addEventListener('click', function (event) {
+    var row = event.target.closest('tr.student-row[data-href]');
+    if (!row || event.target.closest('a, button, input, select, label, .dropdown-menu')) return;
+    var picked = window.getSelection ? String(window.getSelection()) : '';
+    if (picked) return;
+    window.location.href = row.getAttribute('data-href');
+});
+</script>
 
 <!-- Add Student Modal -->
 {# ---- Shared Edit / Archive modals --------------------------------------
@@ -411,22 +536,20 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Admission No</label>
-                            {% if auto_admission_number %}
-                            <input type="text" class="form-control bg-light" name="admission_number" maxlength="40" value=""
-                                   readonly placeholder="Auto: {{ next_admission_number }}">
-                            <div class="form-text">Given automatically when you save.</div>
-                            {% else %}
-                            <input type="text" class="form-control" name="admission_number" maxlength="40" value="">
-                            {% endif %}
+                            <input type="text" class="form-control bg-light fw-bold" name="admission_number" maxlength="40" value=""
+                                   readonly tabindex="-1" data-adm-auto="{{ 1 if auto_admission_number else 0 }}"
+                                   data-adm-next="{{ next_admission_number }}">
+                            <div class="form-text" data-adm-hint>Cannot be edited.</div>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Admission Date</label>
                             <input type="date" class="form-control" name="admission_date" value="">
                         </div>
-                    <div class="col-12"><h6 class="border-bottom pb-2 mb-0 mt-2"><i class="fas fa-list-check me-2 text-success"></i>Custom Fields</h6></div>
+                    {% if student_custom_fields %}<div class="col-12"><h6 class="border-bottom pb-2 mb-0 mt-2"><i class="fas fa-list-check me-2 text-success"></i>Custom Fields</h6></div>
                     <div class="col-12">
                         {{ render_custom_fields(student_custom_fields, {}) }}
                     </div>
+                    {% endif %}
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -558,8 +681,16 @@
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label fw-bold small text-muted">Admission No <span class="text-muted">(optional)</span></label>
-                            <input type="text" class="form-control" name="admission_number" maxlength="40">
+                            <label class="form-label fw-bold small text-muted">Admission No</label>
+                            {% if auto_admission_number %}
+                            <input type="text" class="form-control bg-light fw-bold" name="admission_number" maxlength="40"
+                                   value="{{ next_admission_number }}" readonly tabindex="-1">
+                            <div class="form-text">Given automatically when you save. Cannot be edited.</div>
+                            {% else %}
+                            <input type="text" class="form-control bg-light" name="admission_number" maxlength="40"
+                                   value="" readonly tabindex="-1" placeholder="Automatic numbering is off">
+                            <div class="form-text">Turn on Automatic Admission No in Settings to number new students.</div>
+                            {% endif %}
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-bold small text-muted">Admission Date <span class="text-muted">(optional)</span></label>
@@ -620,25 +751,29 @@
                             <input type="text" class="form-control" name="admission_note" maxlength="200"
                                    placeholder="e.g. sibling of a current student">
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold small text-muted">Books (PKR)</label>
-                            <input type="number" step="0.01" min="0" class="form-control" name="books_fee"
-                                   data-adm="books" placeholder="Filled from the class">
-                            <div class="form-text">Filled from the class; you can change it. 0 = no books.</div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold small text-muted">Book sets</label>
+                            <input type="number" step="1" min="0" max="20" class="form-control" name="books_qty"
+                                   data-adm="books-qty" placeholder="1">
+                            <div class="form-text">0 = not taking books.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold small text-muted">Books amount (PKR)</label>
+                            <input type="text" class="form-control bg-light" data-adm="books" readonly>
+                            <div class="form-text">Price per set is fixed by the class.</div>
                         </div>
                         <div class="col-md-2">
                             <label class="form-label fw-bold small text-muted">Uniform sets</label>
                             <input type="number" step="1" min="0" max="20" class="form-control" name="uniform_qty"
                                    data-adm="u-qty" placeholder="1">
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-bold small text-muted">Price per set (PKR)</label>
-                            <input type="number" step="0.01" min="0" class="form-control" name="uniform_price"
-                                   data-adm="u-price" placeholder="Filled from the class">
+                        <div class="col-md-2">
+                            <label class="form-label fw-bold small text-muted">Price per set</label>
+                            <input type="text" class="form-control bg-light" data-adm="u-price" readonly>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-bold small text-muted">Uniform total (PKR)</label>
-                            <input type="text" class="form-control bg-white" data-adm="u-total" readonly>
+                        <div class="col-md-2">
+                            <label class="form-label fw-bold small text-muted">Uniform total</label>
+                            <input type="text" class="form-control bg-light" data-adm="u-total" readonly>
                         </div>
                         <div class="col-12">
                             <div class="alert alert-primary py-2 mb-0 d-flex justify-content-between align-items-center">
@@ -679,8 +814,9 @@
                         {% endif %}
                         {% endif %}
                     </div>
-                    <div class="col-12"><h6 class="border-bottom pb-2 mb-0 mt-2"><i class="fas fa-list-check me-2 text-success"></i>Custom Fields</h6></div>
+                    {% if student_custom_fields %}<div class="col-12"><h6 class="border-bottom pb-2 mb-0 mt-2"><i class="fas fa-list-check me-2 text-success"></i>Custom Fields</h6></div>
                     <div class="col-12">{{ render_custom_fields(student_custom_fields, {}) }}</div>
+                    {% endif %}
                 </div>
                 <div class="modal-footer px-4 py-3 border-0 bg-white">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -972,6 +1108,7 @@ function initAdmissionAssist(formEl) {
     var netInput = formEl.querySelector('[data-adm="net"]');
     var hint = formEl.querySelector('[data-adm="hint"]');
     var booksInput = formEl.querySelector('[data-adm="books"]');
+    var booksQty = formEl.querySelector('[data-adm="books-qty"]');
     var qtyInput = formEl.querySelector('[data-adm="u-qty"]');
     var priceInput = formEl.querySelector('[data-adm="u-price"]');
     var uTotalInput = formEl.querySelector('[data-adm="u-total"]');
@@ -1001,7 +1138,7 @@ function initAdmissionAssist(formEl) {
             var item = itemsForClass();
             var parts = [];
             if (item.admission > 0) parts.push('admission Rs. ' + fmt(item.admission));
-            if (item.books > 0) parts.push('books Rs. ' + fmt(item.books));
+            if (item.books > 0) parts.push('books Rs. ' + fmt(item.books) + ' per set');
             if (item.uniform > 0) parts.push('uniform ' + item.sets + ' x Rs. ' + fmt(item.uniform));
             teacherFee.textContent = parts.length ? parts.join(' + ') : 'none for this class';
         };
@@ -1010,7 +1147,7 @@ function initAdmissionAssist(formEl) {
     }
     if (!feeInput || !typeSelect || !valueInput || !netInput) return;
 
-    var touched = {fee: false, books: false, qty: false, price: false};
+    var touched = {fee: false, books: false, bqty: false, qty: false, price: false};
     var receivedTouched = false;
 
     function recalc() {
@@ -1026,8 +1163,12 @@ function initAdmissionAssist(formEl) {
             concession = Math.min(base, input);
         }
         var net = base > 0 ? Math.max(0, base - concession) : 0;
-        var uTotal = num(qtyInput) * num(priceInput);
-        var grand = net + num(booksInput) + uTotal;
+        var item = itemsForClass();
+        var booksAmount = item.books * num(booksQty);
+        if (booksInput) booksInput.value = booksAmount > 0 ? fmt(booksAmount) : '';
+        if (priceInput) priceInput.value = item.uniform > 0 ? fmt(item.uniform) : '';
+        var uTotal = num(qtyInput) * item.uniform;
+        var grand = net + booksAmount + uTotal;
 
         netInput.value = base > 0 ? fmt(net) : '';
         if (uTotalInput) uTotalInput.value = uTotal > 0 ? fmt(uTotal) : '';
@@ -1047,18 +1188,20 @@ function initAdmissionAssist(formEl) {
         var item = itemsForClass();
         var standard = standardForClass();
         if (!touched.fee) feeInput.value = standard ? standard : '';
-        if (booksInput && !touched.books) booksInput.value = item.books > 0 ? item.books : '';
-        if (priceInput && !touched.price) priceInput.value = item.uniform > 0 ? item.uniform : '';
+        if (booksQty) {
+            if (!touched.bqty) booksQty.value = item.books > 0 ? 1 : '';
+            booksQty.disabled = !(item.books > 0);
+        }
         if (qtyInput && !touched.qty) qtyInput.value = item.uniform > 0 ? item.sets : '';
+        if (qtyInput) qtyInput.disabled = !(item.uniform > 0);
     }
 
     if (classSelect) {
         classSelect.addEventListener('change', function () { fillFromClass(); recalc(); });
     }
     feeInput.addEventListener('input', function () { touched.fee = true; recalc(); });
-    if (booksInput) booksInput.addEventListener('input', function () { touched.books = true; recalc(); });
+    if (booksQty) booksQty.addEventListener('input', function () { touched.bqty = true; recalc(); });
     if (qtyInput) qtyInput.addEventListener('input', function () { touched.qty = true; recalc(); });
-    if (priceInput) priceInput.addEventListener('input', function () { touched.price = true; recalc(); });
     typeSelect.addEventListener('change', recalc);
     valueInput.addEventListener('input', recalc);
     if (receivedNow) receivedNow.addEventListener('change', recalc);
@@ -1186,6 +1329,21 @@ function fillEditPhoto(form, photoUrl) {
     }
 }
 
+// Admission No on the Edit form is always read-only. A student without a number shows the
+// number that will be given when saving (automatic numbering ON), or a note (OFF).
+function syncAdmissionNumber(form, value) {
+    var input = form.querySelector('[name="admission_number"]');
+    if (!input) return;
+    var hint = input.parentElement.querySelector('[data-adm-hint]');
+    var has = !!String(value || '').trim();
+    var auto = input.dataset.admAuto === '1';
+    input.value = has ? String(value) : (auto ? (input.dataset.admNext || '') : '');
+    input.placeholder = (!has && !auto) ? 'No Admission No' : '';
+    if (hint) hint.textContent = has ? 'Cannot be edited.'
+        : (auto ? 'No number yet \u2014 given automatically when you save.'
+                : 'No number \u2014 turn on Automatic Admission No in Settings.');
+}
+
 function fillEditForm(form, data) {
     form.action = data.edit_url;
     form.querySelector('[data-edit-title]').textContent = data.name;
@@ -1203,6 +1361,7 @@ function fillEditForm(form, data) {
     setFormValue(form, 'date_of_birth', data.dob);
     setFormValue(form, 'gender', data.gender);
     setFormValue(form, 'admission_number', data.admission_number);
+    syncAdmissionNumber(form, data.admission_number);
     setFormValue(form, 'admission_date', data.admission_date);
     fillSectionOptions(form, data.class_id, data.section_id);
     form.querySelectorAll('[name^="custom_"]').forEach(function (input) {

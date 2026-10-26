@@ -46,7 +46,7 @@ from app.routes import main
 from sqlalchemy import func
 from app.services.audit import log_action, serialize
 from app.services import record_view
-from app.services import admission_fee
+from app.services import admission_fee, student_stock
 from app.services import admission_numbers
 from app.services import admission_form
 from app.services.marks import ABSENT_LABEL
@@ -131,6 +131,7 @@ def _apply_student_filters(query, filters, dues_ids=None):
             db.cast(StudentModel.roll_number, db.String).ilike(like),
             StudentModel.father_name.ilike(like),
             StudentModel.guardian_phone.ilike(like),
+            StudentModel.admission_number.ilike(like),
         ))
     if filters['has_dues'] and dues_ids is not None:
         query = query.filter(StudentModel.id.in_(dues_ids or [-1]))
@@ -206,8 +207,10 @@ def _student_form_context():
         'admission_fee_by_class': admission_fee.fee_by_class(),
         'admission_items_by_class': admission_fee.items_by_class(),
         'auto_admission_number': admission_numbers.is_auto(),
-        'next_admission_number': (admission_numbers.next_number()
-                                  if admission_numbers.is_auto() else ''),
+        'next_admission_number': admission_numbers.next_number(),
+        # Administrator only: students with no Admission No can be numbered in one click.
+        'missing_admission_count': (admission_numbers.count_missing()
+                                    if getattr(current_user, 'role', '') == 'admin' else 0),
         'admission_notice': session.pop('admission_notice', None),
     }
 
@@ -390,7 +393,7 @@ def add_student():
         'gender', 'admission_number', 'admission_date', 'sponsor_type', 'sponsor_cnic', 'photo_token',
         'admission_fee', 'admission_discount_type', 'admission_discount_value',
         'admission_note', 'admission_received_now', 'admission_received_amount',
-        'admission_method', 'books_fee', 'uniform_qty', 'uniform_price')}
+        'admission_method', 'books_taken', 'books_qty', 'uniform_qty')}
     custom_field_definitions = get_custom_fields('student')
     missing_fields = missing_required_custom_fields(request.form, custom_field_definitions)
     if missing_fields:
@@ -450,7 +453,7 @@ def add_student():
             address=payload['address'],
             date_of_birth=_parse_optional_date(payload['date_of_birth']),
             gender=_parse_gender(payload['gender']),
-            admission_number=(payload['admission_number'].strip()[:40] or None),
+            admission_number=None,                 # never typed: given below from the pattern
             admission_date=_parse_optional_date(payload['admission_date']),
             monthly_fee=monthly_fee,
             class_id=class_id,
@@ -467,7 +470,7 @@ def add_student():
         except PhotoError as e:
             flash(f'Photo ignored: {e}', 'warning')
 
-        if not new_student.admission_number and admission_numbers.is_auto():
+        if admission_numbers.is_auto():          # automatic: given by the app, never typed
             new_student.admission_number = admission_numbers.next_number()
         db.session.add(new_student)
         start_enrollment(new_student, reason='enrolled', start_date=date.today(),
@@ -487,8 +490,15 @@ def add_student():
                           'student': new_student.student_name}
             else:
                 pending = admission_fee.summary(new_student)['balance']
+        # Inventory (Phase 3): books / uniform taken at admission come out of
+        # stock by themselves (price 0 - the money is in the admission fee).
+        stock_messages = student_stock.sync_student_stock(
+            new_student, actor=current_user, new_admission=True,
+            issue_date=new_student.admission_date or date.today())
         db.session.commit()
         flash('Student added successfully!', 'success')
+        for category, text in stock_messages:
+            flash(text, category)
         if notice:
             session['admission_notice'] = notice
         elif admission and pending:
@@ -570,7 +580,10 @@ def edit_student(id):
         student.address = payload['address']
         student.date_of_birth = _parse_optional_date(payload['date_of_birth'])
         student.gender = _parse_gender(payload['gender'])
-        student.admission_number = payload['admission_number'].strip()[:40] or None
+        with db.session.no_autoflush:            # (a query here must not flush half an edit)
+            # Never typed: a number on record stays; a blank one gets the next (auto ON).
+            student.admission_number = admission_numbers.resolve_on_edit(
+                student.admission_number, payload['admission_number'])
         student.admission_date = _parse_optional_date(payload['admission_date'])
         student.class_id = class_id
         section_id = int(payload['section_id']) if payload['section_id'] else None
@@ -749,7 +762,9 @@ def student_detailed_report(id):
     absent_count = sum(1 for r in attendance_records if r.status == 'Absent')
     late_count = sum(1 for r in attendance_records if r.status == 'Late')
     leave_count = sum(1 for r in attendance_records if r.status == 'Leave')
-    attendance_pct = round(present_count * 100.0 / total_records, 1) if total_records else 0.0
+    from app.services.attendance_service import late_counts_as_present
+    attended_count = present_count + (late_count if late_counts_as_present() else 0)
+    attendance_pct = round(attended_count * 100.0 / total_records, 1) if total_records else 0.0
 
     overall_percentage = 0.0
     if marks:
@@ -796,6 +811,13 @@ def student_detailed_report(id):
     wa_digits = normalize_whatsapp_number(student.guardian_phone or '')
     wa_link = ('https://wa.me/%s' % wa_digits) if wa_digits else None
 
+    # The list no longer carries an Admission fee button, so the report offers
+    # it (same rule the list used: administrator, and the fee is in use).
+    admission_link = bool(
+        admission_fee.is_admin(current_user)
+        and (admission_fee.is_enabled()
+             or admission_fee.student_map([student.id]).get(student.id)))
+
     return render_template('student_report.html',
                            student=student,
                            attendance_records=attendance_records,
@@ -805,7 +827,8 @@ def student_detailed_report(id):
                            dues=dues,
                            fee_recent=fee_recent,
                            term_results=term_results,
-                           wa_link=wa_link)
+                           wa_link=wa_link,
+                           admission_link=admission_link)
 
 @main.route('/students/<int:id>/admission-form/<fmt>')
 def student_admission_form(id, fmt):

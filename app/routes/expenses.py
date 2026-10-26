@@ -41,7 +41,8 @@ def _resolve_month(filters):
 
     * a ``month=YYYY-MM`` selection (the month navigation strip),
     * explicit ``date_from`` / ``date_to``,
-    * category or search filters (those are not time-scoped).
+    * category or search filters typed without a month (those are not
+      time-scoped; with a month they stay inside that month).
 
     ``all=1`` is the escape hatch that restores the old "every expense" view.
     """
@@ -52,10 +53,14 @@ def _resolve_month(filters):
         return None, current
     if filters['date_from'] or filters['date_to']:
         return None, current
+    explicit = filters['month'] if payroll_service.parse_month(filters['month']) else None
+    if explicit:
+        # A month the person picked stays in force even when a search or a
+        # category is added, so "Electricity" is searched inside that month.
+        return explicit, current
     if filters['category_id'] or filters['q']:
         return None, current
-    month = filters['month'] if payroll_service.parse_month(filters['month']) else current
-    return month, current
+    return current, current
 
 
 def _filtered_expenses():
@@ -118,6 +123,50 @@ def _validate_expense_form():
     return values, errors
 
 
+def _stock_info(month):
+    """Stock money kept in Inventory (not an expense): paid to suppliers in the
+    shown month and still owed.  ``None`` when Inventory is switched off."""
+    from app.services import inventory_service, payroll_service
+    if not inventory_service.inventory_enabled():
+        return None
+    if month:
+        start, end = payroll_service.month_bounds(month)
+        paid = inventory_service.month_purchase_totals(start, end)
+    else:
+        paid = inventory_service.month_purchase_totals(date(2000, 1, 1), date(2100, 1, 1))
+    return {'paid': paid,
+            'dues': inventory_service.total_supplier_dues_paisa() / 100.0}
+
+
+def _month_options(current_month, selected_month, count=24):
+    """(key, label) pairs for the month dropdown: this month and the months
+    before it, plus the selected month (or the month of the oldest expense) so
+    a chosen month is never missing from the list."""
+    from app.services import payroll_service
+
+    keys = [payroll_service.shift_month(current_month, -offset) for offset in range(count)]
+    oldest = db.session.query(db.func.min(Expense.date)).scalar()
+    if oldest:
+        oldest_key = '%04d-%02d' % (oldest.year, oldest.month)
+        while keys[-1] > oldest_key and len(keys) < 240:
+            keys.append(payroll_service.shift_month(keys[-1], -1))
+    for extra in (selected_month, payroll_service.shift_month(current_month, 1)):
+        if extra and payroll_service.parse_month(extra) and extra not in keys:
+            keys.append(extra)
+    keys = sorted(set(keys), reverse=True)
+    return [(key, payroll_service.month_label(key)) for key in keys]
+
+
+def _is_salary_expense(expense):
+    """True when a salary payment created this expense.
+
+    ``salary_payment`` is a back-reference; depending on how it is mapped it can
+    be a list or a single object, so test truthiness instead of ``is not None``
+    (an empty list is "not None" but means "no salary payment").
+    """
+    return bool(expense.salary_payment)
+
+
 @main.route('/expenses')
 @role_required(ROLE_ADMIN, ROLE_ACCOUNTANT)
 def expenses_list():
@@ -126,6 +175,7 @@ def expenses_list():
     expense_service.seed_default_categories()
     filters, expenses, month, current_month = _filtered_expenses()
     previous_month = payroll_service.shift_month(current_month, -1)
+    stock_info = _stock_info(month)
     return render_template(
         'expenses.html',
         expenses=expenses,
@@ -136,11 +186,13 @@ def expenses_list():
         payment_methods=EXPENSE_PAYMENT_METHODS,
         today=date.today(),
         # Month navigation + the "continue previous month" shortcut.
+        stock_info=stock_info,
         month=month or '',
         current_month=current_month,
         month_label=payroll_service.month_label(month) if month else 'All months',
         prev_month=payroll_service.shift_month(month, -1) if month else None,
         next_month=payroll_service.shift_month(month, 1) if month else None,
+        month_options=_month_options(current_month, month),
         show_all=(month is None),
         previous_month=previous_month,
         previous_month_label=payroll_service.month_label(previous_month),
@@ -196,7 +248,7 @@ def expenses_edit(id):
     if expense.is_void:
         flash('Voided expenses cannot be edited.', 'warning')
         return redirect(url_for('main.expenses_list'))
-    if expense.salary_payment is not None:
+    if _is_salary_expense(expense):
         flash('Salary-generated expenses are managed from Payroll — void the '
               'salary payment instead.', 'warning')
         return redirect(url_for('main.expenses_list'))
@@ -237,7 +289,7 @@ def expenses_void(id):
     if expense.is_void:
         flash('This expense is already voided.', 'warning')
         return redirect(url_for('main.expenses_list'))
-    if expense.salary_payment is not None:
+    if _is_salary_expense(expense):
         flash('Salary-generated expenses are voided from Payroll by voiding '
               'the salary payment.', 'warning')
         return redirect(url_for('main.expenses_list'))

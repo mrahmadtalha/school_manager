@@ -93,9 +93,13 @@ def teacher_attendance_summary():
 def student_attendance():
     classes = ClassModel.query.all()
     selected_class_id = request.args.get('class_id', type=int) or request.form.get('class_id', type=int)
+    qr_class_id = selected_class_id      # blank = all classes on the QR tab
     
     date_str = request.args.get('date') or request.form.get('date')
-    attendance_date = datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else date.today()
+    try:
+        attendance_date = datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else date.today()
+    except ValueError:
+        attendance_date = date.today()
     
     if not selected_class_id and classes:
         selected_class_id = classes[0].id
@@ -138,6 +142,7 @@ def student_attendance():
     attendance_map = {r.target_id: r.status for r in existing_records}
     late_time_map  = {r.target_id: (r.late_time if hasattr(r, 'late_time') else '') for r in existing_records}
     late_minutes_map = {r.target_id: r.late_minutes for r in existing_records if r.late_minutes is not None}
+    qr_time_map = {r.target_id: r.qr_time for r in existing_records if getattr(r, 'qr_time', None)}
     is_locked      = any(getattr(r, 'is_locked', False) for r in existing_records)
     absent_students = [
         student for student in students
@@ -153,7 +158,30 @@ def student_attendance():
         for student in absent_students
     ]
 
+    # One page, two tabs: the attendance sheet and the QR / auto-absent tab.
+    from app.services import qr_attendance as qr
+    from app.services.attendance_service import late_after_cutoff_enabled
+    qr_enabled = qr.qr_feature_enabled()
+    tab = request.args.get('tab', 'sheet')
+    if tab != 'qr' or not qr_enabled:
+        tab = 'sheet'
+    qr_context = {}
+    if tab == 'qr':
+        qr_context = qr.qr_tab_context(
+            attendance_date, qr_class_id, request.environ.get('SERVER_PORT') or '8000')
+        qr_context['qr_is_today'] = (attendance_date == date.today())
+
+    from datetime import timedelta
     return render_template('student_attendance.html',
+                           tab=tab, qr_enabled=qr_enabled,
+                           is_today=(attendance_date == date.today()),
+                           prev_date=(attendance_date - timedelta(days=1)).strftime('%Y-%m-%d'),
+                           next_date=(attendance_date + timedelta(days=1)).strftime('%Y-%m-%d'),
+                           today_date=date.today().strftime('%Y-%m-%d'),
+                           late_auto=late_after_cutoff_enabled(school_settings),
+                           qr_time_map=qr_time_map,
+                           marked_ids=set(attendance_map.keys()),
+                           **qr_context,
                            classes=classes,
                            selected_class_id=selected_class_id,
                            students=students,

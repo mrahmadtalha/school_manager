@@ -12,11 +12,11 @@
 ; has to re-pair the WhatsApp phone after an update.
 ;
 ; Build:  ISCC.exe installer\SchoolManager.iss
-; Output: build\installer\SchoolManager_Setup_v2.3.0.exe
+; Output: build\installer\SchoolManager_Setup_v3.2.0.exe
 ; ---------------------------------------------------------------------------
 
 #define MyAppName "School Manager"
-#define MyAppVersion "2.3.0"
+#define MyAppVersion "3.2.1"
 #define MyAppPublisher "Ahmi software firm"
 #define MyAppExeName "SchoolManager.exe"
 #define MyAppCopyright "Copyright (c) 2020-2026 Ahmi software firm"

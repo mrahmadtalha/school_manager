@@ -306,8 +306,9 @@ def test_comparison_uses_a_bounded_number_of_queries(app):
         assert two_period_queries == six_period_queries, (
             'comparison cost grew with period count: %d vs %d'
             % (two_period_queries, six_period_queries))
-        # And it is a small constant, not 3 x periods.
-        assert six_period_queries <= 9
+        # And it is a small constant (one grouped query per money table, 10 today;
+        # each new table adds one) -- not 3 x periods, which would be 18 here.
+        assert six_period_queries <= 12
 
 
 # --------------------------------------------------------------------------- #

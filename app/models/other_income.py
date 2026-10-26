@@ -10,7 +10,8 @@ from app.database import db
 from app.models.fees import to_paisa, to_rupees
 
 DEFAULT_OTHER_INCOME_CATEGORIES = (
-    'Canteen', 'Events', 'Trips', 'Activities', 'Certificates', 'Miscellaneous',
+    'Canteen', 'Events', 'Trips', 'Activities', 'Certificates', 'ID Cards',
+    'Miscellaneous',
 )
 
 

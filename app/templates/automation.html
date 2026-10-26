@@ -578,7 +578,7 @@ window.addEventListener('DOMContentLoaded', function () {
             <div class="col-md-3">
                 <select class="form-select" name="trigger">
                     <option value="">All triggers</option>
-{% for trigger in ['attendance_absent','attendance_late','result','fee_due','fee_overdue','fee_reminder','school_notice'] %}
+{% for trigger in ['attendance_absent','attendance_late','attendance_correction','result','fee_due','fee_overdue','fee_reminder','school_notice'] %}
                     <option value="{{ trigger }}" {% if trigger_filter == trigger %}selected{% endif %}>{{ trigger }}</option>
                     {% endfor %}
                 </select>

@@ -27,6 +27,15 @@
             </div>
             <div class="card-body">
                 <p class="text-muted small">Choose a student or class. Leave both blank to print cards for all active students.</p>
+                {% if id_card_fee or id_card_dup_fee %}
+                <div class="alert alert-info py-2 small">
+                    <i class="fas fa-coins me-1"></i>
+                    A <strong>single student's</strong> card is issued with a receipt:
+                    first time <strong>{{ fee_money(id_card_fee) if id_card_fee else 'free' }}</strong>,
+                    duplicate <strong>{{ fee_money(id_card_dup_fee) if id_card_dup_fee else 'free' }}</strong>.
+                    Printing a whole class has no fee.
+                </div>
+                {% endif %}
                 <form method="GET" action="{{ url_for('main.export_student_id_cards') }}" data-class-student-form>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Class <span class="text-muted fw-normal" title="Leave blank to include every class." data-bs-toggle="tooltip"><i class="fas fa-circle-info"></i></span></label>
@@ -105,6 +114,15 @@
                 <p class="text-muted small mb-3">
                     Choose a certificate type, then a student or a whole class. School name, logo, address, and phone from Settings are printed automatically.
                 </p>
+                {% if cert_fees.values()|map('sum')|select|list %}
+                <div class="alert alert-info py-2 small">
+                    <i class="fas fa-coins me-1"></i>
+                    A <strong>single student's</strong> certificate is issued with a receipt.
+                    {% for key, label in certificate_types.items() %}{% set f = cert_fees[key] %}{% if f[0] or f[1] %}
+                    <span class="d-inline-block me-3">{{ label }}: {{ fee_money(f[0]) if f[0] else 'free' }} (duplicate {{ fee_money(f[1]) if f[1] else 'free' }})</span>{% endif %}{% endfor %}
+                    Printing a whole class has no fee.
+                </div>
+                {% endif %}
                 <form method="GET" action="{{ url_for('main.export_certificates') }}" class="row g-3" data-class-student-form>
                     <div class="col-md-3">
                         <label class="form-label fw-bold">Certificate type</label>
@@ -160,6 +178,77 @@
         </div>
     </div>
 </div>
+{% if is_admin %}
+<div class="row g-4 mt-1">
+    <div class="col-lg-6" id="doc-fees">
+        <div class="card shadow-sm border-0 document-card">
+            <div class="card-header bg-light fw-bold border-0"><i class="fas fa-coins me-2"></i>Fees for ID cards &amp; certificates</div>
+            <div class="card-body">
+                <p class="text-muted small">Most schools charge the same fee for everyone. Leave a box empty or write 0 for <strong>free</strong>. The fee is taken the first time; if the same document is printed again, you choose <strong>free</strong> or the duplicate fee.</p>
+                <form method="post" action="{{ url_for('main.document_fees_save') }}">
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold mb-1">Student ID card fee (Rs)</label>
+                            <input type="number" min="0" step="0.01" class="form-control form-control-sm" name="id_card" value="{{ '%g'|format(fee_cfg.id_card) if fee_cfg.id_card is not none else '' }}">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold mb-1">ID card duplicate fee</label>
+                            <input type="number" min="0" step="0.01" class="form-control form-control-sm" name="id_card_dup" value="{{ '%g'|format(fee_cfg.id_card_dup) if fee_cfg.id_card_dup is not none else '' }}" placeholder="same as above">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold mb-1">Certificate fee (all types)</label>
+                            <input type="number" min="0" step="0.01" class="form-control form-control-sm" name="cert" value="{{ '%g'|format(fee_cfg.cert) if fee_cfg.cert is not none else '' }}">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold mb-1">Certificate duplicate fee</label>
+                            <input type="number" min="0" step="0.01" class="form-control form-control-sm" name="cert_dup" value="{{ '%g'|format(fee_cfg.cert_dup) if fee_cfg.cert_dup is not none else '' }}" placeholder="same as above">
+                        </div>
+                    </div>
+                    <details class="mb-3">
+                        <summary class="small text-muted">A different fee for one certificate type (optional)</summary>
+                        <div class="row g-2 mt-1">
+                            {% for key, label in certificate_types.items() %}
+                            <div class="col-6">
+                                <label class="form-label small mb-1">{{ label }}</label>
+                                <input type="number" min="0" step="0.01" class="form-control form-control-sm" name="cert_{{ key }}" value="{{ '%g'|format(fee_cfg.by_type[key]) if fee_cfg.by_type[key] is not none else '' }}" placeholder="same as all types">
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </details>
+                    <button class="btn btn-primary btn-sm" type="submit"><i class="fas fa-floppy-disk me-1"></i>Save fees</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 document-card">
+            <div class="card-header bg-light fw-bold border-0"><i class="fas fa-clock-rotate-left me-2"></i>Recently issued (with fee setting on)</div>
+            <div class="card-body p-0">
+                {% if recent_issues %}
+                <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0 small">
+                    <thead><tr><th>Date</th><th>Student</th><th>Document</th><th class="text-end">Fee</th><th>Receipt</th></tr></thead>
+                    <tbody>
+                    {% for d in recent_issues %}
+                    <tr class="{{ 'text-decoration-line-through text-muted' if not d.is_effective else '' }}">
+                        <td>{{ d.issue_date.strftime('%d %b') }}</td>
+                        <td>{{ d.student.student_name if d.student else '—' }}</td>
+                        <td>{{ title_for(d.doc_kind, d.cert_type) }}{% if d.is_duplicate %} <span class="badge bg-warning-subtle text-dark">dup</span>{% endif %}</td>
+                        <td class="text-end">{{ fee_money(d.fee_paisa) if d.fee_paisa else 'free' }}</td>
+                        <td><a href="{{ url_for('main.document_receipt', doc_id=d.id) }}">{{ d.income.receipt_no if d.income else 'open' }}</a></td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+                {% else %}
+                <p class="text-muted small p-3 mb-0">Nothing issued yet. When a fee is set, every single ID card or certificate you issue appears here.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 <script>
 // Class -> student filtering and the "Whole Class" switch (student ID cards + certificates).
 document.addEventListener('DOMContentLoaded', function () {

@@ -14,6 +14,7 @@
     .u-role-parent { background: #e7f6ee; color: #0a5c3a; border: 1px solid #c6e9d8; }
     .u-role-owner { background: #f3e8ff; color: #6b21a8; border: 1px solid #e2d1f9; }
     .u-role-accountant { background: #fef3c7; color: #92400e; border: 1px solid #f7e2b0; }
+    .u-role-guard { background: #e0f2f1; color: #00695c; border: 1px solid #b2dfdb; }
     .u-pill-active { background: #e7f6ee; color: #0a5c3a; border: 1px solid #c6e9d8; border-radius: 999px; padding: .2rem .65rem; font-weight: 700; font-size: .75rem; }
     .u-pill-disabled { background: #eef1f5; color: #475569; border: 1px solid #d8dee7; border-radius: 999px; padding: .2rem .65rem; font-weight: 700; font-size: .75rem; }
     .u-action-btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; }
@@ -69,6 +70,7 @@
                 <span class="u-role-chip u-role-parent"><i class="fas fa-user-friends me-1"></i>Parents {{ stats.parents }}</span>
                 <span class="u-role-chip u-role-owner"><i class="fas fa-crown me-1"></i>Owners {{ stats.owners }}</span>
                 <span class="u-role-chip u-role-accountant"><i class="fas fa-calculator me-1"></i>Accountants {{ stats.accountants }}</span>
+                <span class="u-role-chip u-role-guard"><i class="fas fa-shield-halved me-1"></i>Guards {{ stats.guards }}</span>
             </div>
         </div>
     </div>
@@ -97,8 +99,8 @@
                     <td class="fw-bold">{{ user.username }}</td>
                     <td class="text-muted">{{ user.full_name or '—' }}</td>
                     <td>
-                        <span class="u-role-chip {% if user.role == 'admin' %}u-role-admin{% elif user.role == 'teacher' %}u-role-teacher{% elif user.role == 'parent' %}u-role-parent{% elif user.role == 'owner' %}u-role-owner{% elif user.role == 'accountant' %}u-role-accountant{% else %}u-role-admin{% endif %}">
-                            <i class="fas {% if user.role == 'admin' %}fa-user-shield{% elif user.role == 'teacher' %}fa-chalkboard-teacher{% elif user.role == 'parent' %}fa-user-friends{% elif user.role == 'owner' %}fa-crown{% elif user.role == 'accountant' %}fa-calculator{% else %}fa-user{% endif %} me-1"></i>{{ user.role_label }}
+                        <span class="u-role-chip {% if user.role == 'admin' %}u-role-admin{% elif user.role == 'teacher' %}u-role-teacher{% elif user.role == 'parent' %}u-role-parent{% elif user.role == 'owner' %}u-role-owner{% elif user.role == 'accountant' %}u-role-accountant{% elif user.role == 'guard' %}u-role-guard{% else %}u-role-admin{% endif %}">
+                            <i class="fas {% if user.role == 'admin' %}fa-user-shield{% elif user.role == 'teacher' %}fa-chalkboard-teacher{% elif user.role == 'parent' %}fa-user-friends{% elif user.role == 'owner' %}fa-crown{% elif user.role == 'accountant' %}fa-calculator{% elif user.role == 'guard' %}fa-shield-halved{% else %}fa-user{% endif %} me-1"></i>{{ user.role_label }}
                         </span>
                     </td>
                     <td class="small">
@@ -220,8 +222,8 @@
                         <div class="col-md-6">
                             <label class="form-label small fw-bold text-muted">Role</label>
                             <select class="form-select" name="role">
-                                {% for role in roles %}
-                                <option value="{{ role }}">{{ role_labels.get(role, role) }}</option>
+                                {% for role in roles %}{% if role not in disabled_roles %}
+                                <option value="{{ role }}">{{ role_labels.get(role, role) }}</option>{% endif %}
                                 {% endfor %}
                             </select>
                         </div>
@@ -288,8 +290,8 @@
                             </div>
                             {% else %}
                             <select class="form-select" name="role">
-                                {% for role in roles %}
-                                <option value="{{ role }}" {% if user.role == role %}selected{% endif %}>{{ role_labels.get(role, role) }}</option>
+                                {% for role in roles %}{% if role not in disabled_roles or user.role == role %}
+                                <option value="{{ role }}" {% if user.role == role %}selected{% endif %}>{{ role_labels.get(role, role) }}</option>{% endif %}
                                 {% endfor %}
                             </select>
                             {% endif %}

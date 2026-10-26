@@ -6,8 +6,8 @@ from flask import (Blueprint, current_app, flash, jsonify, redirect,
 from flask_login import current_user, login_required, login_user, logout_user
 
 from app.database import db
-from app.models import (ROLE_ACCOUNTANT, ROLE_ADMIN, ROLE_OWNER, AdminUser,
-                        SchoolSettings)
+from app.models import (ROLE_ACCOUNTANT, ROLE_ADMIN, ROLE_GUARD, ROLE_OWNER,
+                        AdminUser, SchoolSettings)
 from app.seed_progress import (get_seed_job, seed_config_from_form,
                                start_seed_job)
 from app.security import (
@@ -140,6 +140,8 @@ def login():
                 landing = url_for('main.executive_dashboard')
             elif user.role == ROLE_ACCOUNTANT:
                 landing = url_for('main.fees_list')
+            elif user.role == ROLE_GUARD:
+                landing = url_for('main.qr_guard_home')
             return redirect(_safe_next(request.args.get('next')) or landing)
 
         register_failed_login(username)

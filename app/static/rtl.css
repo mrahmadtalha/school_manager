@@ -1,0 +1,53 @@
+/* Urdu (right-to-left) mode.  Loaded only when the interface language is Urdu. */
+@font-face {
+    font-family: 'NotoNaskhUrdu';
+    src: url('/static/fonts/noto-naskh-arabic-arabic-400-normal.woff2') format('woff2');
+    font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'NotoNaskhUrdu';
+    src: url('/static/fonts/noto-naskh-arabic-arabic-700-normal.woff2') format('woff2');
+    font-weight: 700; font-style: normal; font-display: swap;
+}
+html[dir="rtl"] body,
+html[dir="rtl"] button, html[dir="rtl"] input, html[dir="rtl"] select, html[dir="rtl"] textarea,
+html[dir="rtl"] .btn, html[dir="rtl"] .form-control, html[dir="rtl"] .form-select {
+    font-family: 'NotoNaskhUrdu', 'Segoe UI', 'Noto Sans Arabic', Tahoma, sans-serif;
+}
+html[dir="rtl"] body { line-height: 1.85; }
+html[dir="rtl"] .h1, html[dir="rtl"] .h2, html[dir="rtl"] .h3, html[dir="rtl"] h1,
+html[dir="rtl"] h2, html[dir="rtl"] h3, html[dir="rtl"] h4, html[dir="rtl"] h5 { line-height: 1.7; }
+
+/* Letter-spacing breaks Urdu joining; the English eyebrow labels use it. */
+html[dir="rtl"] * { letter-spacing: 0 !important; }
+html[dir="rtl"] .eyebrow, html[dir="rtl"] .text-uppercase { text-transform: none !important; }
+
+/* Numbers, phones, dates and emails are typed left-to-right. */
+html[dir="rtl"] input[type="number"], html[dir="rtl"] input[type="tel"],
+html[dir="rtl"] input[type="date"], html[dir="rtl"] input[type="email"],
+html[dir="rtl"] input[type="time"], html[dir="rtl"] input[type="month"] {
+    direction: ltr; text-align: right;
+}
+
+/* Phone links keep their digits in reading order. */
+html[dir="rtl"] a[href^="tel:"] { direction: ltr; unicode-bidi: isolate; }
+
+/* Sidebar: the dividing line sits on the other side. */
+html[dir="rtl"] #sidebar { border-right: 0; border-left: 1px solid rgba(148, 163, 184, 0.15); }
+html[dir="rtl"] .nav-icon { margin-left: .5rem; margin-right: 0; }
+
+/* Font Awesome arrows that point "forward" should point the other way. */
+html[dir="rtl"] .fa-arrow-left::before { content: "\f061"; }
+html[dir="rtl"] .fa-arrow-right::before { content: "\f060"; }
+html[dir="rtl"] .fa-chevron-left::before { content: "\f054"; }
+html[dir="rtl"] .fa-chevron-right::before { content: "\f053"; }
+
+/* DataTables: search box and paging on the natural side. */
+html[dir="rtl"] div.dataTables_wrapper div.dataTables_filter { text-align: left; }
+html[dir="rtl"] div.dataTables_wrapper div.dataTables_length { text-align: right; }
+html[dir="rtl"] table.dataTable thead th, html[dir="rtl"] table.dataTable thead td { text-align: right; }
+
+/* Printed receipts keep their own layout direction for amounts. */
+@media print {
+    html[dir="rtl"] body { line-height: 1.5; }
+}

@@ -129,6 +129,9 @@ def migrate_attendance_schema(app):
         if 'late_minutes' not in columns:
             connection.execute('ALTER TABLE attendance ADD COLUMN late_minutes INTEGER')
             print('Migration: added late_minutes to attendance')
+        if 'qr_time' not in columns:
+            connection.execute('ALTER TABLE attendance ADD COLUMN qr_time VARCHAR(10)')
+            print('Migration: added qr_time to attendance')
 
         connection.execute('CREATE INDEX IF NOT EXISTS idx_attendance_target_date ON attendance(target_type, target_id, date)')
         connection.execute('CREATE INDEX IF NOT EXISTS idx_attendance_class_date ON attendance(class_id, date)')
@@ -206,6 +209,31 @@ def migrate_guardian_links(app):
         connection.commit()
 
 
+def migrate_qr_config_schema(app):
+    """Add the auto-absent settings to a qr_config table made by an older version."""
+    db_path = _sqlite_db_path(app)
+    if not db_path or not os.path.exists(db_path):
+        return
+
+    with _sqlite_connection(db_path) as connection:
+        columns = _table_columns(connection, 'qr_config')
+        if not columns:
+            return
+        additions = (
+            ('auto_absent_enabled', 'BOOLEAN NOT NULL DEFAULT 0'),
+            ('absent_cutoff_time', "VARCHAR(5) NOT NULL DEFAULT '10:00'"),
+            ('absent_mode', "VARCHAR(10) NOT NULL DEFAULT 'approval'"),
+            ('absent_min_scan_percent', 'INTEGER NOT NULL DEFAULT 20'),
+            ('absent_message_delay_minutes', 'INTEGER NOT NULL DEFAULT 30'),
+            ('late_correction_enabled', 'BOOLEAN NOT NULL DEFAULT 1'),
+        )
+        for name, ddl in additions:
+            if name not in columns:
+                connection.execute(f'ALTER TABLE qr_config ADD COLUMN {name} {ddl}')
+                print(f'Migration: added {name} to qr_config')
+        connection.commit()
+
+
 def migrate_automation_schema(app):
     db_path = _sqlite_db_path(app)
     if not db_path or not os.path.exists(db_path):
@@ -216,6 +244,10 @@ def migrate_automation_schema(app):
         if 'retry_count' not in queue_columns and queue_columns:
             connection.execute('ALTER TABLE message_queue ADD COLUMN retry_count INTEGER DEFAULT 0')
             print('Migration: added retry_count to message_queue')
+
+        if queue_columns and 'send_after' not in queue_columns:
+            connection.execute('ALTER TABLE message_queue ADD COLUMN send_after DATETIME')
+            print('Migration: added send_after to message_queue')
 
         automation_columns = _table_columns(connection, 'automation_settings')
         if automation_columns:
@@ -847,6 +879,12 @@ def migrate_school_settings_schema(app):
         if 'school_start_time' not in settings_columns:
             connection.execute("ALTER TABLE school_settings ADD COLUMN school_start_time VARCHAR(10) DEFAULT '08:30'")
             print('Migration: added school_start_time to school_settings')
+        if 'late_after_cutoff' not in settings_columns:
+            connection.execute('ALTER TABLE school_settings ADD COLUMN late_after_cutoff BOOLEAN DEFAULT 1')
+            print('Migration: added late_after_cutoff to school_settings')
+        if 'late_counts_as_present' not in settings_columns:
+            connection.execute('ALTER TABLE school_settings ADD COLUMN late_counts_as_present BOOLEAN DEFAULT 1')
+            print('Migration: added late_counts_as_present to school_settings')
         if 'attendance_grace_minutes' not in settings_columns:
             connection.execute('ALTER TABLE school_settings ADD COLUMN attendance_grace_minutes INTEGER DEFAULT 0')
             print('Migration: added attendance_grace_minutes to school_settings')
@@ -952,8 +990,10 @@ def _admission_fee_columns():
             ('admission_fee_date', 'DATE'),
             ('admission_fee_prior_paid_paisa', 'INTEGER'),
             ('books_fee_paisa', 'INTEGER'),
+            ('books_qty', 'INTEGER'),
             ('uniform_qty', 'INTEGER'),
             ('uniform_unit_paisa', 'INTEGER'),
+            ('stock_tracked', 'BOOLEAN'),
         ],
         'classes': [('admission_fee', 'FLOAT'), ('books_fee', 'FLOAT'),
                     ('uniform_fee', 'FLOAT'), ('uniform_sets', 'INTEGER')],
@@ -1016,6 +1056,63 @@ def migrate_admission_fee_schema(app):
                                'ON other_income (student_id)')
             connection.execute('CREATE INDEX IF NOT EXISTS idx_other_income_receipt '
                                'ON other_income (receipt_no)')
+        connection.commit()
+
+
+def migrate_inventory_schema(app):
+    """Inventory columns: ``paid_paisa`` (supplier dues, NULL = paid in full),
+    ``bill_label`` (marks the lines of one set purchase) and ``is_opening``
+    (opening stock, Phase 4).
+
+    Every purchase made before this column existed was paid in full, so the
+    NULL default keeps all old numbers exactly as they were.  The new
+    ``supplier_payments`` table is created by ``db.create_all()``.
+    """
+    db_path = _sqlite_db_path(app)
+    if not db_path or db_path == ':memory:' or not os.path.exists(db_path):
+        return
+    with _sqlite_connection(db_path) as connection:
+        existing = _table_columns(connection, 'inventory_purchases')
+        # Phase 4: ``is_opening`` marks opening stock (never cash out).  Every
+        # older purchase is an ordinary purchase, so the default keeps all numbers.
+        # Later: ``is_void`` & co. let a purchase typed by mistake be voided.
+        for name, sql_type in (('paid_paisa', 'INTEGER'), ('bill_label', 'VARCHAR(120)'),
+                               ('is_opening', 'BOOLEAN NOT NULL DEFAULT 0'),
+                               ('is_void', 'BOOLEAN NOT NULL DEFAULT 0'),
+                               ('void_reason', 'VARCHAR(255)'),
+                               ('voided_at', 'DATETIME'),
+                               ('voided_by_name', 'VARCHAR(80)')):
+            if existing and name not in existing:
+                connection.execute('ALTER TABLE inventory_purchases ADD COLUMN %s %s'
+                                   % (name, sql_type))
+                print('Migration: added %s to inventory_purchases' % name)
+        # Phase 3: sales can be linked to a student / an admission issue, and a
+        # wrong issue can be voided.  Old rows become ordinary, non-void sales.
+        existing = _table_columns(connection, 'inventory_sales')
+        for name, ddl in (('student_id', 'INTEGER'),
+                          ('source', "VARCHAR(20) NOT NULL DEFAULT 'sale'"),
+                          ('issue_id', 'INTEGER'),
+                          ('is_void', 'BOOLEAN NOT NULL DEFAULT 0'),
+                          ('void_reason', 'VARCHAR(255)'),
+                          ('voided_at', 'DATETIME'),
+                          ('voided_by_name', 'VARCHAR(80)')):
+            if existing and name not in existing:
+                connection.execute('ALTER TABLE inventory_sales ADD COLUMN %s %s'
+                                   % (name, ddl))
+                print('Migration: added %s to inventory_sales' % name)
+        # Canteen totals can now be bought on credit (supplier udhaar).  Every
+        # older entry stays exactly as it was: NULL bill = paid in full.  The
+        # ``canteen_payments`` table is created by db.create_all().
+        existing = _table_columns(connection, 'canteen_entries')
+        for name, ddl in (('supplier', 'VARCHAR(120)'),
+                          ('bill_paisa', 'INTEGER'),
+                          ('paid_paisa', 'INTEGER'),
+                          ('void_flag', 'BOOLEAN NOT NULL DEFAULT 0'),
+                          ('void_note', 'VARCHAR(255)')):
+            if existing and name not in existing:
+                connection.execute('ALTER TABLE canteen_entries ADD COLUMN %s %s'
+                                   % (name, ddl))
+                print('Migration: added %s to canteen_entries' % name)
         connection.commit()
 
 
@@ -1238,6 +1335,44 @@ def install_auto_backup(app):
 
     threading.Thread(target=_loop, name='auto-backup', daemon=True).start()
     _auto_backup_started = True
+
+
+_auto_absent_started = False
+
+
+def install_auto_absent(app):
+    """Start the in-process check that marks absentees after the cutoff time.
+
+    Once a minute it asks ``qr_absent.run_auto_absent`` whether today's cutoff
+    has passed and no check has run yet.  Disabled for tests (they call the
+    service directly) and with ``AUTO_ABSENT_ENABLED=0``.  Because the check is
+    "cutoff passed and not done yet", opening School Manager after the cutoff
+    still runs it once for that day.
+    """
+    global _auto_absent_started
+    if app.config.get('TESTING') or _auto_absent_started:
+        return
+    if os.environ.get('AUTO_ABSENT_ENABLED', '1').strip().lower() in {'0', 'false', 'no', 'off'}:
+        return
+
+    import threading
+    import time
+
+    def _loop():
+        time.sleep(45)
+        while True:
+            try:
+                from app.services import qr_absent
+                with app.app_context():
+                    outcome = qr_absent.run_auto_absent()
+                    if outcome and outcome.get('ran'):
+                        print(f'Auto-absent: {outcome["status"]} ({outcome["marked"]} marked)')
+            except Exception as exc:  # the loop must never die
+                print(f'WARNING: auto-absent check failed: {exc}')
+            time.sleep(60)
+
+    threading.Thread(target=_loop, name='auto-absent', daemon=True).start()
+    _auto_absent_started = True
 
 
 def ensure_school_settings():

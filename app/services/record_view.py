@@ -123,7 +123,7 @@ def student_fields():
         FieldSpec('date_of_birth', 'Date of Birth', 'Basic', kind='date',
                   getter=_attr('date_of_birth')),
         FieldSpec('admission_number', 'Admission No', 'Admission',
-                  getter=_attr('admission_number')),
+                  getter=_attr('admission_number'), default_visible=True),
         FieldSpec('admission_date', 'Admission Date', 'Admission', kind='date',
                   getter=_attr('admission_date')),
         FieldSpec('admission_fee', 'Admission Fee (net)', 'Admission', kind='money',

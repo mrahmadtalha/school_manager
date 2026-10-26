@@ -80,15 +80,19 @@ def period_metrics(month_year):
     # --- Sales performance (Phase 3b, flag-gated) ---------------------------
     sales = None
     if inventory_service.inventory_enabled():
-        sales_now, cogs_now = inventory_service.month_sales_totals(
-            snap['start'], snap['end'])
-        sales_prev, cogs_prev = inventory_service.month_sales_totals(
-            prev_snap['start'], prev_snap['end'])
+        now = inventory_service.month_sales_breakdown(snap['start'], snap['end'])
+        prev = inventory_service.month_sales_breakdown(prev_snap['start'],
+                                                       prev_snap['end'])
+        sales_now, cogs_now = now['sales'], now['cogs']
+        sales_prev, cogs_prev = prev['sales'], prev['cogs']
         sales = {
             'revenue': sales_now, 'cogs': cogs_now,
-            'gross_profit': fs._money(sales_now - cogs_now),
+            # Profit on items sold separately; the cost of stock handed over
+            # inside admission packages is reported on its own line.
+            'package_cogs': now['package_cogs'],
+            'gross_profit': fs._money(sales_now - now['direct_cogs']),
             'prev_revenue': sales_prev, 'prev_cogs': cogs_prev,
-            'prev_gross_profit': fs._money(sales_prev - cogs_prev),
+            'prev_gross_profit': fs._money(sales_prev - prev['direct_cogs']),
             'purchases': snap['purchases'],
             'low_stock': inventory_service.low_stock_list(),
         }
@@ -185,8 +189,14 @@ def insight_lines(month_year):
         if sales['revenue'] > 0 or sales['prev_revenue'] > 0:
             lines.append('Inventory sales were Rs %s with cost of goods sold '
                          'Rs %s (gross profit Rs %s).'
-                         % (money(sales['revenue']), money(sales['cogs']),
+                         % (money(sales['revenue']),
+                            money(sales['cogs'] - sales['package_cogs']),
                             money(sales['gross_profit'])))
+        if sales.get('package_cogs'):
+            lines.append('Books and uniform worth Rs %s (at cost) were given '
+                         'inside admission packages - their price is already '
+                         'part of the admission fees.'
+                         % money(sales['package_cogs']))
         if sales['purchases'] > 0:
             lines.append('Stock purchases of Rs %s are part of Cash Out but '
                          'not expenses; their cost enters Cost of Goods Sold '

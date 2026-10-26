@@ -9,13 +9,21 @@
     <style>
         body { background: #1a1a2e; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
         .login-card { width: 100%; max-width: 420px; }
-        .login-header { background: #212529; color: #fff; border-radius: 12px 12px 0 0; padding: 2rem; text-align: center; }
+        .login-header { background: #212529; color: #fff; border-radius: 12px 12px 0 0; padding: 2rem; text-align: center; position: relative; }
+        .login-lang { position: absolute; top: .75rem; inset-inline-end: .75rem; }
         .login-body { background: #fff; border-radius: 0 0 12px 12px; padding: 2rem; }
     </style>
 </head>
 <body>
 <div class="login-card shadow-lg">
     <div class="login-header">
+        {% if has_feature('language_switch') %}
+        <a class="btn btn-sm btn-outline-light login-lang" id="loginLang"
+           href="{{ url_for('main.set_language', code=('en' if ui_lang == 'ur' else 'ur')) }}"
+           title="{{ 'English' if ui_lang == 'ur' else 'اردو' }}">
+            <i class="fas fa-language me-1"></i>{{ 'English' if ui_lang == 'ur' else 'اردو' }}
+        </a>
+        {% endif %}
         <i class="fas fa-school fa-3x text-warning mb-3"></i>
         <h4 class="fw-bold mb-0">School Manager</h4>
         <p class="text-secondary small mt-1 mb-0">Sign in to continue</p>

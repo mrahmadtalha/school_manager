@@ -20,4 +20,9 @@
         </div>
     </div>
 </div>
+<script>
+    // Closes the window by itself when it was opened as an app window (Chrome / Edge --app);
+    // an ordinary browser tab refuses, and the message above tells the person to close it.
+    setTimeout(function () { window.close(); }, 1500);
+</script>
 {% endblock %}

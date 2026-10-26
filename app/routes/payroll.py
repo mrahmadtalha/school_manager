@@ -18,6 +18,22 @@ def _valid_month_or_none(value):
     return value if payroll_service.parse_month(value) else None
 
 
+def _month_options(current_month, selected_month, count=24):
+    """(key, label) pairs for the month dropdown: this month and the months before it,
+    next month, the selected month and the oldest month that has saved salaries, so a
+    chosen month is never missing from the list (same idea as the Expenses page)."""
+    keys = [payroll_service.shift_month(current_month, -offset) for offset in range(count)]
+    oldest = db.session.query(db.func.min(StaffPayroll.month_year)).scalar()
+    if oldest and payroll_service.parse_month(oldest):
+        while keys[-1] > oldest and len(keys) < 240:
+            keys.append(payroll_service.shift_month(keys[-1], -1))
+    for extra in (selected_month, payroll_service.shift_month(current_month, 1)):
+        if extra and payroll_service.parse_month(extra) and extra not in keys:
+            keys.append(extra)
+    keys = sorted(set(keys), reverse=True)
+    return [(key, payroll_service.month_label(key)) for key in keys]
+
+
 @main.route('/payroll')
 @role_required(ROLE_ADMIN, ROLE_ACCOUNTANT)
 def payroll_page():
@@ -37,6 +53,8 @@ def payroll_page():
         per_late=per_late,
         leave_as_absent=leave_as_absent,
         today=date.today(),
+        current_month=payroll_service.current_month_key(),
+        month_options=_month_options(payroll_service.current_month_key(), month),
     )
 
 

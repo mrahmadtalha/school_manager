@@ -7,7 +7,9 @@
 <div class="col-md-3"><b>Valid</b><br>{{ row.issued|nicedate }} → {{ row.expires|nicedate }} (+{{ row.grace_days }} d grace)</div>
 <div class="col-md-3"><b>Machine</b><br><code>{{ row.machine_code }}</code></div>
 <div class="col-md-3"><b>WhatsApp</b><br>{{ row.wa_daily if row.wa_daily is not none else '∞' }}/day · {{ row.wa_monthly if row.wa_monthly is not none else '∞' }}/month</div></div>
-<div class="mt-2"><b>Features:</b> {{ (row.features|fromjson)|join(', ') or 'none' }}</div></div></div>
+<div class="mt-2"><b>Features:</b> {{ (row.features|fromjson)|join(', ') or 'none' }}</div>
+{% if row.notice %}<div class="mt-1"><b>Notice:</b> {{ row.notice }}</div>{% endif %}
+<div class="mt-1"><b>Roles:</b> {{ (row.roles|fromjson)|join(', ') if row.roles else 'all roles (legacy key)' }}</div></div></div>
 {% if row.key_text %}
 <div class="card border-0 shadow-sm"><div class="card-body">
 <label class="form-label fw-bold">License key</label>

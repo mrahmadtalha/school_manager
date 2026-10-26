@@ -20,17 +20,22 @@ from app.models.settings   import (SystemSettingModel, SchoolSettings,
                                    get_school_closure_days)
 from app.models.admin      import (AdminUser, GuardianStudentLink, ROLES, ROLE_ADMIN,
                                    ROLE_TEACHER, ROLE_PARENT, ROLE_OWNER,
-                                   ROLE_ACCOUNTANT, ROLE_LABELS)
+                                   ROLE_ACCOUNTANT, ROLE_GUARD, ROLE_LABELS)
+from app.models.qr_config  import QrConfig, QrAbsentRun
 from app.models.audit      import AuditLog, ACTIONS
 from app.models.automation import AutomationSettings, MessageQueue, DeliveryLog, MESSAGE_STATUSES
-from app.models.inventory  import Product, Purchase, Sale
+from app.models.inventory  import (Product, Purchase, Sale, SupplierPayment,
+                                     ProductSet, ProductSetItem, SET_KINDS,
+                                     StudentIssue, CanteenEntry, CanteenPayment)
 from app.models.other_income import (OtherIncome, OtherIncomeCategory,
                                      DEFAULT_OTHER_INCOME_CATEGORIES)
+from app.models.issued_document import IssuedDocument, DOC_ID_CARD, DOC_CERTIFICATE
 
 __all__ = [
     "TimetableRow", "TimetableCell",
-    "Product", "Purchase", "Sale",
-    "OtherIncome", "OtherIncomeCategory",
+    "Product", "Purchase", "Sale", "SupplierPayment",
+    "ProductSet", "ProductSetItem", "SET_KINDS", "StudentIssue", "CanteenEntry", "CanteenPayment",
+    "OtherIncome", "OtherIncomeCategory", "IssuedDocument",
     "ClassModel", "SectionModel", "SubjectModel", "SubjectLibrary", "TeachingAssignment",
     "StudentModel", "STUDENT_STATUSES", "STUDENT_STATUS_LABELS",
     "TeacherModel",
@@ -44,7 +49,7 @@ __all__ = [
     "TXN_CHARGE", "TXN_PAYMENT", "TXN_ADJUSTMENT", "TXN_REFUND", "TXN_WRITEOFF",
     "TXN_LABELS", "SETTLING_TYPES", "to_paisa", "to_rupees",
     "SystemSettingModel", "SchoolSettings",
-    "AdminUser", "GuardianStudentLink", "ROLES", "ROLE_ADMIN", "ROLE_TEACHER", "ROLE_PARENT", "ROLE_OWNER", "ROLE_ACCOUNTANT", "ROLE_LABELS",
+    "AdminUser", "GuardianStudentLink", "ROLES", "ROLE_ADMIN", "ROLE_TEACHER", "ROLE_PARENT", "ROLE_OWNER", "ROLE_ACCOUNTANT", "ROLE_GUARD", "ROLE_LABELS", "QrConfig", "QrAbsentRun",
     "AuditLog", "ACTIONS",
     "AutomationSettings", "MessageQueue", "DeliveryLog", "MESSAGE_STATUSES",
 ]

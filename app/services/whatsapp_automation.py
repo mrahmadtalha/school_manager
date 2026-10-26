@@ -141,8 +141,13 @@ def _whatsapp_licensed():
         return True
 
 
-def queue_automation_message(student: Any, trigger: str, context: Dict[str, Any], mode: str | None = None):
-    """Queue a message according to the configured automation mode."""
+def queue_automation_message(student: Any, trigger: str, context: Dict[str, Any], mode: str | None = None,
+                             send_after: datetime | None = None):
+    """Queue a message according to the configured automation mode.
+
+    ``send_after`` (UTC) holds the message back until that moment, even when
+    it is already approved.
+    """
     from app.database import db
     from app.models import AutomationSettings, MessageQueue
 
@@ -158,6 +163,7 @@ def queue_automation_message(student: Any, trigger: str, context: Dict[str, Any]
     event_settings = {
         'attendance_absent': getattr(settings, 'notify_absent', True),
         'attendance_late': getattr(settings, 'notify_late', True),
+        'attendance_correction': getattr(settings, 'notify_absent', True),
         'result': getattr(settings, 'notify_results', False),
     }
     if not event_settings.get(trigger, True):
@@ -181,6 +187,7 @@ def queue_automation_message(student: Any, trigger: str, context: Dict[str, Any]
         trigger=trigger,
         student_id=getattr(student, 'id', None),
         ref_date=ref_date_value,
+        send_after=send_after,
     )
     db.session.add(queue_item)
     db.session.commit()

@@ -1,0 +1,163 @@
+{# Floating School Assistant: a round button in the bottom corner that opens a small chat panel.
+   Administrators only, and only when the license includes the assistant.  Answers come from the
+   same offline, read-only endpoint as the full page (main.assistant_ask), so it also works in
+   read-only / inspection mode.  Everything is built with textContent, so school data can never
+   inject HTML.  The chat history is shared with the full School Assistant page. #}
+<style>
+    #smAsstBtn { position: fixed; inset-block-end: 1.25rem; inset-inline-end: 1.25rem; z-index: 1040;
+        width: 3.4rem; height: 3.4rem; border-radius: 50%; border: 0; color: #fff; background: #0d6efd;
+        box-shadow: 0 .4rem 1rem rgba(13, 110, 253, .35); font-size: 1.35rem; display: flex;
+        align-items: center; justify-content: center; transition: transform .15s ease; }
+    #smAsstBtn:hover { transform: scale(1.07); }
+    #smAsstBtn:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+    #smAsstPanel { position: fixed; inset-block-end: 5.5rem; inset-inline-end: 1.25rem; z-index: 1040;
+        width: 22rem; max-width: calc(100vw - 2rem); height: 30rem; max-height: calc(100vh - 7.5rem);
+        display: none; flex-direction: column; background: #fff; border: 1px solid #e2e8f0;
+        border-radius: .9rem; box-shadow: 0 1rem 2.5rem rgba(15, 23, 42, .25); overflow: hidden; }
+    #smAsstPanel.open { display: flex; }
+    #smAsstPanel .sm-head { background: #212529; color: #fff; padding: .6rem .85rem; display: flex;
+        align-items: center; gap: .5rem; }
+    #smAsstPanel .sm-head .title { flex: 1 1 auto; font-weight: 600; font-size: .95rem; }
+    #smAsstPanel .sm-head button { background: transparent; border: 0; color: #cbd5e1; padding: .15rem .35rem; }
+    #smAsstPanel .sm-head button:hover { color: #fff; }
+    #smAsstLog { flex: 1 1 auto; overflow-y: auto; background: #f8fafc; padding: .75rem; }
+    .sm-msg { max-width: 92%; margin-bottom: .6rem; padding: .5rem .7rem; border-radius: .8rem;
+        white-space: pre-wrap; word-wrap: break-word; font-size: .88rem; }
+    .sm-msg.user { margin-inline-start: auto; background: #0d6efd; color: #fff; }
+    .sm-msg.bot { background: #fff; border: 1px solid #e2e8f0; }
+    .sm-msg table { font-size: .78rem; margin: .4rem 0 0; white-space: normal; }
+    .sm-msg .sm-links a { font-size: .78rem; margin-inline-end: .6rem; }
+    #smAsstChips { padding: .4rem .6rem 0; display: flex; flex-wrap: wrap; gap: .3rem; background: #fff; }
+    #smAsstChips .btn, .sm-msg .btn { --bs-btn-padding-y: .1rem; --bs-btn-padding-x: .5rem; --bs-btn-font-size: .75rem; }
+    #smAsstForm { display: flex; gap: .4rem; padding: .6rem; background: #fff; }
+    @media print { #smAsstBtn, #smAsstPanel { display: none !important; } }
+</style>
+<button type="button" id="smAsstBtn" class="no-print" title="School Assistant" aria-label="School Assistant"
+        aria-expanded="false" aria-controls="smAsstPanel"><i class="fas fa-robot"></i></button>
+<div id="smAsstPanel" class="no-print" role="dialog" aria-label="School Assistant">
+    <div class="sm-head">
+        <i class="fas fa-robot"></i>
+        <span class="title">School Assistant</span>
+        <button type="button" id="smAsstClear" title="Clear chat" aria-label="Clear chat"><i class="fas fa-eraser"></i></button>
+        <button type="button" id="smAsstClose" title="Close" aria-label="Close"><i class="fas fa-xmark"></i></button>
+    </div>
+    <div id="smAsstLog" aria-live="polite"></div>
+    <div id="smAsstChips"></div>
+    <form id="smAsstForm" autocomplete="off">
+        <input type="text" id="smAsstInput" class="form-control form-control-sm" maxlength="{{ assistant_max_length }}"
+               placeholder="Maslan: aaj kitne students absent hain?">
+        <button type="submit" class="btn btn-primary btn-sm" aria-label="Send"><i class="fas fa-paper-plane"></i></button>
+    </form>
+</div>
+<script>
+(function () {
+    var ASK_URL = {{ url_for('main.assistant_ask')|tojson }};
+    var STARTERS = {{ assistant_starters|tojson }};
+    var STORE_KEY = 'sm.assistant.history';
+    var btn = document.getElementById('smAsstBtn'), panel = document.getElementById('smAsstPanel');
+    var log = document.getElementById('smAsstLog'), input = document.getElementById('smAsstInput');
+    var chips = document.getElementById('smAsstChips'), history = [], ready = false;
+    var lastContext = null;     // what the last answer was about (for "aur kal?")
+
+    function contextFromHistory() {
+        for (var i = history.length - 1; i >= 0; i--) {
+            if (history[i].role === 'bot' && history[i].data && history[i].data.context) { return history[i].data.context; }
+        }
+        return null;
+    }
+    // Phone numbers become tap-to-call links; everything else stays plain text.
+    function fillCell(td, cell) {
+        var s = String(cell);
+        if (/^\+?[\d\s\-]+$/.test(s) && s.replace(/\D/g, '').length >= 7) {
+            var a = document.createElement('a'); a.href = 'tel:' + s.replace(/[^\d+]/g, ''); a.textContent = s; td.appendChild(a);
+        } else { td.textContent = s; }
+    }
+    // Copies the table as tab-separated text, ready to paste into Excel.
+    function copyTable(data, btn) {
+        var text = [data.table.columns.join('\t')].concat(data.table.rows.map(function (r) { return r.join('\t'); })).join('\n');
+        function done() { var old = btn.textContent; btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = old; }, 1500); }
+        if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done, function () {}); }
+        else {
+            var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); done(); } catch (e) {}
+            document.body.removeChild(ta);
+        }
+    }
+
+    function save() { try { sessionStorage.setItem(STORE_KEY, JSON.stringify(history.slice(-40))); } catch (e) {} }
+    function load() { try { history = JSON.parse(sessionStorage.getItem(STORE_KEY) || '[]') || []; } catch (e) { history = []; } }
+    function bubble(kind) { var d = document.createElement('div'); d.className = 'sm-msg ' + kind; log.appendChild(d); return d; }
+    function scroll() { log.scrollTop = log.scrollHeight; }
+    function chip(text) {
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-outline-primary';
+        b.textContent = text; b.addEventListener('click', function () { ask(text); }); return b;
+    }
+    function renderUser(text) { bubble('user').textContent = text; }
+    function renderBot(data) {
+        var div = bubble('bot');
+        div.appendChild(document.createTextNode(data.answer || ''));
+        if (data.table && data.table.rows && data.table.rows.length) {
+            var wrap = document.createElement('div'); wrap.className = 'table-responsive';
+            var table = document.createElement('table'); table.className = 'table table-sm table-bordered mb-0';
+            var hr = document.createElement('tr');
+            data.table.columns.forEach(function (c) { var th = document.createElement('th'); th.textContent = c; hr.appendChild(th); });
+            var thead = document.createElement('thead'); thead.appendChild(hr); table.appendChild(thead);
+            var tbody = document.createElement('tbody');
+            data.table.rows.forEach(function (row) {
+                var tr = document.createElement('tr');
+                row.forEach(function (cell) { var td = document.createElement('td'); fillCell(td, cell); tr.appendChild(td); });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody); wrap.appendChild(table); div.appendChild(wrap);
+            var copy = document.createElement('button'); copy.type = 'button'; copy.className = 'btn btn-link btn-sm p-0 mt-1';
+            copy.textContent = 'Copy table'; copy.addEventListener('click', function () { copyTable(data, copy); });
+            div.appendChild(copy);
+        }
+        if (data.links && data.links.length) {
+            var links = document.createElement('div'); links.className = 'sm-links mt-2';
+            data.links.forEach(function (l) {
+                var a = document.createElement('a'); a.href = l.url; a.textContent = l.label + ' \u2192'; links.appendChild(a);
+            });
+            div.appendChild(links);
+        }
+        if (data.suggestions && data.suggestions.length) {
+            var sug = document.createElement('div'); sug.className = 'd-flex flex-wrap gap-1 mt-2';
+            data.suggestions.forEach(function (s) { sug.appendChild(chip(s)); });
+            div.appendChild(sug);
+        }
+    }
+    function greet() {
+        renderBot({ answer: 'Assalam o Alaikum! Poochiye: attendance, fees, defaulters, kharcha, salary, profit, birthdays, ya koi student/teacher ka naam. Main pichla jawab yaad rakhta hoon, to "aur kal?" jaisay chhotay sawal bhi chalte hain.' });
+    }
+    function ask(question) {
+        question = (question || '').trim();
+        if (!question) { return; }
+        input.value = '';
+        renderUser(question);
+        history.push({ role: 'user', text: question });
+        var wait = bubble('bot'); wait.textContent = '...'; scroll();
+        var url = ASK_URL + '?q=' + encodeURIComponent(question);
+        if (lastContext) { url += '&c=' + encodeURIComponent(JSON.stringify(lastContext)); }
+        fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function (r) { if (!r.ok) { throw new Error('http ' + r.status); } return r.json(); })
+            .then(function (data) { log.removeChild(wait); renderBot(data); if (data.context) { lastContext = data.context; } history.push({ role: 'bot', data: data }); save(); scroll(); })
+            .catch(function () { wait.textContent = 'Sorry, the assistant could not answer right now. Please try again.'; scroll(); });
+    }
+    function open() {
+        if (!ready) {
+            ready = true; load(); lastContext = contextFromHistory();
+            STARTERS.forEach(function (s) { chips.appendChild(chip(s)); });
+            if (history.length) {
+                history.forEach(function (item) { if (item.role === 'user') { renderUser(item.text); } else { renderBot(item.data); } });
+            } else { greet(); }
+        }
+        panel.classList.add('open'); btn.setAttribute('aria-expanded', 'true'); scroll(); input.focus();
+    }
+    function close() { panel.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); btn.focus(); }
+    btn.addEventListener('click', function () { if (panel.classList.contains('open')) { close(); } else { open(); } });
+    document.getElementById('smAsstClose').addEventListener('click', close);
+    document.getElementById('smAsstClear').addEventListener('click', function () { history = []; lastContext = null; save(); log.innerHTML = ''; greet(); });
+    document.getElementById('smAsstForm').addEventListener('submit', function (e) { e.preventDefault(); ask(input.value); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && panel.classList.contains('open')) { close(); } });
+})();
+</script>

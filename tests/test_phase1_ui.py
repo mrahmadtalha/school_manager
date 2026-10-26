@@ -37,11 +37,13 @@ def test_late_message_text_has_the_arrival_time():
     ctx = build_event_context(None, 'attendance_late', {
         'student_name': 'Ali', 'date': '2026-09-21', 'late_time': '08:47', 'late_minutes': 17})
     text = render_event_message('attendance_late', ctx)
-    assert 'at *8:47 AM*' in text and '17 minutes late' in text
-    # afternoon + seconds, singular minute
+    # a clear arrival time only - never "17 minutes late"
+    assert 'at *8:47 AM*' in text and 'minutes late' not in text
+    # afternoon + seconds
     ctx = build_event_context(None, 'attendance_late', {
-        'student_name': 'Ali', 'date': '2026-09-21', 'late_time': '13:05:30', 'late_minutes': 1})
-    assert '*1:05 PM* (1 minute late)' in render_event_message('attendance_late', ctx)
+        'student_name': 'Ali', 'date': '2026-09-21', 'late_time': '13:05:30', 'late_minutes': 135})
+    text = render_event_message('attendance_late', ctx)
+    assert '*1:05 PM*' in text and 'minute' not in text and '135' not in text
 
 
 def test_templates_saved_before_the_change_also_get_the_time():
@@ -49,7 +51,7 @@ def test_templates_saved_before_the_change_also_get_the_time():
     ctx = build_event_context(None, 'attendance_late', {
         'student_name': 'Ali', 'date': '2026-09-21', 'late_time': '08:47', 'late_minutes': 17})
     text = render_event_message('attendance_late', ctx, old)
-    assert 'today (2026-09-21) at *8:47 AM* (17 minutes late).' in text
+    assert 'today (2026-09-21) at *8:47 AM*.' in text
     # a template that already shows the time itself is left alone
     mine = 'Late at {late_time}'
     assert render_event_message('attendance_late', ctx, mine) == 'Late at 8:47 AM'
@@ -78,7 +80,7 @@ def test_marking_a_student_late_queues_a_message_with_the_time(app, seed):
             f'status_{target.id}': 'Present', f'checkin_time_{target.id}': '08:47'}, [class_obj])
         queued = MessageQueue.query.filter_by(trigger='attendance_late').all()
         assert queued, 'a late message should be queued'
-        assert 'at *8:47 AM*' in queued[-1].message and '17 minutes late' in queued[-1].message
+        assert 'at *8:47 AM*' in queued[-1].message and 'minutes late' not in queued[-1].message
 
 
 # ---- Fees page

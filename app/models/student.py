@@ -55,7 +55,12 @@ class StudentModel(db.Model):
     # NULL = none.  Uniform total = uniform_qty x uniform_unit_paisa.
     books_fee_paisa = db.Column(db.Integer, nullable=True)
     uniform_qty = db.Column(db.Integer, nullable=True)
+    # books_fee_paisa is the price of ONE set of books; books_qty is how many sets (NULL = 1).
+    books_qty = db.Column(db.Integer, nullable=True)
     uniform_unit_paisa = db.Column(db.Integer, nullable=True)
+    # Phase 3: True for a student whose books / uniform stock is kept by the
+    # Inventory (set at admission).  NULL = admitted before that, never touched.
+    stock_tracked = db.Column(db.Boolean, nullable=True)
 
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False)
     section_id = db.Column(db.Integer, db.ForeignKey('sections.id'), nullable=True)

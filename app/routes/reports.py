@@ -116,7 +116,8 @@ def _hub_kpis(filters, finance_access):
     if filters['class_id']:
         att_q = att_q.filter(AttendanceModel.class_id == filters['class_id'])
     att_total = att_q.count()
-    att_present = att_q.filter(AttendanceModel.status == 'Present').count()
+    from app.services.attendance_service import attended_statuses
+    att_present = att_q.filter(AttendanceModel.status.in_(attended_statuses())).count()
     kpis['attendance_pct'] = round(att_present / att_total * 100, 1) if att_total else None
 
     if finance_access:
@@ -153,13 +154,14 @@ def _hub_exam_pass(filters):
 
 
 def _hub_attendance_chart(filters):
+    from app.services.attendance_service import attended_statuses
     if filters['all_months']:
         expr = func.strftime('%m', AttendanceModel.date)
     else:
         expr = func.strftime('%d', AttendanceModel.date)
     q = (db.session.query(expr.label('bucket'),
                           func.count(AttendanceModel.id),
-                          func.sum(case((AttendanceModel.status == 'Present', 1), else_=0)))
+                          func.sum(case((AttendanceModel.status.in_(attended_statuses()), 1), else_=0)))
          .filter(AttendanceModel.target_type == 'student',
                  AttendanceModel.date >= filters['start_date'],
                  AttendanceModel.date <= filters['end_date']))

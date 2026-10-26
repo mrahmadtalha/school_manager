@@ -28,4 +28,5 @@ from app.routes import (
     inventory,
     assistant,
     admission_fees,
+    qr_attendance,
 )

@@ -23,6 +23,14 @@ EVENT_TEMPLATES: Dict[str, str] = {
         "Please ensure timely arrival in the future.\n\n"
         "Regards,\nSchool Management"
     ),
+    'attendance_correction': (
+        "Assalam-o-Alaikum,\n\nDear Parent,\n\n"
+        "Correction: the earlier message saying your child {student_name} was *ABSENT* "
+        "on {date_value} was sent before the student arrived. "
+        "Your child reached school{late_at}.\n\n"
+        "We are sorry for the confusion.\n\n"
+        "Regards,\nSchool Management"
+    ),
     'result': (
         "Assalam-o-Alaikum,\n\nDear Parent,\n\n"
         "Result update for {student_name} ({test_type} Test, {date_value}):\n"
@@ -117,18 +125,15 @@ def format_clock(value: Any) -> str:
 
 
 def _late_at(context: Dict[str, Any]) -> str:
-    """' at *8:47 AM* (17 minutes late)' for a late arrival, '' when no time is known."""
+    """' at *10:45 AM*' for a late arrival, '' when no time is known.
+
+    Only the clear arrival time is written. A figure such as "135 minutes late"
+    confuses parents, so the number of minutes is never put in the message.
+    """
     clock = format_clock(context.get('late_time'))
     if not clock:
         return ''
-    text = f' at *{clock}*'
-    try:
-        minutes = int(context.get('late_minutes') or 0)
-    except (TypeError, ValueError):
-        minutes = 0
-    if minutes > 0:
-        text += f' ({minutes} minute{"s" if minutes != 1 else ""} late)'
-    return text
+    return f' at *{clock}*'
 
 
 def render_event_message(trigger: str, context: Dict[str, Any], template_override: str | None = None) -> str:
@@ -142,7 +147,7 @@ def render_event_message(trigger: str, context: Dict[str, Any], template_overrid
     if not template:
         return f"School update for {context.get('student_name', 'Student')}: {context.get('date_value', 'today')}"
 
-    late_at = _late_at(context) if trigger == 'attendance_late' else ''
+    late_at = _late_at(context) if trigger in ('attendance_late', 'attendance_correction') else ''
     if (trigger == 'attendance_late' and '{late_at}' not in template
             and '{late_time}' not in template and '{date_value}' in template):
         # A template saved before the arrival time existed: add it right after the date.

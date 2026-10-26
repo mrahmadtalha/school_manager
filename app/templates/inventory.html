@@ -1,216 +1,1355 @@
 {% extends "base.html" %}
 {% block content %}
+{% include "_simple_ui.html" %}
+<style>
+    .sec-hidden { display: none !important; }
+    /* ------------------------------------------------------------------
+       Inventory — same "staff room" family as the Teacher page (.tm-).
+       Scoped under .iv- / .iv-page so nothing leaks to other pages.
+       Plain words, big buttons, one clear next step.
+       ------------------------------------------------------------------ */
+    .iv-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0.25rem 0 1.1rem; }
+    .iv-head h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; margin: 0; line-height: 1.1; }
+    .iv-head p { margin: 0.35rem 0 0; color: #64748b; font-size: 0.92rem; max-width: 46rem; }
+    .iv-head .btn { box-shadow: none; background: #fff; }
 
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+    /* summary band */
+    .iv-band { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .iv-stat { padding: 0.85rem 1.2rem; display: flex; flex-direction: column; justify-content: center; gap: 0.2rem; min-width: 0; color: inherit; text-decoration: none; border: 0; background: transparent; text-align: left; font: inherit; cursor: pointer; }
+    .iv-stat + .iv-stat { border-left: 1px solid #eef2f7; }
+    .iv-num { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .iv-num small { font-size: 0.9rem; font-weight: 700; color: #94a3b8; letter-spacing: 0; }
+    .iv-lab { font-size: 0.8rem; color: #64748b; }
+    a.iv-stat:hover, button.iv-stat:hover { background: #f8fafc; color: inherit; }
+    .iv-warn { border-left: 4px solid #f59e0b !important; background: #fffbf3; }
+    .iv-warn .iv-num { color: #92400e; }
+    a.iv-warn:hover, button.iv-warn:hover { background: #fff4de; }
+    .iv-bad { border-left: 4px solid #ef4444 !important; background: #fff6f6; }
+    .iv-bad .iv-num { color: #b91c1c; }
+    .iv-good .iv-num { color: #15803d; }
+
+    /* low-stock notice */
+    .iv-alert { display: flex; gap: 0.8rem; align-items: flex-start; background: #fffbf3; border: 1px solid #fde7b0; border-left: 4px solid #f59e0b; border-radius: 14px; padding: 0.75rem 1rem; margin-bottom: 0.9rem; color: #78350f; font-size: 0.9rem; }
+    .iv-alert i { margin-top: 0.2rem; color: #d97706; }
+    .iv-alert .iv-chip { display: inline-block; margin: 0.15rem 0.3rem 0 0; padding: 0.1rem 0.6rem; border-radius: 99px; background: #fff; border: 1px solid #fde7b0; font-weight: 600; font-size: 0.8rem; color: #78350f; }
+
+    /* the three everyday buttons — big and obvious */
+    .iv-page .su-actions { gap: 0.6rem; margin-bottom: 0.9rem !important; }
+    .iv-page .su-act { padding: 0.75rem 1.25rem; border-radius: 14px; border: 1px solid #e2e8f0; background: #fff; font-weight: 700; box-shadow: none; transition: border-color .15s ease, box-shadow .15s ease, background .15s ease; }
+    .iv-page .su-act:hover { border-color: rgb(var(--bs-primary-rgb)); color: rgb(var(--bs-primary-rgb)); box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08); }
+    .iv-page .su-act.su-main { background: rgb(var(--bs-primary-rgb)); border-color: rgb(var(--bs-primary-rgb)); color: #fff; }
+    .iv-page .su-act.su-main:hover { color: #fff; filter: brightness(.94); }
+
+    /* section switcher: a segmented bar like the Teacher page's view toggle */
+    .iv-page ul.su-tabs { display: flex; flex-wrap: wrap; gap: 2px !important; background: #f1f5f9; border-radius: 14px; padding: 4px; width: fit-content; max-width: 100%; margin-bottom: 1rem !important; }
+    .iv-page ul.su-tabs .nav-link { border: 0; border-radius: 10px; padding: 0.5rem 0.95rem; font-size: 0.88rem; font-weight: 700; color: #475569; background: transparent; }
+    .iv-page ul.su-tabs .nav-link:hover { color: #0f172a; }
+    .iv-page ul.su-tabs .nav-link.active { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+    .iv-page ul.su-tabs .nav-link.text-danger { color: #b91c1c !important; }
+    .iv-page ul.su-tabs .nav-link:focus-visible { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 1px; }
+
+    /* every section card: flat, rounded, light border */
+    .iv-page .card { border: 1px solid #e2e8f0 !important; border-radius: 18px; box-shadow: none !important; overflow: hidden; }
+    .iv-page .card:hover { transform: none; }
+    .iv-page .card-header { padding-top: 1rem !important; }
+    .iv-page .card-header h2, .iv-page .card-header .h6 { font-size: 1.02rem; font-weight: 800; letter-spacing: -0.01em; color: #0f172a; text-transform: none; }
+    .iv-page .card-body h2.h6.text-uppercase { text-transform: none !important; font-size: 1.05rem; font-weight: 800; color: #0f172a !important; letter-spacing: -0.01em; }
+    .iv-page .table thead th, .iv-page .table-light th { background: #f8fafc !important; color: #64748b; font-size: 0.76rem; font-weight: 700; text-transform: none; border-bottom: 1px solid #e2e8f0; }
+    .iv-page .table > :not(caption) > * > * { padding: 0.65rem 0.75rem; border-bottom-color: #f1f5f9; }
+    .iv-page .table-striped > tbody > tr:nth-of-type(odd) > * { --bs-table-accent-bg: transparent; }
+    .iv-page .table tbody tr:hover > * { background: rgba(var(--bs-primary-rgb), 0.045); }
+    .iv-page .form-control, .iv-page .form-select { border-radius: 12px; border-color: #e2e8f0; }
+    .iv-page .form-control:not(.form-control-sm), .iv-page .form-select:not(.form-select-sm) { min-height: 2.7rem; }
+    .iv-page .form-label { font-weight: 700; font-size: 0.85rem; color: #334155; }
+    .iv-page .btn { border-radius: 12px; font-weight: 600; }
+    .iv-page .modal-content { border: 0; border-radius: 18px; box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2); overflow: hidden; }
+
+    /* stock status pills + product search */
+    .iv-pill { display: inline-block; padding: 0.1rem 0.6rem; border-radius: 99px; font-size: 0.74rem; font-weight: 700; white-space: nowrap; }
+    .iv-pill.ok { background: #e7f6ec; color: #15803d; }
+    .iv-pill.low { background: #fff4de; color: #92400e; }
+    .iv-pill.out { background: #fee2e2; color: #b91c1c; }
+    .iv-search { position: relative; max-width: 22rem; width: 100%; }
+    .iv-search i { position: absolute; left: 0.9rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+    .iv-search input { padding-left: 2.4rem; height: 2.5rem; border-radius: 12px; border-color: #e2e8f0; background: #f8fafc; }
+    .iv-search input:focus { background: #fff; }
+    .iv-empty { text-align: center; padding: 2.5rem 1rem; color: #64748b; }
+    .iv-empty .iv-empty-icon { width: 68px; height: 68px; border-radius: 22px; margin: 0 auto 0.9rem; display: flex; align-items: center; justify-content: center; font-size: 1.7rem; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); }
+    .iv-empty p { font-weight: 700; color: #334155; margin-bottom: 0.9rem; }
+
+
+
+    /* setup steps, canteen figures */
+    .iv-step { padding: 0.85rem 1rem; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; }
+    .iv-step.is-done { background: #f3fbf6; border-color: #cdebd7; }
+    .iv-stepno { flex: 0 0 auto; width: 2.1rem; height: 2.1rem; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; background: rgba(var(--bs-primary-rgb), 0.1); color: rgb(var(--bs-primary-rgb)); }
+    .iv-step.is-done .iv-stepno { background: #16a34a; color: #fff; }
+    .iv-owed { display: inline-block; padding: 0.35rem 0.9rem; border-radius: 99px; background: #fee2e2; color: #b91c1c; font-weight: 800; }
+    .iv-mini { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.7rem 0.5rem; height: 100%; background: #fff; }
+    /* history tables: no wrapped dates, show 10 rows then "Show all" */
+    .iv-page #invTabs { display: none; }   /* the big buttons above do this job */
+    .iv-hist td:first-child, .iv-hist td.text-end, .iv-hist th { white-space: nowrap; }
+    .iv-collapsed .iv-extra { display: none; }
+    .iv-page #ivHistory .su-tabs { margin: 0; }
+    .iv-page .iv-hist td .badge { font-weight: 600; }
+    .iv-page .su-act.su-main[data-pane] { cursor: default; }
+    .iv-total { min-height: 2.7rem; display: flex; align-items: center; padding: 0 0.9rem; border-radius: 12px; background: #e7f6ec; color: #15803d; font-weight: 800; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+    .iv-total.text-danger { background: #fee2e2; color: #b91c1c !important; font-size: 0.9rem; }
+    .iv-check { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.7rem 0.9rem 0.7rem 2.4rem; }
+    .iv-page .su-pane { max-width: 820px; }
+    .iv-bill { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.5rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.7rem 0.9rem; }
+    .iv-bill div { display: flex; flex-direction: column; font-size: 0.78rem; color: #64748b; }
+    .iv-bill strong { font-size: 1.1rem; color: #0f172a; font-variant-numeric: tabular-nums; }
+    .iv-bill #sumOwed { color: #b91c1c; }
+    @media (max-width: 991.98px) {
+        .iv-band { grid-template-columns: 1fr 1fr; }
+        .iv-stat:nth-child(3) { border-left: 0; border-top: 1px solid #eef2f7; }
+        .iv-stat:nth-child(4) { border-top: 1px solid #eef2f7; }
+    }
+    @media (max-width: 575.98px) {
+        .iv-band { grid-template-columns: 1fr; }
+        .iv-stat + .iv-stat { border-left: 0; border-top: 1px solid #eef2f7; }
+        .iv-page ul.su-tabs { width: 100%; }
+        .iv-page ul.su-tabs .nav-item { flex: 1 1 auto; }
+        .iv-page .su-act { flex: 1 1 100%; justify-content: center; }
+    }
+    @media (prefers-reduced-motion: reduce) { .iv-page .su-act { transition: none; } }
+</style>
+
+{# numbers for the summary band — computed here so no backend change is needed #}
+{% set _active = products | selectattr('is_active') | list %}
+{% set _val = namespace(paisa=0, out=0) %}
+{% for p in _active %}{% set _val.paisa = _val.paisa + (p.stock_qty * p.cost_paisa) %}{% if p.stock_qty <= 0 %}{% set _val.out = _val.out + 1 %}{% endif %}{% endfor %}
+
+<div class="iv-page">
+<div class="iv-head">
     <div>
-        <p class="eyebrow mb-2">Finance</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-boxes-stacked text-primary me-2"></i>Inventory &amp; Sales</h1>
-        <p class="text-muted small mb-0">Uniforms, books and stationery sold to students. Stock purchases are not expenses — cost becomes Cost of Goods Sold when items sell.</p>
+        <h1>Inventory &amp; Sales</h1>
+        <p>Uniforms, books and stationery you sell to students. Buying stock is not an expense — its cost is counted only when an item is sold.</p>
     </div>
-    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
-        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary') }}">
-            <i class="fas fa-arrow-left me-1"></i>Financial Overview
-        </a>
-    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary') }}">
+        <i class="fas fa-arrow-left me-1"></i>Financial Overview
+    </a>
 </div>
 
+<div class="iv-band">
+    <button type="button" class="iv-stat" data-sec-tab="items" title="Show all items">
+        <span class="iv-num">{{ _active | length }}</span>
+        <span class="iv-lab">Items you sell</span>
+    </button>
+    <div class="iv-stat">
+        <span class="iv-num">Rs. {{ '{:,.0f}'.format(_val.paisa / 100.0) }}</span>
+        <span class="iv-lab">Value of stock on the shelf (at cost)</span>
+    </div>
+    <button type="button" class="iv-stat {% if low_stock %}iv-warn{% else %}iv-good{% endif %}" data-sec-tab="items" data-iv-filter="low" title="Show items that need re-ordering">
+        <span class="iv-num">{{ low_stock | length }}</span>
+        <span class="iv-lab">{% if low_stock %}<b>Running low</b> — buy more soon{% else %}Nothing running low{% endif %}</span>
+    </button>
+    {% if dues %}
+    <button type="button" class="iv-stat iv-bad" data-sec-tab="dues" title="See who you owe">
+        <span class="iv-num">Rs. {{ '{:,.0f}'.format(dues_total / 100.0) }}</span>
+        <span class="iv-lab"><b>You owe suppliers</b> — tap to pay</span>
+    </button>
+    {% else %}
+    <div class="iv-stat iv-good">
+        <span class="iv-num">Rs. 0</span>
+        <span class="iv-lab">You owe suppliers nothing</span>
+    </div>
+    {% endif %}
+</div>
+
+{% set map_active = 'inventory' %}{% include '_money_map.html' %}
 {% if low_stock %}
-<div class="alert alert-warning d-flex align-items-center gap-2 py-2">
+<div class="iv-alert" role="status">
     <i class="fas fa-triangle-exclamation"></i>
-    <div><strong>Low stock:</strong>
-        {% for p in low_stock %}{{ p.name }} — {{ p.stock_qty }} left (min {{ p.min_stock_qty }}){% if not loop.last %}; {% endif %}{% endfor %}
+    <div><strong>Time to re-order:</strong>
+        {% for p in low_stock %}<span class="iv-chip">{{ p.name }} · {{ p.stock_qty }} left</span>{% endfor %}
     </div>
 </div>
 {% endif %}
 
-<div class="row g-3 mb-3">
-    <div class="col-lg-4">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <h2 class="h6 fw-bold text-uppercase text-muted mb-3">Add product</h2>
-            <form method="post" action="{{ url_for('main.inventory_product_add') }}" class="row g-2">
-                <div class="col-12">
-                    <label class="form-label small fw-bold mb-1">Name</label>
-                    <input type="text" class="form-control form-control-sm" name="name" maxlength="120" placeholder="e.g. School Shirt" required>
+{# Phase 5B: everyday buttons + jump links #}
+<div class="su-actions mb-2">
+    <button type="button" class="su-act su-main" data-pane="recordSale"><i class="fas fa-cash-register"></i> Sell an item</button>
+    <button type="button" class="su-act" data-pane="recordPurchase"><i class="fas fa-truck-ramp-box"></i> Buy stock</button>
+    <button type="button" class="su-act" data-pane="addProduct"><i class="fas fa-plus"></i> New item</button>
+</div>
+<ul class="nav nav-pills su-tabs mb-3 gap-1 flex-wrap" id="secTabs">
+    <li class="nav-item"><button type="button" class="nav-link active" data-sec-tab="items"><i class="fas fa-boxes-stacked me-1"></i>Items &amp; history</button></li>
+    <li class="nav-item"><button type="button" class="nav-link" data-sec-tab="setup"><i class="fas fa-list-check me-1"></i>Setup <span class="badge {{ 'bg-success' if setup.all_done else 'bg-secondary' }} ms-1">{{ setup.done_count }}/3</span></button></li>
+    <li class="nav-item"><button type="button" class="nav-link" data-sec-tab="canteen"><i class="fas fa-utensils me-1"></i>Canteen</button></li>
+    <li class="nav-item"><button type="button" class="nav-link" data-sec-tab="sets"><i class="fas fa-layer-group me-1"></i>Sets</button></li>
+    <li class="nav-item"><button type="button" class="nav-link" data-sec-tab="stock"><i class="fas fa-user-graduate me-1"></i>Student stock{% if pending_issues %} <span class="badge bg-warning text-dark ms-1">{{ pending_issues|length }}</span>{% endif %}</button></li>
+    {% if dues %}<li class="nav-item"><button type="button" class="nav-link text-danger fw-semibold" data-sec-tab="dues"><i class="fas fa-hand-holding-dollar me-1"></i>Supplier dues <span class="badge bg-danger ms-1">Rs. {{ '{:,.0f}'.format(dues_total / 100.0) }}</span></button></li>{% endif %}
+</ul>
+
+{# ------------------------------------------------------------------ #}
+{# Phase 4: setup checklist                                           #}
+{# ------------------------------------------------------------------ #}
+<div class="card border-0 shadow-sm mb-3" id="setup" data-sec="setup">
+    <div class="card-header bg-white border-0 pt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h2 class="h6 fw-bold mb-0"><i class="fas fa-list-check text-primary me-2"></i>Setup checklist
+                {% if setup.all_done %}<span class="badge bg-success ms-1">Ready</span>{% else %}<span class="badge bg-warning text-dark ms-1">{{ setup.done_count }} of 3 done</span>{% endif %}</h2>
+            <div class="text-muted small">Do these 3 things once. After that, every new admission takes its books and uniform out of stock by itself.</div>
+        </div>
+        <div style="min-width:160px">
+            <div class="progress" style="height:8px" role="progressbar" aria-valuenow="{{ setup.percent }}" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress-bar {{ 'bg-success' if setup.all_done else 'bg-primary' }}" style="width: {{ setup.percent }}%"></div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body pt-2">
+        <ol class="list-unstyled mb-0 d-grid gap-3 iv-steps">
+            <li class="iv-step d-flex gap-3 align-items-start {{ 'is-done' if setup.items_done }}">
+                <span class="iv-stepno">{% if setup.items_done %}<i class="fas fa-check"></i>{% else %}1{% endif %}</span>
+                <div class="flex-grow-1">
+                    <strong>Add the things you sell</strong>
+                    <div class="text-muted small">Every book, shirt, tie, bag... one by one, each with its selling price.</div>
+                    <div class="small">{% if setup.items_done %}{{ setup.item_count }} item{{ '' if setup.item_count == 1 else 's' }} added.{% else %}<span class="text-danger">No items yet.</span>{% endif %}
+                        <a href="#addProduct" class="btn btn-sm btn-outline-primary ms-1 py-0" data-pane="addProduct"><i class="fas fa-plus me-1"></i>Add an item</a></div>
                 </div>
-                <div class="col-7">
-                    <label class="form-label small fw-bold mb-1">Category</label>
-                    <input type="text" class="form-control form-control-sm" name="category" maxlength="80" value="Uniform" list="productCategories">
+            </li>
+            <li class="iv-step d-flex gap-3 align-items-start {{ 'is-done' if setup.stock_done }}">
+                <span class="iv-stepno">{% if setup.stock_done %}<i class="fas fa-check"></i>{% else %}2{% endif %}</span>
+                <div class="flex-grow-1">
+                    <strong>Count what is on your shelf today</strong>
+                    <div class="text-muted small">Type how many of each item you already have. No money is counted.</div>
+                    <div class="small">
+                        {% if not setup.items_done %}<span class="text-muted">Add an item first.</span>
+                        {% elif setup.stock_done %}{{ setup.stocked_count }} item{{ '' if setup.stocked_count == 1 else 's' }} in stock.
+                        {% else %}<span class="text-danger">No stock yet.</span>{% endif %}
+                        {% if setup.items_done %}<button type="button" class="btn btn-sm btn-outline-primary ms-1 py-0" data-bs-toggle="modal" data-bs-target="#openingModal"><i class="fas fa-box-open me-1"></i>Enter shelf stock</button>{% endif %}
+                        {% if setup.items_done and setup.without_stock %}<div class="text-muted">Still empty: {% for p in setup.without_stock[:8] %}{{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %}{% if setup.without_stock|length > 8 %} and {{ setup.without_stock|length - 8 }} more{% endif %}.</div>{% endif %}
+                    </div>
+                </div>
+            </li>
+            <li class="iv-step d-flex gap-3 align-items-start {{ 'is-done' if setup.sets_done }}">
+                <span class="iv-stepno">{% if setup.sets_done %}<i class="fas fa-check"></i>{% else %}3{% endif %}</span>
+                <div class="flex-grow-1">
+                    <strong>Choose books and uniform for each class</strong>
+                    <div class="text-muted small">One Books set and one Uniform set per class, so a new student gets the right items.</div>
+                    {% if setup.class_count == 0 %}
+                    <div class="small text-muted">No classes yet &mdash; add your classes first.</div>
+                    {% else %}
+                    <div class="small mb-1">{{ setup.classes_complete }} of {{ setup.class_count }} classes are ready.</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0 small">
+                            <thead class="table-light"><tr><th>Class</th><th>Books set</th><th>Uniform set</th></tr></thead>
+                            <tbody>
+                            {% for r in setup.class_rows %}
+                                <tr>
+                                    <td class="fw-bold">{{ r.name }}</td>
+                                    <td>{% if r.books %}<i class="fas fa-check text-success me-1"></i>{{ r.books.name }}
+                                        {% else %}<button type="button" class="btn btn-sm btn-outline-primary py-0 set-new-btn" data-bs-toggle="modal" data-bs-target="#setModal"
+                                                data-kind="books" data-class="{{ r.id }}" data-name="{{ r.name }} Books">Choose items</button>{% endif %}</td>
+                                    <td>{% if r.uniform %}<i class="fas fa-check text-success me-1"></i>{{ r.uniform.name }}{% if r.uniform_common %} <span class="text-muted">(all classes)</span>{% endif %}
+                                        {% else %}<button type="button" class="btn btn-sm btn-outline-primary py-0 set-new-btn" data-bs-toggle="modal" data-bs-target="#setModal"
+                                                data-kind="uniform" data-class="{{ r.id }}" data-name="{{ r.name }} Uniform">Choose items</button>
+                                        <button type="button" class="btn btn-sm btn-link py-0 set-new-btn" data-bs-toggle="modal" data-bs-target="#setModal"
+                                                data-kind="uniform" data-class="" data-name="Uniform (all classes)">One uniform for all classes</button>{% endif %}</td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                </div>
+            </li>
+        </ol>
+    </div>
+</div>
+
+{# ------------------------------------------------------------------ #}
+{# Phase 4: canteen                                                   #}
+{# ------------------------------------------------------------------ #}
+<div class="card border-0 shadow-sm mb-3" id="canteen" data-sec="canteen">
+    <div class="card-header bg-white border-0 pt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h2 class="h6 fw-bold mb-0"><i class="fas fa-utensils text-primary me-2"></i>Canteen
+                <span class="badge bg-light text-dark border ms-1">{{ canteen_modes[canteen_mode] }}</span></h2>
+            <div class="text-muted small">Keep your canteen here — either every item separately, or just the day's total sales and purchases.</div>
+        </div>
+        {% if canteen_mode != 'off' %}
+        <div class="btn-group btn-group-sm" role="group" aria-label="Month">
+            <a class="btn btn-outline-secondary" href="{{ url_for('main.inventory_page', month=canteen_prev) }}#canteen"><i class="fas fa-chevron-left"></i></a>
+            <span class="btn btn-outline-secondary disabled">{{ canteen_month_label }}</span>
+            <a class="btn btn-outline-secondary" href="{{ url_for('main.inventory_page', month=canteen_next) }}#canteen"><i class="fas fa-chevron-right"></i></a>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-body pt-2">
+        {% if canteen_mode == 'off' %}
+        <p class="small mb-2">Does your school run a canteen? Choose how you want to keep it. You can change this later &mdash; nothing already saved is lost.</p>
+        {% if current_user.role in ('admin', 'owner') %}
+        <div class="row g-2">
+            <div class="col-md-6">
+                <form method="post" action="{{ url_for('main.inventory_canteen_mode') }}" class="h-100">
+                    <input type="hidden" name="mode" value="detailed">
+                    <button class="btn btn-outline-primary w-100 h-100 text-start p-3">
+                        <div class="fw-bold"><i class="fas fa-list me-1"></i>Item by item</div>
+                        <div class="small text-muted">Each canteen item (samosa, juice...) has its own stock, price and profit. Best when you want to know what sells.</div>
+                    </button>
+                </form>
+            </div>
+            <div class="col-md-6">
+                <form method="post" action="{{ url_for('main.inventory_canteen_mode') }}" class="h-100">
+                    <input type="hidden" name="mode" value="totals">
+                    <button class="btn btn-outline-primary w-100 h-100 text-start p-3">
+                        <div class="fw-bold"><i class="fas fa-calculator me-1"></i>Totals only</div>
+                        <div class="small text-muted">Just type the total sales and the total purchases of the day. No items, no stock to keep.</div>
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">The administrator or owner chooses how the canteen is kept.</p>
+        {% endif %}
+        {% else %}
+        <div class="row g-2 mb-3 text-center">
+            <div class="col-6 col-md-3"><div class="iv-mini"><div class="small text-muted">Sold</div><div class="fw-bold fs-5">Rs. {{ '{:,.2f}'.format(canteen.sales / 100.0) }}</div></div></div>
+            <div class="col-6 col-md-3"><div class="iv-mini"><div class="small text-muted">Spent on buying</div><div class="fw-bold fs-5">Rs. {{ '{:,.2f}'.format(canteen.purchases / 100.0) }}</div></div></div>
+            <div class="col-6 col-md-3"><div class="iv-mini"><div class="small text-muted">Profit (estimate)</div><div class="fw-bold fs-5 {{ 'text-success' if canteen.profit >= 0 else 'text-danger' }}">Rs. {{ '{:,.2f}'.format(canteen.profit / 100.0) }}</div></div></div>
+            <div class="col-6 col-md-3"><div class="iv-mini"><div class="small text-muted">Stock on the shelf</div><div class="fw-bold fs-5">Rs. {{ '{:,.2f}'.format(canteen.detailed.stock_value / 100.0) }}</div></div></div>
+        </div>
+        <details class="mb-3"><summary class="small text-muted" style="cursor:pointer">How is the profit worked out?</summary>
+        <p class="text-muted small mt-2 mb-0">
+            Profit = sales minus what the sold items cost (item by item), plus sales minus purchases for the totals you typed.
+            {% if canteen.detailed.sales or canteen.detailed.bought %}Item by item: sales Rs. {{ '{:,.2f}'.format(canteen.detailed.sales / 100.0) }}, cost of goods Rs. {{ '{:,.2f}'.format(canteen.detailed.cost_of_goods / 100.0) }}.{% endif %}
+            {% if canteen.totals.sales or canteen.totals.purchases %}Totals: sales Rs. {{ '{:,.2f}'.format(canteen.totals.sales / 100.0) }}, purchases Rs. {{ '{:,.2f}'.format(canteen.totals.purchases / 100.0) }}.{% endif %}
+        </p></details>
+
+        {% if canteen_mode == 'detailed' %}
+        <div class="alert alert-light border small py-2">
+            <i class="fas fa-circle-info text-primary me-1"></i>Add each canteen item with the category <strong>Canteen</strong> in <em>New item</em>, then use <em>Buy stock</em> and <em>Sell an item</em> above like any other item.
+            <a href="#addProduct" class="ms-1">Add a canteen item</a>
+        </div>
+        <div class="table-responsive mb-2">
+            <table class="table table-sm table-striped align-middle mb-0">
+                <thead class="table-light"><tr><th class="ps-3">Canteen item</th><th class="text-end">Selling price</th><th class="text-end">Cost</th><th class="text-end pe-3">In stock</th></tr></thead>
+                <tbody>
+                {% for p in canteen_products %}
+                    <tr class="{% if not p.is_active %}text-decoration-line-through text-muted{% endif %}">
+                        <td class="ps-3">{{ p.name }}{% if p.stock_qty <= p.min_stock_qty and p.min_stock_qty > 0 %} <span class="badge bg-warning text-dark">low</span>{% endif %}</td>
+                        <td class="text-end">{{ '{:,.2f}'.format(p.sale_price_paisa / 100.0) }}</td>
+                        <td class="text-end">{{ '{:,.2f}'.format(p.cost_paisa / 100.0) }}</td>
+                        <td class="text-end fw-bold pe-3">{{ p.stock_qty }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="4" class="text-center text-muted py-3">No canteen items yet.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <form method="post" action="{{ url_for('main.inventory_canteen_total') }}" class="row g-2 align-items-end mb-3">
+            <div class="col-6 col-md-2">
+                <label class="form-label small fw-bold mb-1">What</label>
+                <select class="form-select form-select-sm" name="kind">
+                    <option value="sale">Total sales (money sold)</option>
+                    <option value="purchase">Total purchases (stock bought)</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small fw-bold mb-1">Amount (Rs.)</label>
+                <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" name="amount" required>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small fw-bold mb-1">Date</label>
+                <input type="date" class="form-control form-control-sm" name="entry_date" value="{{ today.strftime('%Y-%m-%d') }}" max="{{ today.strftime('%Y-%m-%d') }}" required>
+            </div>
+            <div class="col-6 col-md-4">
+                <label class="form-label small fw-bold mb-1">Note</label>
+                <input type="text" class="form-control form-control-sm" name="note" maxlength="150" placeholder="optional, e.g. Monday">
+            </div>
+            <div class="col-12 col-md-2 d-grid"><button class="btn btn-primary btn-sm">Save</button></div>
+            <div class="col-6 col-md-3 canteen-buy-only" style="display:none">
+                <label class="form-label small fw-bold mb-1">Supplier</label>
+                <input type="text" class="form-control form-control-sm" name="supplier" maxlength="120" list="canteenSupplierNames" placeholder="who did you buy from?">
+                <datalist id="canteenSupplierNames">{% for name in canteen_suppliers %}<option value="{{ name }}">{% endfor %}</datalist>
+            </div>
+            <div class="col-6 col-md-3 canteen-buy-only" style="display:none">
+                <label class="form-label small fw-bold mb-1">Paid now (PKR)</label>
+                <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="paid_now" placeholder="empty = paid in full">
+            </div>
+            <div class="col-12 col-md-6 canteen-buy-only small text-muted" style="display:none">Paid less than the bill? The rest is a <strong>supplier due (udhaar)</strong>: it is not an expense until you pay it, and it shows in <em>Supplier dues</em> above.</div>
+        </form>
+        <script>
+        (function () {
+            var form = document.querySelector('form[action="{{ url_for('main.inventory_canteen_total') }}"]');
+            if (!form) { return; }
+            var kind = form.querySelector('select[name="kind"]');
+            function toggle() {
+                var show = kind.value === 'purchase';
+                form.querySelectorAll('.canteen-buy-only').forEach(function (el) { el.style.display = show ? '' : 'none'; });
+            }
+            kind.addEventListener('change', toggle); toggle();
+        })();
+        </script>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0">
+                <thead class="table-light"><tr><th class="ps-3">Date</th><th>What</th><th class="text-end">Amount</th><th>Note</th><th class="text-end pe-3"></th></tr></thead>
+                <tbody>
+                {% for e in canteen_entries %}
+                    <tr class="{% if e.is_void %}text-muted text-decoration-line-through{% endif %}">
+                        <td class="ps-3">{{ e.entry_date.strftime('%d %b %Y') }}</td>
+                        <td>{{ 'Sales' if e.kind == 'sale' else 'Purchases' }}</td>
+                        <td class="text-end">{{ '{:,.2f}'.format(e.amount_paisa / 100.0) }}</td>
+                        <td class="small">{{ e.note or '' }}{% if e.is_credit and not e.is_void %}<br><span class="text-muted">{{ e.supplier or 'No supplier name' }} &middot; paid Rs. {{ '{:,.2f}'.format(e.paid_total_paisa / 100.0) }} &middot; </span>{% if e.balance_paisa > 0 %}<strong class="text-danger">owed Rs. {{ '{:,.2f}'.format(e.balance_paisa / 100.0) }}</strong>{% else %}<span class="text-success">paid in full</span>{% endif %}{% elif e.kind == 'purchase' and e.supplier and not e.is_void %}<br><span class="text-muted">{{ e.supplier }}</span>{% endif %}{% if e.is_void %} <span class="text-decoration-none">(voided{% if e.void_reason %}: {{ e.void_reason }}{% endif %})</span>{% endif %}</td>
+                        <td class="text-end pe-3">
+                            {% if e.is_credit and not e.is_void and e.balance_paisa > 0 %}
+                            <button type="button" class="btn btn-sm btn-primary mb-1 pay-bill-btn"
+                                    data-bs-toggle="modal" data-bs-target="#payBillModal"
+                                    data-action="{{ url_for('main.inventory_canteen_entry_pay', entry_id=e.id) }}"
+                                    data-owed="{{ '%.2f'|format(e.balance_paisa / 100.0) }}"
+                                    data-label="Canteen purchases{% if e.supplier %} — {{ e.supplier }}{% endif %}">Pay</button>
+                            {% endif %}
+                            {% if not e.is_void and current_user.role in ('admin', 'owner') %}
+                            <form method="post" action="{{ url_for('main.inventory_canteen_entry_void', entry_id=e.id) }}" class="d-flex gap-1 justify-content-end"
+                                  data-confirm="Void this canteen entry?" data-confirm-ok="Void" data-confirm-variant="danger">
+                                <input type="text" name="reason" class="form-control form-control-sm" style="max-width:150px" placeholder="reason" required>
+                                <button class="btn btn-sm btn-outline-danger">Void</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="5" class="text-center text-muted py-3">No canteen totals yet.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if canteen_payments %}
+        <div class="table-responsive mt-3">
+            <table class="table table-sm table-striped align-middle mb-0">
+                <thead class="table-light"><tr><th class="ps-3">Paid on</th><th>Canteen supplier</th><th class="text-end">Amount</th><th>Method</th><th class="text-end pe-3"></th></tr></thead>
+                <tbody>
+                {% for cp in canteen_payments %}
+                    <tr class="{% if cp.is_void %}text-muted text-decoration-line-through{% endif %}">
+                        <td class="ps-3">{{ cp.payment_date.strftime('%d %b %Y') }}</td>
+                        <td class="small">{{ cp.entry.supplier or 'No supplier name' }}<br><span class="text-muted">bill of {{ cp.entry.entry_date.strftime('%d %b %Y') }}</span></td>
+                        <td class="text-end fw-bold">{{ '{:,.2f}'.format(cp.amount_paisa / 100.0) }}</td>
+                        <td class="small">{{ (cp.method or '')|capitalize }}</td>
+                        <td class="text-end pe-3">
+                            {% if not cp.is_void and current_user.role in ('admin', 'owner') %}
+                            <form method="post" action="{{ url_for('main.inventory_canteen_payment_void', payment_id=cp.id) }}" class="d-flex gap-1 justify-content-end">
+                                <input type="text" name="reason" class="form-control form-control-sm" style="max-width:150px" placeholder="reason" required>
+                                <button class="btn btn-sm btn-outline-danger">Void</button>
+                            </form>
+                            {% elif cp.is_void %}<span class="small">(voided: {{ cp.void_reason }})</span>{% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        <p class="text-muted small mb-0 mt-2">Sales totals count as income. Purchase totals count as an expense (<em>Canteen Purchases</em>) for the part you really paid; what is still owed to the supplier is not an expense until it is paid. Financial Overview already includes them.</p>
+        {% endif %}
+
+        {% if current_user.role in ('admin', 'owner') %}
+        <form method="post" action="{{ url_for('main.inventory_canteen_mode') }}" class="d-flex gap-2 align-items-center flex-wrap mt-3 pt-2 border-top">
+            <span class="small text-muted">Keep the canteen:</span>
+            <select name="mode" class="form-select form-select-sm w-auto">
+                {% for key, label in canteen_modes.items() %}<option value="{{ key }}" {{ 'selected' if key == canteen_mode }}>{{ label }}</option>{% endfor %}
+            </select>
+            <button class="btn btn-sm btn-outline-secondary">Change</button>
+            <span class="small text-muted">Nothing already saved is lost when you change.</span>
+        </form>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
+
+<ul class="nav nav-pills su-tabs mb-3 gap-1" id="invTabs" role="tablist" data-sec="items">
+    <li class="nav-item" role="presentation"><button class="nav-link active" type="button" data-bs-toggle="pill" data-bs-target="#recordSale"><i class="fas fa-cash-register me-1"></i>Sell an item</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link" type="button" data-bs-toggle="pill" data-bs-target="#recordPurchase"><i class="fas fa-truck-ramp-box me-1"></i>Buy stock</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link" type="button" data-bs-toggle="pill" data-bs-target="#addProduct"><i class="fas fa-plus me-1"></i>New item</button></li>
+</ul>
+<div class="tab-content mb-3" data-sec="items">
+    <div class="tab-pane fade su-pane" id="addProduct">
+        <div class="card border-0 shadow-sm h-100"><div class="card-body">
+            <h2 class="h6 fw-bold mb-1">Add a new item</h2>
+            <p class="text-muted small mb-3">Add something you sell, once. After this, use "Buy stock" to put stock on the shelf.</p>
+            <form method="post" action="{{ url_for('main.inventory_product_add') }}" class="row g-3">
+                <div class="col-12">
+                    <label class="form-label mb-1" for="ivNewName">1. Item name</label>
+                    <input type="text" class="form-control" name="name" id="ivNewName" maxlength="120" placeholder="e.g. School Shirt" required>
+                </div>
+                <div class="col-12 col-md-7">
+                    <label class="form-label mb-1" for="ivNewCat">2. Type</label>
+                    <input type="text" class="form-control" name="category" id="ivNewCat" maxlength="80" value="Uniform" list="productCategories">
                     <datalist id="productCategories">
-                        <option>Uniform</option><option>Books</option><option>Stationery</option><option>Bags</option><option>Other</option>
+                        <option>Uniform</option><option>Books</option><option>Stationery</option><option>Bags</option><option>Canteen</option><option>Other</option>
                     </datalist>
                 </div>
-                <div class="col-5">
-                    <label class="form-label small fw-bold mb-1">Selling price (PKR)</label>
-                    <input type="number" step="0.01" min="0" class="form-control form-control-sm" name="sale_price" required>
+                <div class="col-12 col-md-5">
+                    <label class="form-label mb-1" for="ivNewPrice">3. Selling price (Rs.)</label>
+                    <input type="number" step="0.01" min="0" inputmode="decimal" class="form-control" name="sale_price" id="ivNewPrice" required>
                 </div>
-                <div class="col-7">
-                    <label class="form-label small fw-bold mb-1">Supplier (optional)</label>
-                    <input type="text" class="form-control form-control-sm" name="supplier" maxlength="120">
-                </div>
-                <div class="col-5">
-                    <label class="form-label small fw-bold mb-1">Min stock (alert at)</label>
-                    <input type="number" min="0" class="form-control form-control-sm" name="min_stock" value="5">
+                <div class="col-12">
+                    <details>
+                        <summary class="small text-muted" style="cursor:pointer">More options (supplier, low-stock warning)</summary>
+                        <div class="row g-3 mt-0">
+                            <div class="col-12 col-md-7">
+                                <label class="form-label mb-1" for="ivNewSupplier">Usual supplier</label>
+                                <input type="text" class="form-control" name="supplier" id="ivNewSupplier" maxlength="120">
+                            </div>
+                            <div class="col-12 col-md-5">
+                                <label class="form-label mb-1" for="ivNewMin">Warn me when stock is below</label>
+                                <input type="number" min="0" inputmode="numeric" class="form-control" name="min_stock" id="ivNewMin" value="5">
+                            </div>
+                        </div>
+                    </details>
                 </div>
                 <div class="col-12 d-grid">
-                    <button class="btn btn-primary btn-sm">Add product</button>
+                    <button class="btn btn-primary btn-lg"><i class="fas fa-plus me-2"></i>Save item</button>
                 </div>
             </form>
         </div></div>
     </div>
-    <div class="col-lg-4">
+    <div class="tab-pane fade su-pane" id="recordPurchase">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <h2 class="h6 fw-bold text-uppercase text-muted mb-3">Record purchase (stock in)</h2>
-            <form method="post" action="{{ url_for('main.inventory_purchase') }}" class="row g-2">
+            <h2 class="h6 fw-bold mb-1">Buy stock</h2>
+            <p class="text-muted small mb-3">Use this when you bring items into the school from a supplier. Stock goes up by itself.</p>
+            <form method="post" action="{{ url_for('main.inventory_purchase') }}" class="row g-3" id="purchaseForm">
                 <div class="col-12">
-                    <label class="form-label small fw-bold mb-1">Product</label>
-                    <select class="form-select form-select-sm" name="product_id" required>
+                    <label class="form-label mb-1" for="ivBuyProduct">1. What did you buy?</label>
+                    <select class="form-select" name="product_id" id="ivBuyProduct" required>
                         {% for p in products if p.is_active %}
-                        <option value="{{ p.id }}">{{ p.name }} (stock {{ p.stock_qty }})</option>
+                        <option value="{{ p.id }}">{{ p.name }} ({{ p.stock_qty }} in stock now)</option>
                         {% endfor %}
                     </select>
+                    <div class="small mt-1"><a href="#addProduct" data-pane="addProduct">The item is not in the list? Add a new item</a></div>
                 </div>
-                <div class="col-4">
-                    <label class="form-label small fw-bold mb-1">Quantity</label>
-                    <input type="number" min="1" class="form-control form-control-sm" name="quantity" required>
+                <div class="col-6 col-md-4">
+                    <label class="form-label mb-1" for="pQty">2. How many?</label>
+                    <input type="number" min="1" inputmode="numeric" class="form-control" name="quantity" id="pQty" required>
                 </div>
-                <div class="col-4">
-                    <label class="form-label small fw-bold mb-1">Unit cost (PKR)</label>
-                    <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" name="unit_cost" required>
+                <div class="col-6 col-md-4">
+                    <label class="form-label mb-1" for="pCost">Price of one (Rs.)</label>
+                    <input type="number" step="0.01" min="0.01" inputmode="decimal" class="form-control" name="unit_cost" id="pCost" required>
                 </div>
-                <div class="col-4">
-                    <label class="form-label small fw-bold mb-1">Date</label>
-                    <input type="date" class="form-control form-control-sm" name="purchase_date" value="{{ today.strftime('%Y-%m-%d') }}" required>
+                <div class="col-12 col-md-4">
+                    <label class="form-label mb-1" for="ivBuyDate">Date</label>
+                    <input type="date" class="form-control" name="purchase_date" id="ivBuyDate" value="{{ today.strftime('%Y-%m-%d') }}" required>
+                </div>
+                <div class="col-12 col-md-7">
+                    <label class="form-label mb-1" for="ivBuySupplier">3. Who did you buy from?</label>
+                    <input type="text" class="form-control" name="supplier" id="ivBuySupplier" maxlength="120" list="supplierNames" placeholder="Shop or supplier name">
+                    <datalist id="supplierNames">{% for name in suppliers %}<option value="{{ name }}">{% endfor %}</datalist>
+                </div>
+                <div class="col-12 col-md-5">
+                    <label class="form-label mb-1" for="pPaid">4. How much did you pay now? (Rs.)</label>
+                    <input type="number" step="0.01" min="0" inputmode="decimal" class="form-control" name="paid_now" id="pPaid" placeholder="Leave empty if paid in full">
+                </div>
+                <div class="col-12">
+                    <div class="iv-bill" id="purchaseSummary">
+                        <div><span>Total bill</span><strong id="sumTotal">Rs. 0.00</strong></div>
+                        <div><span>You pay now</span><strong id="sumPaid">Rs. 0.00</strong></div>
+                        <div id="sumOwedWrap"><span>You still owe the supplier</span><strong id="sumOwed" class="text-danger">Rs. 0.00</strong></div>
+                    </div>
+                    <div class="small text-muted mt-1">Only the money you really pay counts as money out. What is left is saved under "Supplier dues" so you can pay it later.</div>
                 </div>
                 <div class="col-12 d-grid">
-                    <button class="btn btn-outline-primary btn-sm">Add stock</button>
+                    <button class="btn btn-primary btn-lg"><i class="fas fa-plus me-2"></i>Add stock</button>
                 </div>
             </form>
-            <p class="text-muted small mb-0 mt-2">Buying stock moves money out as a purchase payment — it is never counted as an expense. Weighted-average cost updates automatically.</p>
         </div></div>
     </div>
-    <div class="col-lg-4">
+    <div class="tab-pane fade show active su-pane" id="recordSale">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <h2 class="h6 fw-bold text-uppercase text-muted mb-3">Record sale</h2>
-            <form method="post" action="{{ url_for('main.inventory_sell') }}" class="row g-2">
+            <h2 class="h6 fw-bold mb-1">Sell an item</h2>
+            <p class="text-muted small mb-3">Pick the item, how many, and (if you want) the student. Stock goes down by itself.</p>
+            <form method="post" action="{{ url_for('main.inventory_sell') }}" class="row g-3" id="ivSellForm">
                 <div class="col-12">
-                    <label class="form-label small fw-bold mb-1">Product</label>
-                    <select class="form-select form-select-sm" name="product_id" required>
+                    <label class="form-label mb-1" for="ivSellProduct">1. What are you selling?</label>
+                    <select class="form-select" name="product_id" id="ivSellProduct" required>
                         {% for p in products if p.is_active %}
-                        <option value="{{ p.id }}">{{ p.name }} — Rs. {{ '{:,.2f}'.format(p.sale_price_paisa / 100.0) }} (stock {{ p.stock_qty }})</option>
+                        <option value="{{ p.id }}" data-price="{{ '%.2f'|format(p.sale_price_paisa / 100.0) }}" data-stock="{{ p.stock_qty }}">{{ p.name }} — Rs. {{ '{:,.0f}'.format(p.sale_price_paisa / 100.0) }} ({{ p.stock_qty }} in stock)</option>
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-4">
-                    <label class="form-label small fw-bold mb-1">Quantity</label>
-                    <input type="number" min="1" class="form-control form-control-sm" name="quantity" required>
+                <div class="col-6 col-md-4">
+                    <label class="form-label mb-1" for="ivSellQty">2. How many?</label>
+                    <input type="number" min="1" value="1" inputmode="numeric" class="form-control" name="quantity" id="ivSellQty" required>
                 </div>
-                <div class="col-4">
-                    <label class="form-label small fw-bold mb-1">Date</label>
-                    <input type="date" class="form-control form-control-sm" name="sale_date" value="{{ today.strftime('%Y-%m-%d') }}" required>
+                <div class="col-6 col-md-4">
+                    <label class="form-label mb-1" for="ivSellDate">Date</label>
+                    <input type="date" class="form-control" name="sale_date" id="ivSellDate" value="{{ today.strftime('%Y-%m-%d') }}" required>
                 </div>
-                <div class="col-4">
-                    <label class="form-label small fw-bold mb-1">Note</label>
-                    <input type="text" class="form-control form-control-sm" name="note" maxlength="200" placeholder="optional">
+                <div class="col-12 col-md-4">
+                    <label class="form-label mb-1">You will receive</label>
+                    <div class="iv-total" id="ivSellTotal" aria-live="polite">Rs. 0</div>
+                </div>
+                <div class="col-12">
+                    <label class="form-label mb-1" for="ivSellStudent">3. Who is it for? <span class="text-muted fw-normal">(optional)</span></label>
+                    <input type="text" class="form-control" name="student" id="ivSellStudent" list="studentNames" autocomplete="off" placeholder="Start typing the student's name">
+                    <datalist id="studentNames">{% for label, st in student_choices %}<option value="{{ label }}">{% endfor %}</datalist>
+                </div>
+                <div class="col-12">
+                    <div class="form-check iv-check">
+                        <input class="form-check-input" type="checkbox" name="in_admission" value="1" id="inAdmission">
+                        <label class="form-check-label" for="inAdmission"><strong>Already paid with the admission fee</strong><br>
+                            <span class="text-muted small">Tick this only if the student already paid for this item at admission. Stock goes down but no new money is counted.</span></label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <details>
+                        <summary class="small text-muted" style="cursor:pointer">Add a note (optional)</summary>
+                        <input type="text" class="form-control mt-2" name="note" maxlength="200" placeholder="e.g. paid by parent">
+                    </details>
                 </div>
                 <div class="col-12 d-grid">
-                    <button class="btn btn-success btn-sm">Sell</button>
+                    <button class="btn btn-success btn-lg" id="ivSellBtn"><i class="fas fa-check me-2"></i>Sell</button>
                 </div>
             </form>
-            <p class="text-muted small mb-0 mt-2">The sale snapshots the current selling price and cost — later price changes never alter past sales.</p>
+            <script>
+            (function () {
+                var sel = document.getElementById('ivSellProduct'), qty = document.getElementById('ivSellQty'),
+                    out = document.getElementById('ivSellTotal'), btn = document.getElementById('ivSellBtn');
+                if (!sel || !qty || !out) return;
+                function upd() {
+                    var o = sel.options[sel.selectedIndex]; if (!o) { out.textContent = 'Rs. 0'; return; }
+                    var n = parseInt(qty.value, 10) || 0, stock = parseInt(o.getAttribute('data-stock'), 10) || 0;
+                    var total = n * (parseFloat(o.getAttribute('data-price')) || 0);
+                    out.textContent = 'Rs. ' + Math.round(total).toLocaleString('en-US');
+                    var over = n > stock;
+                    qty.classList.toggle('is-invalid', over);
+                    out.classList.toggle('text-danger', over);
+                    if (over) out.textContent += ' — only ' + stock + ' in stock';
+                }
+                sel.addEventListener('change', upd); qty.addEventListener('input', upd); upd();
+            })();
+            </script>
         </div></div>
     </div>
 </div>
 
-<div class="row g-3">
-    <div class="col-lg-7">
+<div class="card border-0 shadow-sm mb-3" id="sets" data-sec="sets">
+    <div class="card-header bg-white border-0 pt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h2 class="h6 fw-bold mb-0"><i class="fas fa-layer-group text-primary me-2"></i>Sets — books or uniform that go together</h2>
+            <div class="text-muted small">A set is a bundle, like "Class 1 Books". You can buy or sell the whole bundle in one go, and still sell a single book later.</div>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="newSetBtn" data-bs-toggle="modal" data-bs-target="#setModal">
+            <i class="fas fa-plus me-1"></i>New set
+        </button>
+    </div>
+    <div class="card-body p-0 table-responsive">
+        <table class="table table-sm table-striped align-middle mb-0">
+            <thead class="table-light"><tr>
+                <th class="ps-3">Set</th><th>What is inside</th>
+                <th class="text-end">Sells for</th><th class="text-end">Costs</th>
+                <th class="text-end">Complete sets</th><th class="text-end pe-3"></th>
+            </tr></thead>
+            <tbody>
+                {% for st in sets_view %}
+                <tr class="{% if not st.is_active %}text-decoration-line-through text-muted{% endif %}">
+                    <td class="ps-3 fw-bold">{{ st.name }}
+                        <div class="small fw-normal text-muted text-capitalize">{{ st.kind }}{% if st.class_name %} &middot; {{ st.class_name }}{% endif %}</div></td>
+                    <td class="small">{% for it in st['items'] %}{{ it.qty }} &times; {{ it.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+                    <td class="text-end">{{ '{:,.2f}'.format(st.price / 100.0) }}</td>
+                    <td class="text-end text-muted">{{ '{:,.2f}'.format(st.cost / 100.0) }}</td>
+                    <td class="text-end fw-bold">{{ st.available }}</td>
+                    <td class="text-end pe-3 text-nowrap">
+                        {% if st.is_active %}
+                        <button type="button" class="btn btn-sm btn-outline-primary set-buy-btn" data-bs-toggle="modal" data-bs-target="#setBuyModal"
+                                data-action="{{ url_for('main.inventory_set_buy', set_id=st.id) }}" data-name="{{ st.name }}">Buy</button>
+                        <button type="button" class="btn btn-sm btn-outline-success set-sell-btn" data-bs-toggle="modal" data-bs-target="#setSellModal"
+                                data-action="{{ url_for('main.inventory_set_sell', set_id=st.id) }}" data-name="{{ st.name }}"
+                                data-price="{{ '%.2f'|format(st.price / 100.0) }}">Sell</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary set-edit-btn" data-bs-toggle="modal" data-bs-target="#setModal"
+                                data-action="{{ url_for('main.inventory_set_edit', set_id=st.id) }}" data-set='{{ st|tojson }}'>Edit</button>
+                        {% endif %}
+                        {% if current_user.role in ('admin', 'owner') %}
+                        <form method="post" action="{{ url_for('main.inventory_set_toggle', set_id=st.id) }}" class="d-inline">
+                            <button class="btn btn-sm btn-outline-secondary">{{ 'Stop using' if st.is_active else 'Use again' }}</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center text-muted py-4">No sets yet. Add your items first, then press <strong>New set</strong> — for example "Class 1 Books" = English + Maths + Urdu.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="openingModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog"><div class="modal-content">
+        <form method="post" action="{{ url_for('main.inventory_opening_stock') }}">
+            <div class="modal-header"><h5 class="modal-title">Opening stock</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-body row g-2">
+                <div class="col-12 small text-muted">Stock that is <strong>already on your shelf</strong>. It fills the stock and sets the cost, but no money is paid today &mdash; so it is not cash out and not a supplier due.</div>
+                <div class="col-12"><label class="form-label small fw-bold mb-1">Item</label>
+                    <select class="form-select" name="product_id" required>
+                        {% for p in products if p.is_active %}<option value="{{ p.id }}">{{ p.name }} (stock {{ p.stock_qty }})</option>{% endfor %}
+                    </select></div>
+                <div class="col-4"><label class="form-label small fw-bold mb-1">Quantity</label>
+                    <input type="number" min="1" class="form-control" name="quantity" required></div>
+                <div class="col-4"><label class="form-label small fw-bold mb-1">Cost of one (PKR)</label>
+                    <input type="number" step="0.01" min="0.01" class="form-control" name="unit_cost" required></div>
+                <div class="col-4"><label class="form-label small fw-bold mb-1">As of</label>
+                    <input type="date" class="form-control" name="as_of" value="{{ today.strftime('%Y-%m-%d') }}" max="{{ today.strftime('%Y-%m-%d') }}" required></div>
+                <div class="col-12 small text-muted">Not sure of the cost? Your best estimate is fine &mdash; it is only used to work out profit.</div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary btn-sm">Add opening stock</button></div>
+        </form>
+    </div></div>
+</div>
+
+<select id="setProductTemplate" class="d-none" aria-hidden="true">
+    {% for p in products if p.is_active %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+</select>
+
+<div class="modal fade" id="setModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content border-0 shadow-lg">
+        <form method="post" id="setForm" action="{{ url_for('main.inventory_set_add') }}">
+            <div class="modal-header"><h5 class="modal-title" id="setModalTitle">New set</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body row g-2">
+                <div class="col-md-6"><label class="form-label small fw-bold mb-1">Set name</label>
+                    <input type="text" class="form-control" name="name" id="setName" maxlength="120" placeholder="e.g. Class 1 Books" required></div>
+                <div class="col-md-3"><label class="form-label small fw-bold mb-1">Kind</label>
+                    <select class="form-select" name="kind" id="setKind">{% for k in set_kinds %}<option value="{{ k }}" class="text-capitalize">{{ k|capitalize }}</option>{% endfor %}</select></div>
+                <div class="col-md-3"><label class="form-label small fw-bold mb-1">For class (optional)</label>
+                    <select class="form-select" name="class_id" id="setClass"><option value="">All classes / no class (a uniform set is then used by every class)</option>{% for c in classes %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
+                <div class="col-12"><label class="form-label small fw-bold mb-1">Items in this set</label>
+                    <div id="setRows" class="d-grid gap-2"></div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="addSetRow"><i class="fas fa-plus me-1"></i>Add item</button>
+                    {% if not products %}<div class="small text-danger mt-2">Add your items first (use "New item" above), then make the set.</div>{% endif %}
+                </div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary btn-sm">Save set</button></div>
+        </form>
+    </div></div>
+</div>
+
+<div class="modal fade" id="setBuyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg">
+        <form method="post" id="setBuyForm" action="">
+            <div class="modal-header"><h5 class="modal-title">Buy <span id="setBuyName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body row g-2">
+                <div class="col-12 small text-muted">One entry fills every item in the set. The bill is shared across the items by their selling value.</div>
+                <div class="col-4"><label class="form-label small fw-bold mb-1">Number of sets</label>
+                    <input type="number" min="1" class="form-control" name="number_of_sets" required></div>
+                <div class="col-4"><label class="form-label small fw-bold mb-1">Total bill (PKR)</label>
+                    <input type="number" step="0.01" min="0.01" class="form-control" name="total_bill" id="setBuyTotal" required></div>
+                <div class="col-4"><label class="form-label small fw-bold mb-1">Paid now (PKR)</label>
+                    <input type="number" step="0.01" min="0" class="form-control" name="paid_now" id="setBuyPaid" placeholder="empty = all"></div>
+                <div class="col-7"><label class="form-label small fw-bold mb-1">Supplier</label>
+                    <input type="text" class="form-control" name="supplier" maxlength="120" list="supplierNames"></div>
+                <div class="col-5"><label class="form-label small fw-bold mb-1">Date</label>
+                    <input type="date" class="form-control" name="purchase_date" value="{{ today.strftime('%Y-%m-%d') }}" required></div>
+                <div class="col-12 small" id="setBuyOwedWrap" style="display:none">Still owed to supplier: <strong class="text-danger" id="setBuyOwed"></strong></div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary btn-sm">Add set stock</button></div>
+        </form>
+    </div></div>
+</div>
+
+<div class="modal fade" id="setSellModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg">
+        <form method="post" id="setSellForm" action="">
+            <div class="modal-header"><h5 class="modal-title">Sell <span id="setSellName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body row g-2">
+                <div class="col-12 small text-muted">One set = one of each item inside. <span id="setSellPrice"></span></div>
+                <div class="col-4"><label class="form-label small fw-bold mb-1">Number of sets</label>
+                    <input type="number" min="1" value="1" class="form-control" name="number_of_sets" required></div>
+                <div class="col-4"><label class="form-label small fw-bold mb-1">Date</label>
+                    <input type="date" class="form-control" name="sale_date" value="{{ today.strftime('%Y-%m-%d') }}" required></div>
+                <div class="col-4"><label class="form-label small fw-bold mb-1">Note</label>
+                    <input type="text" class="form-control" name="note" maxlength="150" placeholder="optional"></div>
+                <div class="col-12"><label class="form-label small fw-bold mb-1">Student <span class="text-muted fw-normal">(optional - so it shows on the student's page)</span></label>
+                    <input type="text" class="form-control" name="student" list="studentNames" autocomplete="off" placeholder="Start typing the student's name"></div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-success btn-sm">Sell</button></div>
+        </form>
+    </div></div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3" id="studentStock" data-sec="stock">
+    <div class="card-header bg-white border-0 pt-3">
+        <h2 class="h6 fw-bold mb-0"><i class="fas fa-user-graduate text-primary me-2"></i>Student stock — books and uniform given to students</h2>
+        <div class="text-muted small mt-1">When a new student is admitted, the class's books and uniform come out of stock by themselves. Their price is already in the admission fee, so it is <strong>not</strong> counted as sales income again. To give one single item later, use <em>Sell an item</em> above.</div>
+    </div>
+    <div class="card-body pt-2">
+        {% if pending_issues %}
+        <div class="iv-alert" role="status">
+            <i class="fas fa-hand-holding-hand"></i>
+            <div><strong>{{ pending_issues|length }} student{{ '' if pending_issues|length == 1 else 's' }} still waiting for their items.</strong>
+            Their stock was not taken out yet — either the class has no set, or there was not enough stock. Fix that (Setup tab, or Buy stock), then press <em>Issue now</em>.</div>
+        </div>
+        <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light"><tr><th>Student</th><th>Class</th><th>What</th><th class="text-end">How many</th><th>Items to give</th><th></th></tr></thead>
+                <tbody>
+                {% for r in pending_issues %}
+                    <tr>
+                        <td>{{ r.student.student_name }}</td>
+                        <td class="small">{{ r.student.class_info.name if r.student.class_info else '' }}</td>
+                        <td class="text-capitalize">{{ r.kind }}</td>
+                        <td class="text-end">{{ r.missing }}</td>
+                        <td class="small">{% if r.set %}{{ r.set.name }}{% else %}<span class="text-danger">No {{ r.kind }} set for this class yet</span>{% endif %}</td>
+                        <td class="text-end">
+                            {% if r.set %}<form method="post" action="{{ url_for('main.inventory_student_issue', student_id=r.student.id) }}" class="d-inline">
+                                <button class="btn btn-sm btn-primary">Issue now</button></form>{% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        <h3 class="h6 fw-bold mb-2">Given lately</h3>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0">
+                <thead class="table-light"><tr><th>Date</th><th>Student</th><th>Given</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                {% for i in recent_issues %}
+                    <tr class="{% if i.is_void %}text-muted{% endif %}">
+                        <td>{{ i.issue_date.strftime('%d %b %Y') }}</td>
+                        <td>{{ i.student.student_name if i.student else '' }}</td>
+                        <td class="small">{{ i.label }} <span class="badge bg-light text-dark border text-capitalize">{{ i.kind }}</span></td>
+                        <td class="small">{% if i.is_void %}<span class="iv-pill out">Taken back</span> {{ i.void_reason }}{% else %}<span class="iv-pill ok">Given</span>{% endif %}</td>
+                        <td class="text-end">
+                            {% if not i.is_void and current_user.role in ('admin', 'owner') %}
+                            <form method="post" action="{{ url_for('main.inventory_issue_void', issue_id=i.id) }}" class="d-flex gap-1 justify-content-end"
+                                  data-confirm="Take this back? The stock returns to Inventory." data-confirm-ok="Void" data-confirm-variant="danger">
+                                <input type="text" name="reason" class="form-control form-control-sm" style="max-width:170px" placeholder="reason" required>
+                                <button class="btn btn-sm btn-outline-danger">Void</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="5" class="text-center text-muted py-3">Nothing given to students yet.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="text-muted small mb-0 mt-2">Students admitted before this feature are never touched. If a class has no books or uniform set, nothing is taken out of stock — make the set in the <em>Sets</em> tab.</p>
+    </div>
+</div>
+
+{% if dues %}
+<div class="card border-0 shadow-sm mb-3" id="supplierDues" data-sec="dues">
+    <div class="card-header bg-white border-0 pt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h2 class="h6 fw-bold mb-0"><i class="fas fa-hand-holding-dollar text-danger me-2"></i>Supplier dues — money you still have to pay</h2>
+        <span class="iv-owed">Total owed: Rs. {{ '{:,.2f}'.format(dues_total / 100.0) }}</span>
+    </div>
+    <div class="card-body p-0 table-responsive">
+        <table class="table table-sm align-middle mb-0 iv-hist">
+            <thead class="table-light"><tr>
+                <th class="ps-3">Supplier</th><th class="text-end">Unpaid bills</th>
+                <th class="text-end">Total bought</th><th class="text-end">Paid so far</th>
+                <th class="text-end">Still owed</th><th class="text-end pe-3"></th>
+            </tr></thead>
+            <tbody>
+                {% for d in dues %}
+                <tr>
+                    <td class="ps-3 fw-bold">{{ d.supplier }}{% if d.source == 'canteen' %} <span class="badge bg-info-subtle text-info-emphasis">canteen</span>{% endif %}</td>
+                    <td class="text-end">{{ d.bills }}</td>
+                    <td class="text-end">{{ '{:,.2f}'.format(d.total / 100.0) }}</td>
+                    <td class="text-end text-success">{{ '{:,.2f}'.format(d.paid / 100.0) }}</td>
+                    <td class="text-end fw-bold text-danger">{{ '{:,.2f}'.format(d.balance / 100.0) }}</td>
+                    <td class="text-end pe-3">
+                        <button type="button" class="btn btn-sm btn-primary pay-supplier-btn"
+                                data-bs-toggle="modal" data-bs-target="#paySupplierModal"
+                                data-supplier="{{ d.supplier }}" data-source="{{ d.source or 'inventory' }}" data-owed="{{ '%.2f'|format(d.balance / 100.0) }}">
+                            <i class="fas fa-money-bill-wave me-1"></i>Pay supplier
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer bg-white border-0 small text-muted">When you pay a supplier, the oldest bills are settled first. To pay just one bill, open the Items tab → "What happened lately" → Purchases.</div>
+</div>
+{% endif %}
+
+<div class="modal fade" id="paySupplierModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg">
+        <form method="post" action="{{ url_for('main.inventory_supplier_pay') }}">
+            <div class="modal-header"><h5 class="modal-title">Pay <span id="payModalSupplier"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body row g-2">
+                <input type="hidden" name="supplier" id="payModalSupplierInput">
+                <input type="hidden" name="source" id="payModalSourceInput" value="inventory">
+                <div class="col-12 small text-muted">Still owed: <strong class="text-danger" id="payModalOwed"></strong></div>
+                <div class="col-6"><label class="form-label small fw-bold mb-1">Amount (PKR)</label>
+                    <input type="number" step="0.01" min="0.01" class="form-control" name="amount" id="payModalAmount" required></div>
+                <div class="col-6"><label class="form-label small fw-bold mb-1">Date</label>
+                    <input type="date" class="form-control" name="payment_date" value="{{ today.strftime('%Y-%m-%d') }}" required></div>
+                <div class="col-6"><label class="form-label small fw-bold mb-1">Method</label>
+                    <select class="form-select" name="method"><option value="cash">Cash</option><option value="bank">Bank</option><option value="cheque">Cheque</option><option value="online">Online</option></select></div>
+                <div class="col-6"><label class="form-label small fw-bold mb-1">Note</label>
+                    <input type="text" class="form-control" name="note" maxlength="200" placeholder="optional"></div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary btn-sm">Save payment</button></div>
+        </form>
+    </div></div>
+</div>
+
+<div class="modal fade" id="payBillModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg">
+        <form method="post" id="payBillForm" action="">
+            <div class="modal-header"><h5 class="modal-title">Pay this bill</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body row g-2">
+                <div class="col-12 small text-muted" id="payBillText"></div>
+                <div class="col-6"><label class="form-label small fw-bold mb-1">Amount (PKR)</label>
+                    <input type="number" step="0.01" min="0.01" class="form-control" name="amount" id="payBillAmount" required></div>
+                <div class="col-6"><label class="form-label small fw-bold mb-1">Date</label>
+                    <input type="date" class="form-control" name="payment_date" value="{{ today.strftime('%Y-%m-%d') }}" required></div>
+                <div class="col-6"><label class="form-label small fw-bold mb-1">Method</label>
+                    <select class="form-select" name="method"><option value="cash">Cash</option><option value="bank">Bank</option><option value="cheque">Cheque</option><option value="online">Online</option></select></div>
+                <div class="col-6"><label class="form-label small fw-bold mb-1">Note</label>
+                    <input type="text" class="form-control" name="note" maxlength="200" placeholder="optional"></div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary btn-sm">Save payment</button></div>
+        </form>
+    </div></div>
+</div>
+
+<div class="modal fade" id="undoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg">
+        <form method="post" id="undoForm" action="">
+            <div class="modal-header bg-dark text-white"><h5 class="modal-title">Undo a mistake</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <p class="mb-1">You are undoing <strong id="undoWhat"></strong>.</p>
+                <p class="small text-muted" id="undoEffect"></p>
+                <label class="form-label fw-bold small">Why? (required)</label>
+                <input type="text" class="form-control" name="reason" maxlength="200" required placeholder="e.g. typed 100 instead of 10">
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-danger btn-sm">Undo it</button></div>
+        </form>
+    </div></div>
+</div>
+<script>
+document.addEventListener('click', function (e) {
+    var b = e.target.closest('.undo-btn');
+    if (!b) return;
+    document.getElementById('undoForm').action = b.dataset.action;
+    document.getElementById('undoWhat').textContent = b.dataset.what;
+    document.getElementById('undoEffect').textContent = b.dataset.effect;
+});
+</script>
+
+<div id="products" data-sec="items">
+    <div class="mb-3">
         <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white border-0 pt-3"><h2 class="h6 fw-bold mb-0">Products</h2></div>
+            <div class="card-header bg-white border-0 pt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h2 class="h6 fw-bold mb-0">Your items <span class="text-muted fw-semibold small" id="ivCount"></span></h2>
+                {% set _stopped = products | rejectattr('is_active') | list | length %}
+                <div class="d-flex align-items-center gap-3 flex-wrap">
+                {% if _stopped %}<div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" role="switch" id="ivShowStopped"><label class="form-check-label small text-muted" for="ivShowStopped">Show stopped items ({{ _stopped }})</label></div>{% endif %}
+                <div class="iv-search"><i class="fas fa-magnifying-glass"></i>
+                    <input type="search" class="form-control" id="ivSearch" placeholder="Search an item…" aria-label="Search items" autocomplete="off"></div>
+                </div>
+            </div>
             <div class="card-body p-0 table-responsive">
-                <table class="table table-sm table-striped align-middle mb-0">
+                <table class="table table-sm align-middle mb-0" id="ivProducts">
                     <thead class="table-light"><tr>
-                        <th class="ps-3">Product</th><th>Category</th>
-                        <th class="text-end">Sale price</th><th class="text-end">Avg cost</th>
-                        <th class="text-end">Stock</th><th class="text-end pe-3">Action</th>
+                        <th class="ps-3">Item</th><th>Type</th>
+                        <th class="text-end">Selling price</th><th class="text-end">Cost</th>
+                        <th class="text-end">In stock</th><th class="text-end pe-3"></th>
                     </tr></thead>
                     <tbody>
                         {% for p in products %}
-                        <tr class="{% if not p.is_active %}text-decoration-line-through text-muted{% endif %}">
-                            <td class="ps-3">{{ p.name }}{% if p.stock_qty <= p.min_stock_qty and p.min_stock_qty > 0 %} <span class="badge bg-warning text-dark">low</span>{% endif %}</td>
+                        {% set _st = 'out' if p.stock_qty <= 0 else ('low' if (p.stock_qty <= p.min_stock_qty and p.min_stock_qty > 0) else 'ok') %}
+                        <tr class="{% if not p.is_active %}text-decoration-line-through text-muted{% endif %}" data-iv-name="{{ p.name|lower }} {{ (p.category or '')|lower }}" data-iv-status="{{ _st if p.is_active else 'retired' }}">
+                            <td class="ps-3 fw-bold">{{ p.name }}</td>
                             <td class="small">{{ p.category }}</td>
-                            <td class="text-end">{{ '{:,.2f}'.format(p.sale_price_paisa / 100.0) }}</td>
-                            <td class="text-end">{{ '{:,.2f}'.format(p.cost_paisa / 100.0) }}</td>
-                            <td class="text-end fw-bold">{{ p.stock_qty }}</td>
+                            <td class="text-end">Rs. {{ '{:,.0f}'.format(p.sale_price_paisa / 100.0) }}</td>
+                            <td class="text-end text-muted">Rs. {{ '{:,.0f}'.format(p.cost_paisa / 100.0) }}</td>
+                            <td class="text-end"><span class="fw-bold me-1">{{ p.stock_qty }}</span>{% if p.is_active %}<span class="iv-pill {{ _st }}">{{ {'ok': 'In stock', 'low': 'Running low', 'out': 'Finished'}[_st] }}</span>{% endif %}</td>
                             <td class="text-end pe-3">
                                 {% if p.is_active %}
                                 <form method="post" action="{{ url_for('main.inventory_product_toggle', product_id=p.id) }}" class="d-inline">
-                                    <button class="btn btn-sm btn-outline-secondary">Retire</button>
+                                    <button class="btn btn-sm btn-outline-secondary" title="Stop selling this item (history is kept)">Stop selling</button>
                                 </form>
                                 {% else %}
                                 <form method="post" action="{{ url_for('main.inventory_product_toggle', product_id=p.id) }}" class="d-inline">
-                                    <button class="btn btn-sm btn-outline-secondary">Restore</button>
+                                    <button class="btn btn-sm btn-outline-secondary" title="Start selling this item again">Sell again</button>
                                 </form>
                                 {% endif %}
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="6" class="text-center text-muted py-4">No products yet — add your first product above.</td></tr>
+                        <tr><td colspan="6"><div class="iv-empty"><div class="iv-empty-icon"><i class="fas fa-boxes-stacked"></i></div>
+                            <p>No items yet. Add the first thing you sell — a book, a uniform, a copy.</p>
+                            <button type="button" class="btn btn-primary btn-sm" data-pane="addProduct"><i class="fas fa-plus me-1"></i>Add your first item</button></div></td></tr>
                         {% endfor %}
+                        <tr id="ivNoMatch" hidden><td colspan="6"><div class="iv-empty py-4"><p class="mb-1">No item matches your search.</p><button type="button" class="btn btn-outline-secondary btn-sm" id="ivClear">Show all items</button></div></td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
-    <div class="col-lg-5">
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white border-0 pt-3"><h2 class="h6 fw-bold mb-0">Recent sales</h2></div>
+
+    <div class="card mb-3" id="ivHistory">
+        <div class="card-header bg-white border-0 pt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h2 class="h6 fw-bold mb-0">What happened lately</h2>
+            <ul class="nav nav-pills su-tabs mb-0 gap-1" role="tablist" style="margin-bottom:0 !important">
+                <li class="nav-item"><button class="nav-link active" type="button" data-bs-toggle="pill" data-bs-target="#hSales"><i class="fas fa-cash-register me-1"></i>Sales</button></li>
+                <li class="nav-item"><button class="nav-link" type="button" data-bs-toggle="pill" data-bs-target="#hPurchases"><i class="fas fa-truck-ramp-box me-1"></i>Purchases</button></li>
+                {% if supplier_payments %}<li class="nav-item"><button class="nav-link" type="button" data-bs-toggle="pill" data-bs-target="#hPayments"><i class="fas fa-money-bill-transfer me-1"></i>Paid to suppliers</button></li>{% endif %}
+            </ul>
+        </div>
+        <div class="tab-content">
+            <div class="tab-pane fade show active iv-collapsed" id="hSales">
             <div class="card-body p-0 table-responsive">
-                <table class="table table-sm table-striped align-middle mb-0">
+                <table class="table table-sm align-middle mb-0 iv-hist">
                     <thead class="table-light"><tr>
                         <th class="ps-3">Date</th><th>Product</th><th class="text-end">Qty</th>
                         <th class="text-end">Sales</th><th class="text-end">Cost</th>
-                        <th class="text-end pe-3">Profit</th>
+                        <th class="text-end">Profit</th><th class="pe-3"></th>
                     </tr></thead>
                     <tbody>
                         {% for s in sales %}
-                        <tr>
+                        <tr class="{% if loop.index > 10 %}iv-extra{% endif %}">
                             <td class="ps-3">{{ s.sale_date.strftime('%d %b %Y') }}</td>
-                            <td class="small">{{ s.product.name }}</td>
+                            <td class="small">{{ s.product.name }}
+                                {% if s.student %}<div class="text-muted">{{ s.student.student_name }}{% if s.source == 'admission' %} <span class="badge bg-info text-dark">with admission</span>{% endif %}</div>{% endif %}</td>
                             <td class="text-end">{{ s.quantity }}</td>
-                            <td class="text-end">{{ '{:,.2f}'.format(s.total_price_paisa / 100.0) }}</td>
+                            <td class="text-end">{% if s.source == 'admission' %}<span class="text-muted" title="Already counted in the admission fee">—</span>{% else %}{{ '{:,.2f}'.format(s.total_price_paisa / 100.0) }}{% endif %}</td>
                             <td class="text-end text-muted">{{ '{:,.2f}'.format(s.total_cost_paisa / 100.0) }}</td>
-                            <td class="text-end fw-bold text-success">{{ '{:,.2f}'.format(s.gross_profit_paisa / 100.0) }}</td>
+                            <td class="text-end fw-bold {% if s.source == 'admission' %}text-muted{% else %}text-success{% endif %}">{% if s.source == 'admission' %}—{% else %}{{ '{:,.2f}'.format(s.gross_profit_paisa / 100.0) }}{% endif %}</td>
+                            <td class="text-end pe-3">
+                                {% if s.source != 'admission' and current_user.role in ('admin', 'owner') %}
+                                <button type="button" class="btn btn-sm btn-outline-danger undo-btn" data-bs-toggle="modal" data-bs-target="#undoModal"
+                                        data-action="{{ url_for('main.inventory_sale_void', sale_id=s.id) }}"
+                                        data-what="the sale of {{ s.quantity }} x {{ s.product.name }}{% if s.note and s.note.startswith('Set: ') %} (every item of that set sale is undone together){% endif %}"
+                                        data-effect="The items go back on the shelf and this sale no longer counts as income.">Undo</button>
+                                {% endif %}
+                            </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="6" class="text-center text-muted py-4">No sales recorded yet.</td></tr>
+                        <tr><td colspan="7" class="text-center text-muted py-4">No sales recorded yet.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-        </div>
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white border-0 pt-3"><h2 class="h6 fw-bold mb-0">Recent purchases</h2></div>
+            {% if sales|length > 10 %}<div class="text-center py-2 border-top"><button type="button" class="btn btn-sm btn-outline-secondary" data-iv-more>Show all {{ sales|length }}</button></div>{% endif %}
+            </div>
+            <div class="tab-pane fade iv-collapsed" id="hPurchases">
             <div class="card-body p-0 table-responsive">
-                <table class="table table-sm table-striped align-middle mb-0">
+                <table class="table table-sm align-middle mb-0 iv-hist">
                     <thead class="table-light"><tr>
-                        <th class="ps-3">Date</th><th>Product</th><th class="text-end">Qty</th>
-                        <th class="text-end">Unit cost</th><th class="text-end pe-3">Total</th>
+                        <th class="ps-3">Date</th><th>Product / supplier</th><th class="text-end">Qty</th>
+                        <th class="text-end">Bill</th><th class="text-end">Paid</th>
+                        <th class="text-end">Owed</th><th class="text-end pe-3"></th>
                     </tr></thead>
                     <tbody>
                         {% for pu in purchases %}
-                        <tr>
+                        <tr class="{% if pu.is_void %}text-decoration-line-through text-muted{% endif %}{% if loop.index > 10 %} iv-extra{% endif %}">
                             <td class="ps-3">{{ pu.purchase_date.strftime('%d %b %Y') }}</td>
-                            <td class="small">{{ pu.product.name }}</td>
+                            <td class="small">{{ pu.product.name }}{% if pu.bill_label %}<br><span class="badge bg-primary-subtle text-primary-emphasis">{{ pu.bill_label }}</span>{% endif %}{% if pu.supplier %}<br><span class="text-muted">{{ pu.supplier }}</span>{% endif %}</td>
                             <td class="text-end">{{ pu.quantity }}</td>
-                            <td class="text-end">{{ '{:,.2f}'.format(pu.unit_cost_paisa / 100.0) }}</td>
                             <td class="text-end fw-bold">{{ '{:,.2f}'.format(pu.total_cost_paisa / 100.0) }}</td>
+                            <td class="text-end text-success">{{ '{:,.2f}'.format(pu.paid_total_paisa / 100.0) }}</td>
+                            <td class="text-end {% if pu.balance_paisa %}fw-bold text-danger{% else %}text-muted{% endif %}">{{ '{:,.2f}'.format(pu.balance_paisa / 100.0) }}</td>
+                            <td class="text-end pe-3">
+                                {% if pu.is_void %}<span class="badge bg-secondary" title="{{ pu.void_reason or '' }}">undone</span>
+                                {% else %}
+                                {% if current_user.role in ('admin', 'owner') %}
+                                <button type="button" class="btn btn-sm btn-outline-danger undo-btn" data-bs-toggle="modal" data-bs-target="#undoModal"
+                                        data-action="{{ url_for('main.inventory_purchase_void', purchase_id=pu.id) }}"
+                                        data-what="the purchase of {{ pu.quantity }} x {{ pu.product.name }}{% if pu.bill_label %} (the whole set bill is undone together){% endif %}"
+                                        data-effect="The stock is taken off the shelf again and the bill stops counting as cash out or supplier due.">Undo</button>
+                                {% endif %}
+                                {% if pu.balance_paisa %}
+                                <button type="button" class="btn btn-sm btn-outline-primary pay-bill-btn"
+                                        data-bs-toggle="modal" data-bs-target="#payBillModal"
+                                        data-action="{{ url_for('main.inventory_purchase_pay', purchase_id=pu.id) }}"
+                                        data-owed="{{ '%.2f'|format(pu.balance_paisa / 100.0) }}"
+                                        data-label="{{ pu.product.name }}{% if pu.supplier %} — {{ pu.supplier }}{% endif %}">Pay</button>
+                                {% else %}<span class="badge bg-success-subtle text-success-emphasis">paid</span>{% endif %}
+                                {% endif %}
+                            </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="5" class="text-center text-muted py-4">No purchases recorded yet.</td></tr>
+                        <tr><td colspan="7" class="text-center text-muted py-4">No purchases recorded yet.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
+            {% if purchases|length > 10 %}<div class="text-center py-2 border-top"><button type="button" class="btn btn-sm btn-outline-secondary" data-iv-more>Show all {{ purchases|length }}</button></div>{% endif %}
+            </div>
+            {% if supplier_payments %}
+            <div class="tab-pane fade iv-collapsed" id="hPayments">
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-sm align-middle mb-0 iv-hist">
+                    <thead class="table-light"><tr>
+                        <th class="ps-3">Date</th><th>Supplier</th><th class="text-end">Amount</th><th>Method</th><th class="text-end pe-3"></th>
+                    </tr></thead>
+                    <tbody>
+                        {% for sp in supplier_payments %}
+                        <tr class="{% if sp.is_void %}text-decoration-line-through text-muted{% endif %}{% if loop.index > 10 %} iv-extra{% endif %}">
+                            <td class="ps-3">{{ sp.payment_date.strftime('%d %b %Y') }}</td>
+                            <td class="small">{{ sp.purchase.supplier or '—' }}<br><span class="text-muted">{{ sp.purchase.product.name }}</span></td>
+                            <td class="text-end fw-bold">{{ '{:,.2f}'.format(sp.amount_paisa / 100.0) }}</td>
+                            <td class="small text-capitalize">{{ sp.method or 'cash' }}</td>
+                            <td class="text-end pe-3">
+                                {% if sp.is_void %}<span class="badge bg-secondary" title="{{ sp.void_reason or '' }}">voided</span>
+                                {% elif current_user.role in ('admin', 'owner') %}
+                                <form method="post" action="{{ url_for('main.inventory_supplier_payment_void', payment_id=sp.id) }}" class="d-flex gap-1 justify-content-end">
+                                    <input type="text" name="reason" class="form-control form-control-sm" style="width:120px" placeholder="reason" maxlength="255" required>
+                                    <button class="btn btn-sm btn-outline-danger">Void</button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if supplier_payments|length > 10 %}<div class="text-center py-2 border-top"><button type="button" class="btn btn-sm btn-outline-secondary" data-iv-more>Show all {{ supplier_payments|length }}</button></div>{% endif %}
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    function showPane(id) {
+        if (window.invActivateSection) { window.invActivateSection('items'); }
+        var btn = document.querySelector('#invTabs [data-bs-target="#' + id + '"]');
+        if (!btn || !window.bootstrap) return false;
+        window.bootstrap.Tab.getOrCreateInstance(btn).show();
+        document.getElementById('invTabs').scrollIntoView({behavior: 'smooth', block: 'start'});
+        return true;
+    }
+    document.querySelectorAll('[data-pane]').forEach(function (el) {
+        el.addEventListener('click', function (e) { e.preventDefault(); showPane(el.dataset.pane); });
+    });
+    document.querySelectorAll('a[href="#addProduct"]').forEach(function (el) {
+        el.addEventListener('click', function (e) { if (showPane('addProduct')) e.preventDefault(); });
+    });
+    if (location.hash === '#addProduct') showPane('addProduct');
+});
+</script>
+<script>
+(function () {
+    function rs(v) { return 'Rs. ' + (Math.round(v * 100) / 100).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+    var qty = document.getElementById('pQty'), cost = document.getElementById('pCost'), paid = document.getElementById('pPaid');
+    function refresh() {
+        var total = (parseFloat(qty.value) || 0) * (parseFloat(cost.value) || 0);
+        var p = paid.value === '' ? total : (parseFloat(paid.value) || 0);
+        document.getElementById('sumTotal').textContent = rs(total);
+        document.getElementById('sumPaid').textContent = rs(Math.min(p, total));
+        var owed = Math.max(0, total - p);
+        document.getElementById('sumOwed').textContent = rs(owed);
+        document.getElementById('sumOwedWrap').style.display = owed > 0 ? '' : 'none';
+        paid.classList.toggle('is-invalid', p > total + 0.001);
+    }
+    if (qty && cost && paid) { [qty, cost, paid].forEach(function (el) { el.addEventListener('input', refresh); }); refresh(); }
+
+    document.querySelectorAll('.pay-supplier-btn').forEach(function (b) {
+        b.addEventListener('click', function () {
+            document.getElementById('payModalSupplier').textContent = b.dataset.supplier;
+            document.getElementById('payModalSupplierInput').value = b.dataset.supplier;
+            document.getElementById('payModalSourceInput').value = b.dataset.source || 'inventory';
+            document.getElementById('payModalOwed').textContent = rs(parseFloat(b.dataset.owed));
+            document.getElementById('payModalAmount').value = b.dataset.owed;
+            document.getElementById('payModalAmount').max = b.dataset.owed;
+        });
+    });
+    document.querySelectorAll('.pay-bill-btn').forEach(function (b) {
+        b.addEventListener('click', function () {
+            document.getElementById('payBillForm').action = b.dataset.action;
+            document.getElementById('payBillText').textContent = b.dataset.label + ' — still owed ' + rs(parseFloat(b.dataset.owed));
+            document.getElementById('payBillAmount').value = b.dataset.owed;
+            document.getElementById('payBillAmount').max = b.dataset.owed;
+        });
+    });
+
+    // ---- Sets ----
+    var rowsBox = document.getElementById('setRows');
+    var tpl = document.getElementById('setProductTemplate');
+    function addSetRow(productId, qty) {
+        if (!rowsBox || !tpl) return;
+        var row = document.createElement('div');
+        row.className = 'd-flex gap-2 align-items-center';
+        var sel = document.createElement('select');
+        sel.name = 'item_product'; sel.className = 'form-select form-select-sm';
+        sel.innerHTML = tpl.innerHTML;
+        if (productId) sel.value = String(productId);
+        var q = document.createElement('input');
+        q.type = 'number'; q.min = '1'; q.name = 'item_qty'; q.value = qty || 1;
+        q.className = 'form-control form-control-sm'; q.style.maxWidth = '90px';
+        q.setAttribute('aria-label', 'Quantity');
+        var rm = document.createElement('button');
+        rm.type = 'button'; rm.className = 'btn btn-sm btn-outline-danger'; rm.innerHTML = '&times;';
+        rm.addEventListener('click', function () { row.remove(); });
+        row.appendChild(sel); row.appendChild(q); row.appendChild(rm);
+        rowsBox.appendChild(row);
+    }
+    function fillSetForm(action, title, data) {
+        document.getElementById('setForm').action = action;
+        document.getElementById('setModalTitle').textContent = title;
+        document.getElementById('setName').value = data ? data.name : '';
+        document.getElementById('setKind').value = data ? data.kind : 'books';
+        document.getElementById('setClass').value = data && data.class_id ? data.class_id : '';
+        rowsBox.innerHTML = '';
+        if (data && data.items.length) { data.items.forEach(function (i) { addSetRow(i.product_id, i.qty); }); }
+        else { addSetRow(); }
+    }
+    var addBtn = document.getElementById('addSetRow');
+    if (addBtn) addBtn.addEventListener('click', function () { addSetRow(); });
+    var newBtn = document.getElementById('newSetBtn');
+    if (newBtn) newBtn.addEventListener('click', function () {
+        fillSetForm(newBtn.getAttribute('data-action') || document.getElementById('setForm').dataset.addAction, 'New set', null);
+    });
+    var setForm = document.getElementById('setForm');
+    if (setForm) setForm.dataset.addAction = setForm.action;
+    // Setup checklist: "Choose items" opens the New set form already filled with
+    // the class, the kind and a suggested name.
+    document.querySelectorAll('.set-new-btn').forEach(function (b) {
+        b.addEventListener('click', function () {
+            fillSetForm(setForm.dataset.addAction, 'New set', null);
+            document.getElementById('setName').value = b.dataset.name || '';
+            document.getElementById('setKind').value = b.dataset.kind || 'books';
+            document.getElementById('setClass').value = b.dataset.class || '';
+        });
+    });
+    document.querySelectorAll('.set-edit-btn').forEach(function (b) {
+        b.addEventListener('click', function () {
+            fillSetForm(b.dataset.action, 'Edit set', JSON.parse(b.dataset.set));
+        });
+    });
+    document.querySelectorAll('.set-buy-btn').forEach(function (b) {
+        b.addEventListener('click', function () {
+            document.getElementById('setBuyForm').action = b.dataset.action;
+            document.getElementById('setBuyName').textContent = b.dataset.name;
+        });
+    });
+    var bTotal = document.getElementById('setBuyTotal'), bPaid = document.getElementById('setBuyPaid');
+    function buyOwed() {
+        var total = parseFloat(bTotal.value) || 0;
+        var paid = bPaid.value === '' ? total : (parseFloat(bPaid.value) || 0);
+        var owed = Math.max(0, total - paid);
+        document.getElementById('setBuyOwed').textContent = rs(owed);
+        document.getElementById('setBuyOwedWrap').style.display = owed > 0 ? '' : 'none';
+    }
+    if (bTotal && bPaid) { bTotal.addEventListener('input', buyOwed); bPaid.addEventListener('input', buyOwed); }
+    document.querySelectorAll('.set-sell-btn').forEach(function (b) {
+        b.addEventListener('click', function () {
+            document.getElementById('setSellForm').action = b.dataset.action;
+            document.getElementById('setSellName').textContent = b.dataset.name;
+            document.getElementById('setSellPrice').textContent = 'Sells for ' + rs(parseFloat(b.dataset.price)) + ' per set.';
+        });
+    });
+})();
+</script>
+<script>
+(function () {
+    // Section tabs: only one part of this long page is shown at a time.
+    // Without JavaScript everything simply stays visible.
+    var MAP = {setup: 'setup', canteen: 'canteen', sets: 'sets', studentStock: 'stock',
+               supplierDues: 'dues', products: 'items', addProduct: 'items',
+               recordSale: 'items', recordPurchase: 'items', invTabs: 'items'};
+    var tabs = document.querySelectorAll('[data-sec-tab]');
+    var secs = document.querySelectorAll('[data-sec]');
+    function valid(key) { return !!document.querySelector('[data-sec-tab="' + key + '"]'); }
+    function activate(key) {
+        if (!valid(key)) { key = 'items'; }
+        secs.forEach(function (el) { el.classList.toggle('sec-hidden', el.getAttribute('data-sec') !== key); });
+        tabs.forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-sec-tab') === key); });
+        try { sessionStorage.setItem('invTab', key); } catch (e) {}
+        return key;
+    }
+    window.invActivateSection = activate;
+    var id = (location.hash || '').slice(1);
+    var start = MAP[id] || null;
+    if (!start) { try { start = sessionStorage.getItem('invTab'); } catch (e) {} }
+    activate(start || 'items');
+    if (id && MAP[id] && document.getElementById(id)) {
+        setTimeout(function () { document.getElementById(id).scrollIntoView(); }, 0);
+    }
+    tabs.forEach(function (b) {
+        b.addEventListener('click', function () {
+            activate(b.getAttribute('data-sec-tab'));
+            if (location.hash) { history.replaceState(null, '', location.pathname + location.search); }
+        });
+    });
+    // Links inside the page (#setup, #sets ...) open the tab that holds them.
+    document.addEventListener('click', function (e) {
+        var a = e.target.closest('a[href^="#"]');
+        if (!a) { return; }
+        var target = a.getAttribute('href').slice(1);
+        if (MAP[target]) { activate(MAP[target]); }
+    });
+})();
+</script>
+</div>{# /.iv-page #}
+<script>
+(function () {
+    var box = document.getElementById('ivSearch'), table = document.getElementById('ivProducts');
+    if (!box || !table) return;
+    var rows = Array.prototype.slice.call(table.querySelectorAll('tbody tr[data-iv-name]'));
+    var count = document.getElementById('ivCount'), none = document.getElementById('ivNoMatch');
+    var onlyLow = false, showStopped = false;
+    var stopSw = document.getElementById('ivShowStopped');
+    if (stopSw) stopSw.addEventListener('change', function () { showStopped = stopSw.checked; apply(); });
+    function apply() {
+        var q = box.value.trim().toLowerCase(), shown = 0;
+        rows.forEach(function (r) {
+            var st = r.getAttribute('data-iv-status');
+            var ok = (showStopped || st !== 'retired') && (!q || r.getAttribute('data-iv-name').indexOf(q) !== -1) &&
+                     (!onlyLow || ['low', 'out'].indexOf(r.getAttribute('data-iv-status')) !== -1);
+            r.hidden = !ok; if (ok) shown++;
+        });
+        var total = rows.filter(function (r) { return showStopped || r.getAttribute('data-iv-status') !== 'retired'; }).length;
+        if (count) count.textContent = rows.length ? '· ' + shown + (shown === total ? '' : ' of ' + total) : '';
+        if (none) none.hidden = !(rows.length && shown === 0);
+    }
+    box.addEventListener('input', apply);
+    var clear = document.getElementById('ivClear');
+    if (clear) clear.addEventListener('click', function () { box.value = ''; onlyLow = false; showStopped = false; if (stopSw) stopSw.checked = false; apply(); box.focus(); });
+    document.querySelectorAll('[data-iv-filter="low"]').forEach(function (b) {
+        b.addEventListener('click', function () { onlyLow = true; apply(); });
+    });
+    document.querySelectorAll('[data-sec-tab="items"]:not([data-iv-filter])').forEach(function (b) {
+        b.addEventListener('click', function () { onlyLow = false; apply(); });
+    });
+    apply();
+})();
+</script>
+<script>
+(function () {
+    document.querySelectorAll('[data-iv-more]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            var pane = b.closest('.tab-pane');
+            var open = pane.classList.toggle('iv-collapsed');
+            b.textContent = open ? 'Show fewer' : b.getAttribute('data-all');
+        });
+        b.setAttribute('data-all', b.textContent);
+    });
+    // the big buttons show which form is open
+    var btns = document.querySelectorAll('.su-actions [data-pane]');
+    document.querySelectorAll('#invTabs [data-bs-toggle="pill"]').forEach(function (t) {
+        t.addEventListener('shown.bs.tab', function () {
+            var id = t.getAttribute('data-bs-target').slice(1);
+            btns.forEach(function (b) { b.classList.toggle('su-main', b.getAttribute('data-pane') === id); });
+        });
+    });
+})();
+</script>
 {% endblock %}

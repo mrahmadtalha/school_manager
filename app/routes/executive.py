@@ -53,7 +53,8 @@ def _attendance_stats(target_type, start, end):
         AttendanceModel.date >= start,
         AttendanceModel.date <= end)
     total = query.count()
-    present = query.filter(AttendanceModel.status == 'Present').count()
+    from app.services.attendance_service import attended_statuses
+    present = query.filter(AttendanceModel.status.in_(attended_statuses())).count()
     return {
         'total': total,
         'present': present,
@@ -109,10 +110,11 @@ def _class_performance():
 
 
 def _attendance_trend(start, end):
+    from app.services.attendance_service import attended_statuses
     expr = func.strftime('%d', AttendanceModel.date)
     rows = (db.session.query(expr.label('bucket'),
                              func.count(AttendanceModel.id),
-                             func.sum(case((AttendanceModel.status == 'Present', 1),
+                             func.sum(case((AttendanceModel.status.in_(attended_statuses()), 1),
                                            else_=0)))
             .filter(AttendanceModel.target_type == 'student',
                     AttendanceModel.date >= start,

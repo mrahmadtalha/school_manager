@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+{% include "_simple_ui.html" %}
 <div class="dashboard-header d-flex justify-content-between flex-wrap align-items-center pt-3 pb-3 mb-4">
     <div>
         <p class="eyebrow mb-2">Admission fee</p>
@@ -14,6 +15,16 @@
         <i class="fas fa-arrow-left me-1"></i> Back to register
     </a>
 </div>
+
+{% if info.applicable %}
+<div class="su-tiles mb-4">
+    <div class="su-tile"><div class="su-label">Total fee agreed</div><div class="su-num">{{ money(info.total) }}</div></div>
+    <div class="su-tile"><div class="su-label">Received so far</div><div class="su-num text-success">{{ money(info.received) }}</div></div>
+    <div class="su-tile"><div class="su-label">Still to collect</div>
+        <div class="su-num {{ 'text-danger' if info.balance else 'text-success' }}">{{ money(info.balance) if info.balance else 'Nothing' }}</div>
+        <div class="su-hint">{{ status_labels[info.status] }}</div></div>
+</div>
+{% endif %}
 
 <div class="row g-4">
     <div class="col-lg-6">
@@ -31,7 +42,7 @@
                     </dt>
                     <dd class="col-6 text-end">{{ ('- ' ~ money(info.concession)) if info.concession else '—' }}</dd>
                     <dt class="col-6 text-muted">Admission fee (net)</dt><dd class="col-6 text-end">{{ money(info.net) }}</dd>
-                    {% if info.books %}<dt class="col-6 text-muted">Books</dt><dd class="col-6 text-end">{{ money(info.books) }}</dd>{% endif %}
+                    {% if info.books %}<dt class="col-6 text-muted">Books{% if info.books_qty > 1 %} ({{ info.books_qty }} x {{ money(info.books_unit) }}){% endif %}</dt><dd class="col-6 text-end">{{ money(info.books) }}</dd>{% endif %}
                     {% if info.uniform %}<dt class="col-6 text-muted">Uniform ({{ info.uniform_qty }} x {{ money(info.uniform_unit) }})</dt><dd class="col-6 text-end">{{ money(info.uniform) }}</dd>{% endif %}
                     <dt class="col-6 text-muted">Agreed total</dt><dd class="col-6 text-end fw-bold">{{ money(info.total) }}</dd>
                     <dt class="col-6 text-muted">Received so far</dt><dd class="col-6 text-end text-success">{{ money(info.received) }}</dd>
@@ -80,6 +91,8 @@
         {% endif %}
 
         {% if is_admin %}
+        <details class="mb-3" {{ 'open' if not info.applicable }}>
+            <summary class="btn btn-outline-primary btn-sm mb-2"><i class="fas fa-pen me-1"></i> Administrator: change the fee, concession, books or uniform</summary>
         <div class="card border-0 shadow-sm">
             <div class="card-body">
                 <h2 class="h5 mb-1">{{ 'Change terms / concession' if info.applicable else 'Set admission fee, books &amp; uniform' }}</h2>
@@ -104,8 +117,12 @@
                         <input type="number" step="0.01" min="0" name="admission_discount_value" class="form-control" value="{{ info.discount_value or 0 }}">
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small fw-bold text-muted mb-1">Books (PKR)</label>
-                        <input type="number" step="0.01" min="0" name="books_fee" class="form-control" value="{{ '%.2f'|format(info.books / 100) }}">
+                        <label class="form-label small fw-bold text-muted mb-1">Books price per set (PKR)</label>
+                        <input type="number" step="0.01" min="0" name="books_fee" class="form-control" value="{{ '%.2f'|format(info.books_unit / 100) }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold text-muted mb-1">Book sets</label>
+                        <input type="number" step="1" min="0" max="20" name="books_qty" class="form-control" value="{{ info.books_qty }}">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label small fw-bold text-muted mb-1">Uniform sets</label>
@@ -125,6 +142,7 @@
                 </form>
             </div>
         </div>
+        </details>
         {% endif %}
     </div>
 </div>
@@ -167,4 +185,45 @@
         </table>
     </div>
 </div>
+{% if stock_on and (stock_issues or stock_sales or stock_pending or student.stock_tracked) %}
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-body pb-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h2 class="h5 mb-0">Books &amp; uniform taken by {{ student.student_name }}</h2>
+            <div class="small text-muted">Items given with the admission fee, and anything bought later.</div>
+        </div>
+        <a href="{{ url_for('main.inventory_page') }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-cash-register me-1"></i>Sell another item in Inventory</a>
+    </div>
+    {% for r in stock_pending %}
+    <div class="alert alert-warning mx-3 py-2 small mb-2">Not given yet: <strong>{{ r.missing }} {{ r.kind }} set(s)</strong>.
+        {% if r.set %}Open Inventory &rarr; Student stock and press &ldquo;Issue now&rdquo;.{% else %}No {{ r.kind }} set is set up for this class in Inventory yet.{% endif %}</div>
+    {% endfor %}
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead class="table-light"><tr><th class="ps-3">Date</th><th>Item</th><th>How</th><th class="text-end pe-3">Money</th></tr></thead>
+            <tbody>
+            {% for i in stock_issues %}
+                <tr class="{{ 'text-decoration-line-through text-muted' if i.is_void }}">
+                    <td class="ps-3">{{ i.issue_date.strftime('%d %b %Y') }}</td>
+                    <td>{{ i.label }}</td>
+                    <td><span class="badge bg-info text-dark">with admission</span>{% if i.is_void %} <span class="small">undone: {{ i.void_reason }}</span>{% endif %}</td>
+                    <td class="text-end pe-3 text-muted">already in the admission fee</td>
+                </tr>
+            {% endfor %}
+            {% for s in stock_sales %}
+                <tr class="{{ 'text-decoration-line-through text-muted' if s.is_void }}">
+                    <td class="ps-3">{{ s.sale_date.strftime('%d %b %Y') }}</td>
+                    <td>{{ s.quantity }} x {{ s.product.name }}</td>
+                    <td><span class="badge bg-success">bought later</span>{% if s.is_void %} <span class="small">undone</span>{% endif %}</td>
+                    <td class="text-end pe-3">{{ money(s.total_price_paisa) }}</td>
+                </tr>
+            {% endfor %}
+            {% if not stock_issues and not stock_sales %}
+                <tr><td colspan="4" class="text-center text-muted py-3">Nothing given or sold to this student yet.</td></tr>
+            {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

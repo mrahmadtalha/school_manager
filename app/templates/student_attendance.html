@@ -1,5 +1,197 @@
 {% extends "base.html" %}
+{% from "_photo_macro.html" import avatar %}
 {% block content %}
+<style>
+    /* ------------------------------------------------------------------
+       Student attendance — same "register book" family as the Students page.
+       Colours come from the school's brand (--bs-primary-rgb).
+       Everything is scoped under .sa- so nothing leaks to other pages.
+       ------------------------------------------------------------------ */
+    .sa-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0.25rem 0 1.1rem; }
+    .sa-head h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; margin: 0; line-height: 1.1; }
+    .sa-head p { margin: 0.35rem 0 0; color: #64748b; font-size: 0.92rem; max-width: 46rem; }
+    .sa-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .sa-tools .btn { box-shadow: none; }
+    .sa-tools .btn-outline-secondary { background: #fff; }
+    .sa-tools .dropdown-menu { border-radius: 14px; border-color: #e2e8f0; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12); padding: 0.4rem; }
+    .sa-tools .dropdown-item { border-radius: 9px; font-size: 0.9rem; padding: 0.45rem 0.7rem; }
+    .sa-wa-menu { min-width: 18rem; padding: 0.9rem !important; }
+    .sa-wa-menu .sa-wa-line { font-size: 0.85rem; color: #475569; margin-bottom: 0.2rem; }
+    .sa-wa-menu .sa-wa-sub { font-size: 0.78rem; color: #94a3b8; margin-bottom: 0.7rem; }
+
+    /* two tabs: sheet / QR */
+    .sa-tabs { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; margin-bottom: 0.9rem; flex-wrap: wrap; }
+    .sa-tabs a { padding: 0.5rem 1rem; border-radius: 9px; font-size: 0.9rem; font-weight: 600; color: #475569; text-decoration: none; transition: background 0.15s ease, color 0.15s ease; }
+    .sa-tabs a:hover { color: #0f172a; }
+    .sa-tabs a.active { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+
+    /* class + date bar */
+    .sa-filters { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.7rem; margin-bottom: 0.9rem; }
+    .sa-filters form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
+    .sa-filters .form-select, .sa-filters .form-control { height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background-color: #f8fafc; }
+    .sa-filters .form-select { width: auto; min-width: 11rem; max-width: 16rem; font-weight: 600; }
+    .sa-filters .form-control[type=date] { width: auto; min-width: 10.5rem; font-weight: 600; }
+    .sa-daybox { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .sa-daybtn { width: 2.7rem; height: 2.7rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; color: #475569; text-decoration: none; transition: background 0.15s ease, color 0.15s ease; }
+    .sa-daybtn:hover { background: rgb(var(--bs-primary-rgb)); border-color: rgb(var(--bs-primary-rgb)); color: #fff; }
+    .sa-today { height: 2.7rem; display: inline-flex; align-items: center; padding: 0 1rem; border-radius: 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-size: 0.88rem; font-weight: 600; color: #475569; text-decoration: none; }
+    .sa-today:hover { background: #fff; color: #0f172a; }
+    .sa-today.is-on { background: rgba(var(--bs-primary-rgb), 0.1); border-color: rgba(var(--bs-primary-rgb), 0.35); color: rgb(var(--bs-primary-rgb)); }
+
+    /* summary ribbon: total · live counts · saved/open state */
+    .sa-ribbon { display: grid; grid-template-columns: minmax(8rem, 0.6fr) minmax(16rem, 2fr) minmax(12rem, 0.9fr); background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .sa-stat { padding: 0.85rem 1.2rem; display: flex; flex-direction: column; justify-content: center; gap: 0.2rem; min-width: 0; }
+    .sa-stat + .sa-stat { border-left: 1px solid #eef2f7; }
+    .sa-num { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .sa-lab { font-size: 0.78rem; color: #64748b; }
+    .sa-bar { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: #eef2f7; margin: 0.15rem 0 0.45rem; }
+    .sa-bar i { display: block; height: 100%; width: 0; transition: width 0.35s cubic-bezier(.2, .7, .2, 1); }
+    .sa-bar .p { background: #16a34a; }
+    .sa-bar .l { background: #f59e0b; }
+    .sa-bar .a { background: #dc2626; }
+    .sa-bar .v { background: #94a3b8; }
+    .sa-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; font-size: 0.85rem; color: #475569; font-variant-numeric: tabular-nums; }
+    .sa-legend b { color: #0f172a; font-size: 0.98rem; }
+    .sa-legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 0.3rem; vertical-align: middle; }
+    .sa-state { border-left: 4px solid #16a34a !important; background: #f3fbf6; }
+    .sa-state.is-locked { border-left-color: #dc2626 !important; background: #fff5f5; }
+    .sa-state .sa-num { font-size: 1.15rem; display: flex; align-items: center; gap: 0.45rem; }
+    .sa-state .sa-num i { color: #16a34a; }
+    .sa-state.is-locked .sa-num i { color: #dc2626; }
+    .sa-state .btn { align-self: flex-start; margin-top: 0.35rem; }
+
+    /* "what to do now" note */
+    .sa-hint { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid rgb(var(--bs-primary-rgb)); border-radius: 14px; color: #475569; font-size: 0.88rem; padding: 0.65rem 1rem; margin-bottom: 0.9rem; }
+    .sa-hint b { color: #0f172a; }
+    .sa-hint .sa-sub { display: block; margin-top: 0.25rem; font-size: 0.8rem; color: #64748b; }
+    .sa-warn { background: #fffbf3; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b; border-radius: 14px; color: #78350f; font-size: 0.88rem; padding: 0.65rem 1rem; margin-bottom: 0.9rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; flex-wrap: wrap; }
+    .sa-warn .sa-sub { display: block; font-size: 0.8rem; color: #92400e; margin-top: 0.2rem; }
+
+    /* quick tools */
+    .sa-toolbar { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.7rem; margin-bottom: 0.9rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
+    .sa-search { position: relative; flex: 1 1 15rem; min-width: 12rem; }
+    .sa-search i { position: absolute; left: 0.95rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+    .sa-search input { padding-left: 2.5rem; height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background: #f8fafc; }
+    .sa-search input:focus { background: #fff; }
+    .sa-toolbar .btn { box-shadow: none; height: 2.7rem; display: inline-flex; align-items: center; border-radius: 12px; font-weight: 600; }
+    .sa-timebox { display: inline-flex; align-items: center; gap: 0.35rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.2rem 0.2rem 0.2rem 0.75rem; }
+    .sa-timebox label { margin: 0; font-size: 0.8rem; color: #64748b; font-weight: 600; white-space: nowrap; }
+    .sa-timebox .form-control { width: 9rem; height: 2.2rem; border-radius: 9px; border-color: #e2e8f0; }
+    .sa-timebox .btn { height: 2.2rem; border-radius: 9px; }
+    .sa-note { font-size: 0.82rem; font-weight: 700; color: rgb(var(--bs-primary-rgb)); }
+
+    /* register table */
+    .sa-panel { border: 1px solid #e2e8f0 !important; box-shadow: none !important; border-radius: 18px; overflow: hidden; }
+    .sa-panel:hover { transform: none; }
+    .sa-count { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.7rem 1.1rem; border-bottom: 1px solid #eef2f7; font-size: 0.86rem; color: #64748b; flex-wrap: wrap; }
+    .sa-count strong { color: #0f172a; }
+    .sa-table { margin: 0; }
+    .sa-table thead th { background: #f8fafc; color: #64748b; font-size: 0.74rem; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding: 0.65rem 0.75rem; white-space: nowrap; }
+    .sa-table > :not(caption) > * > * { padding: 0.55rem 0.75rem; border-bottom-color: #f1f5f9; vertical-align: middle; }
+    .sa-row > td { transition: background 0.15s ease; }
+    .sa-row[data-status="Absent"] > td { background: #fff5f5; }
+    .sa-row[data-status="Late"] > td { background: #fffbf0; }
+    .sa-row[data-status="Leave"] > td { background: #f6f7f9; }
+    .sa-row[data-status="Absent"] > td:first-child { box-shadow: inset 4px 0 0 #dc2626; }
+    .sa-row[data-status="Late"] > td:first-child { box-shadow: inset 4px 0 0 #f59e0b; }
+    .sa-row[data-status="Leave"] > td:first-child { box-shadow: inset 4px 0 0 #94a3b8; }
+    .sa-roll { display: inline-block; min-width: 2.1rem; text-align: center; padding: 0.12rem 0.5rem; border-radius: 8px; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); font-weight: 800; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+    .sa-who { display: flex; align-items: center; gap: 0.7rem; min-width: 0; }
+    .sa-who-name { font-weight: 700; color: #0f172a; line-height: 1.25; }
+    .sa-who-sub { font-size: 0.78rem; color: #64748b; line-height: 1.25; }
+    .sa-tag { display: inline-block; padding: 0.08rem 0.5rem; border-radius: 99px; font-size: 0.7rem; font-weight: 600; margin-left: 0.35rem; vertical-align: middle; white-space: nowrap; }
+    .sa-tag-new { background: #e0f2fe; color: #075985; }
+    .sa-tag-qr { background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; }
+
+    /* the four big status buttons */
+    .sa-seg { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; }
+    .sa-seg input { position: absolute; opacity: 0; pointer-events: none; }
+    .sa-seg label { margin: 0; min-width: 4.6rem; padding: 0.5rem 0.7rem; border-radius: 9px; font-size: 0.85rem; font-weight: 700; color: #64748b; cursor: pointer; text-align: center; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; transition: background 0.12s ease, color 0.12s ease; user-select: none; }
+    .sa-seg label:hover { background: #e2e8f0; color: #0f172a; }
+    .sa-seg input:checked + label.p { background: #16a34a; color: #fff; box-shadow: 0 1px 3px rgba(22, 163, 74, 0.4); }
+    .sa-seg input:checked + label.a { background: #dc2626; color: #fff; box-shadow: 0 1px 3px rgba(220, 38, 38, 0.4); }
+    .sa-seg input:checked + label.l { background: #f59e0b; color: #422006; box-shadow: 0 1px 3px rgba(245, 158, 11, 0.45); }
+    .sa-seg input:checked + label.v { background: #64748b; color: #fff; box-shadow: 0 1px 3px rgba(100, 116, 139, 0.4); }
+    .sa-seg input:focus-visible + label { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 1px; }
+
+    .sa-pill { display: inline-block; padding: 0.3rem 0.85rem; border-radius: 99px; font-size: 0.82rem; font-weight: 700; white-space: nowrap; }
+    .sa-pill.p { background: #dcfce7; color: #166534; }
+    .sa-pill.a { background: #fee2e2; color: #991b1b; }
+    .sa-pill.l { background: #fef3c7; color: #92400e; }
+    .sa-pill.v { background: #e2e8f0; color: #334155; }
+    .sa-pill.n { background: #f1f5f9; color: #64748b; }
+
+    .sa-time { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .sa-time .form-control { width: 8rem; height: 2.3rem; border-radius: 10px; border-color: #e2e8f0; background: #f8fafc; }
+    .sa-time .btn { width: 2.3rem; height: 2.3rem; padding: 0; border-radius: 10px; border: 1px solid #e2e8f0; background: #fff; color: #475569; display: inline-flex; align-items: center; justify-content: center; }
+    .sa-time .btn:hover { background: rgb(var(--bs-primary-rgb)); border-color: rgb(var(--bs-primary-rgb)); color: #fff; }
+    .sa-dash { color: #94a3b8; }
+
+    /* save bar stays on screen while the list scrolls */
+    .sa-save { position: sticky; bottom: 0; z-index: 5; background: rgba(255, 255, 255, 0.97); border-top: 1px solid #e2e8f0; padding: 0.75rem 1.1rem; display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.06); }
+    .sa-save-sum { font-size: 0.9rem; color: #475569; }
+    .sa-save-sum b { color: #0f172a; font-variant-numeric: tabular-nums; }
+    .sa-save-sub { font-size: 0.78rem; color: #94a3b8; display: block; }
+    .sa-save .btn-success { font-weight: 700; padding: 0.7rem 2rem; border-radius: 12px; box-shadow: none; }
+    .sa-savedbar { background: #f8fafc; border-top: 1px solid #eef2f7; padding: 0.8rem 1.1rem; font-size: 0.86rem; color: #64748b; }
+
+    /* absent parents' list after saving */
+    .sa-alert { background: #fff; border: 1px solid #fecaca; border-left: 4px solid #dc2626; border-radius: 14px; margin-bottom: 0.9rem; overflow: hidden; }
+    .sa-alert-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.7rem 1rem; background: #fff5f5; font-weight: 700; color: #991b1b; flex-wrap: wrap; }
+    .sa-alert-row { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.55rem 1rem; border-top: 1px solid #f1f5f9; flex-wrap: wrap; }
+
+    .sa-empty { text-align: center; padding: 3.5rem 1rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; }
+    .sa-empty .sa-empty-icon { width: 76px; height: 76px; border-radius: 24px; margin: 0 auto 1rem; display: flex; align-items: center; justify-content: center; font-size: 1.9rem; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); }
+    .sa-empty p { font-weight: 700; color: #334155; margin-bottom: 1rem; }
+
+    .sa-who-text { min-width: 0; }
+    html[dir="rtl"] .sa-search i { left: auto; right: 0.95rem; }
+    html[dir="rtl"] .sa-search input { padding-left: 0.75rem; padding-right: 2.5rem; }
+    html[dir="rtl"] .sa-stat + .sa-stat { border-left: 0; border-right: 1px solid #eef2f7; }
+    html[dir="rtl"] .sa-state, html[dir="rtl"] .sa-hint, html[dir="rtl"] .sa-warn, html[dir="rtl"] .sa-alert { border-left-width: 1px; border-right-width: 4px; }
+    html[dir="rtl"] .sa-state { border-left-color: #eef2f7 !important; border-right: 4px solid #16a34a !important; }
+    html[dir="rtl"] .sa-state.is-locked { border-right-color: #dc2626 !important; }
+    html[dir="rtl"] .sa-daybtn i { transform: scaleX(-1); }
+
+    @media (max-width: 991.98px) {
+        .sa-ribbon { grid-template-columns: 1fr 1fr; }
+        .sa-ribbon .sa-stat:nth-child(3) { grid-column: 1 / -1; border-left: 4px solid #16a34a; border-top: 1px solid #eef2f7; }
+        .sa-ribbon .sa-stat.is-locked:nth-child(3) { border-left-color: #dc2626; }
+    }
+    /* phones: every student becomes one tappable card */
+    @media (max-width: 767.98px) {
+        .sa-ribbon { grid-template-columns: 1fr; }
+        .sa-stat + .sa-stat { border-left: 0; border-top: 1px solid #eef2f7; }
+        .sa-filters .form-select, .sa-filters .form-control[type=date] { flex: 1 1 100%; max-width: none; }
+        .sa-daybox { flex: 1 1 100%; }
+        .sa-daybox .form-control { flex: 1; }
+        .sa-timebox { flex: 1 1 100%; flex-wrap: wrap; padding: 0.5rem; }
+        .sa-timebox label { flex: 1 1 100%; }
+        .sa-timebox .form-control { flex: 1 1 auto; width: auto; }
+        .sa-timebox .btn { flex: 1 1 100%; justify-content: center; }
+        .sa-toolbar .btn { flex: 1 1 auto; justify-content: center; }
+        .sa-table thead { display: none; }
+        .sa-table, .sa-table tbody { display: block; }
+        .sa-table .sa-row { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 0.6rem; padding: 0.8rem 0.9rem; border-bottom: 1px solid #f1f5f9; }
+        .sa-table .sa-row > td { display: block; padding: 0; border: 0; background: transparent !important; box-shadow: none !important; }
+        .sa-row[data-status="Absent"] { background: #fff5f5; box-shadow: inset 4px 0 0 #dc2626; }
+        .sa-row[data-status="Late"] { background: #fffbf0; box-shadow: inset 4px 0 0 #f59e0b; }
+        .sa-row[data-status="Leave"] { background: #f6f7f9; box-shadow: inset 4px 0 0 #94a3b8; }
+        .sa-table .sa-c-roll { align-self: center; }
+        .sa-table .sa-c-status, .sa-table .sa-c-time { grid-column: 1 / -1; }
+        .sa-table .sa-c-status .sa-seg { display: flex; }
+        .sa-table .sa-c-status .sa-seg label { flex: 1; min-width: 0; padding: 0.7rem 0.2rem; font-size: 0.82rem; }
+        .sa-table .sa-c-status .sa-seg label i { display: none; }
+        .sa-table .sa-c-time { text-align: left !important; }
+        .sa-time .form-control { flex: 1; width: auto; }
+        .sa-save { padding: 0.65rem 0.8rem; }
+        .sa-save .btn-success { width: 100%; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .sa-bar i, .sa-row > td, .sa-seg label, .sa-tabs a { transition: none; }
+    }
+</style>
+
 <script>
 async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
     const controller = new AbortController();
@@ -11,38 +203,34 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
     }
 }
 
-async function refreshAttendanceWaStatus() {
-    const badge = document.getElementById('attendance-wa-status-badge');
-    const text = document.getElementById('attendance-wa-status-text');
-    const detail = document.getElementById('attendance-wa-status-detail');
-    const sendBtn = document.getElementById('send-absent-alerts-btn');
-    const testBtn = document.getElementById('test-whatsapp-btn');
+function setWaState(connected, message, detail) {
+    var badge = document.getElementById('attendance-wa-status-badge');
+    if (!badge) return;      // QR tab: no WhatsApp menu on the page
+    var text = document.getElementById('attendance-wa-status-text');
+    var sub = document.getElementById('attendance-wa-status-detail');
+    var sendBtn = document.getElementById('send-absent-alerts-btn');
+    var testBtn = document.getElementById('test-whatsapp-btn');
+    badge.className = 'badge rounded-pill ms-1 ' + (connected ? 'bg-success' : 'bg-danger');
+    badge.textContent = connected ? 'Connected' : 'Offline';
+    if (text) text.textContent = message;
+    if (sub) sub.textContent = detail;
+    if (sendBtn) sendBtn.disabled = !connected;
+    if (testBtn) testBtn.disabled = !connected;
+}
 
+async function refreshAttendanceWaStatus() {
+    if (!document.getElementById('attendance-wa-status-badge')) return;
     try {
         const res = await fetchWithTimeout('/api/whatsapp/status');
         const data = await res.json();
         if (data && data.connected) {
-            badge.className = 'badge bg-success px-3 py-2';
-            badge.textContent = 'Connected';
-            text.textContent = data.message || 'WhatsApp is ready.';
-            detail.textContent = 'Messages can be sent from this page.';
-            if (sendBtn) sendBtn.disabled = false;
-            if (testBtn) testBtn.disabled = false;
+            setWaState(true, data.message || 'WhatsApp is ready.', 'Messages can be sent from this page.');
         } else {
-            badge.className = 'badge bg-danger px-3 py-2';
-            badge.textContent = 'Offline';
-            text.textContent = data && data.message ? data.message : 'WhatsApp service unavailable.';
-            detail.textContent = 'Connect the WhatsApp service before sending alerts.';
-            if (sendBtn) sendBtn.disabled = true;
-            if (testBtn) testBtn.disabled = true;
+            setWaState(false, data && data.message ? data.message : 'WhatsApp service unavailable.',
+                       'Connect the WhatsApp service before sending alerts.');
         }
     } catch (err) {
-        badge.className = 'badge bg-danger px-3 py-2';
-        badge.textContent = 'Offline';
-        text.textContent = 'WhatsApp service unavailable.';
-        detail.textContent = 'Connect the WhatsApp service before sending alerts.';
-        if (sendBtn) sendBtn.disabled = true;
-        if (testBtn) testBtn.disabled = true;
+        setWaState(false, 'WhatsApp service unavailable.', 'Connect the WhatsApp service before sending alerts.');
     }
 }
 
@@ -103,126 +291,35 @@ function sendAbsentAlerts() {
 window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
 </script>
 
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+<div class="sa-head">
     <div>
-        <p class="eyebrow mb-2">Attendance entry</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-user-check text-primary me-2"></i>Student Attendance</h1>
-        <p class="text-muted small mb-0">Track, verify, and export daily student attendance records.</p>
-    </div>
-    <a href="{{ url_for('main.teacher_attendance') }}" class="btn btn-outline-secondary btn-sm">
-        <i class="fas fa-chalkboard-teacher me-1"></i> Teacher Attendance
-    </a>
-</div>
-
-<div class="card shadow-sm border-0 mb-4">
-    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
-        <div>
-            <div class="text-muted small text-uppercase fw-bold mb-1">WhatsApp Service</div>
-            <div class="d-flex align-items-center gap-2">
-                <span id="attendance-wa-status-badge" class="badge bg-secondary px-3 py-2">Checking...</span>
-                <small id="attendance-wa-status-text" class="text-muted">Checking connection...</small>
-            </div>
-        </div>
-        <div class="d-flex gap-2 flex-wrap">
-            <button type="button" id="test-whatsapp-btn" class="btn btn-sm btn-primary" onclick="testAttendanceWhatsApp()">
-                <i class="fab fa-whatsapp me-1"></i> Test WhatsApp
-            </button>
-            <button type="button" id="send-absent-alerts-btn" class="btn btn-sm btn-success" onclick="sendAbsentAlerts()">
-                <i class="fab fa-whatsapp me-1"></i> Send Absent Alerts
-            </button>
-        </div>
-    </div>
-    <div class="card-footer bg-light border-0">
-        <div id="attendance-wa-status-detail" class="small text-muted">Checking service status...</div>
-    </div>
-</div>
-
-<!-- WhatsApp Absentee Alert -->
-{% if session.get('last_absentees') %}
-<div class="card border-danger shadow-sm mb-4">
-    <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="fab fa-whatsapp me-2"></i>Absentee Alert Center</h5>
-        <span class="badge bg-light text-dark">{{ session.get('last_absentees')|length }} Absent</span>
-    </div>
-    <div class="card-body">
-        <div class="list-group">
-            {% for absentee in session.get('last_absentees') %}
-            <div class="list-group-item d-flex justify-content-between align-items-center py-2">
-                <div>
-                    <strong>{{ absentee.name }}</strong>
-                    <span class="text-muted font-monospace small ms-1">({{ absentee.roll }})</span>
-                    <br><small class="text-muted">{{ absentee.phone or 'No phone' }}</small>
-                </div>
-                {% if absentee.phone %}
-                
-                {% set phone_clean = absentee.phone | replace(' ','') | replace('-','') | replace('+','') %}
-                {% if phone_clean.startswith('0') %}
-                    {% set phone_intl = '92' + phone_clean[1:] %}
-                {% else %}
-                    {% set phone_intl = phone_clean %}
-                {% endif %}
-                {% set msg = 'Dear Parent, your child ' ~ absentee.name ~ ' (Roll No: ' ~ absentee.roll ~ ') was marked ABSENT today. Please contact the school if needed.' %}
-                <div class="d-flex gap-1">
-                    <a href="whatsapp://send?phone={{ phone_intl }}&text={{ msg | urlencode }}"
-                         class="btn btn-success btn-sm">
-                          <i class="fab fa-whatsapp me-1"></i> WhatsApp
-                    </a>
-                    <a href="tel:{{ absentee.phone }}" class="btn btn-outline-secondary btn-sm">
-                         <i class="fas fa-phone"></i>
-                    </a>
-                </div>
-                {% else %}
-                <span class="badge bg-secondary">No Phone</span>
-                {% endif %}
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<!-- Filter Bar -->
-<div class="card shadow-sm mb-3 border-0 bg-light">
-    <div class="card-body py-2">
-        <form method="GET" action="{{ url_for('main.student_attendance') }}" class="row g-2 align-items-end">
-            <div class="col-md-5">
-                <label class="form-label fw-bold small text-muted mb-1">Class</label>
-                <select class="form-select" name="class_id" onchange="this.form.submit()">
-                    {% for c in classes %}
-                    <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-4">
-                <label class="form-label fw-bold small text-muted mb-1">Date</label>
-                <input type="date" class="form-control" name="date" value="{{ selected_date }}" onchange="this.form.submit()">
-            </div>
-            <div class="col-md-3">
-                <button type="submit" class="btn btn-dark w-100">
-                    <i class="fas fa-sync-alt me-1"></i> Load
-                </button>
-            </div>
-        </form>
-    </div>
-</div>
-
-{% if students %}
-
-<!-- Lock / Status Banner -->
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <div>
-        {% if is_locked %}
-        <span class="badge bg-danger fs-6 px-3 py-2">
-            <i class="fas fa-lock me-1"></i> Attendance Locked
-        </span>
+        <h1>Student Attendance</h1>
+        {% if tab == 'qr' and qr_enabled %}
+        <p>See who has reached school. The guard scans each student&rsquo;s ID card at the gate and the name shows up here by itself.</p>
         {% else %}
-        <span class="badge bg-success fs-6 px-3 py-2">
-            <i class="fas fa-lock-open me-1"></i> Open — Not Yet Saved
-        </span>
+        <p>Mark who came to school. Everyone starts as <b>Present</b>, so you only need to touch the students who are absent, late or on leave.</p>
         {% endif %}
     </div>
-    <div class="d-flex gap-2 align-items-center">
-        <!-- Export -->
+    <div class="sa-tools btn-toolbar">
+        {% if tab != 'qr' and students %}
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                <i class="fab fa-whatsapp text-success me-1"></i> WhatsApp
+                <span id="attendance-wa-status-badge" class="badge rounded-pill bg-secondary ms-1">Checking...</span>
+            </button>
+            <div class="dropdown-menu dropdown-menu-end sa-wa-menu">
+                <div id="attendance-wa-status-text" class="sa-wa-line">Checking connection...</div>
+                <div id="attendance-wa-status-detail" class="sa-wa-sub">Checking service status...</div>
+                <div class="d-grid gap-2">
+                    <button type="button" id="send-absent-alerts-btn" class="btn btn-sm btn-success" onclick="sendAbsentAlerts()" disabled>
+                        <i class="fab fa-whatsapp me-1"></i> Send Absent Alerts
+                    </button>
+                    <button type="button" id="test-whatsapp-btn" class="btn btn-sm btn-outline-secondary" onclick="testAttendanceWhatsApp()" disabled>
+                        Test WhatsApp
+                    </button>
+                </div>
+            </div>
+        </div>
         <div class="dropdown">
             <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
                 <i class="fas fa-download me-1"></i> Export
@@ -233,8 +330,117 @@ window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
                 <li><a class="dropdown-item" href="{{ url_for('main.export_class_attendance_csv', class_id=selected_class_id, date=selected_date) }}"><i class="fas fa-file-csv text-primary me-2"></i>CSV</a></li>
             </ul>
         </div>
-        <!-- Lock / Unlock -->
+        {% endif %}
+        <a href="{{ url_for('main.teacher_attendance') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-chalkboard-teacher me-1"></i> Teacher Attendance
+        </a>
+    </div>
+</div>
+
+{% if qr_enabled %}
+<nav class="sa-tabs" aria-label="Attendance views">
+    <a class="{% if tab == 'sheet' %}active{% endif %}"
+       href="{{ url_for('main.student_attendance', tab='sheet', class_id=selected_class_id, date=selected_date) }}">
+        <i class="fas fa-clipboard-check me-1"></i> Attendance Sheet</a>
+    <a class="{% if tab == 'qr' %}active{% endif %}"
+       href="{{ url_for('main.student_attendance', tab='qr', date=selected_date) }}">
+        <i class="fas fa-qrcode me-1"></i> QR Scans</a>
+</nav>
+{% endif %}
+
+{% if tab == 'qr' and qr_enabled %}
+{% include 'qr_attendance.html' %}
+{% else %}
+
+<!-- Who was absent: shown right after saving -->
+{% if session.get('last_absentees') %}
+<div class="sa-alert">
+    <div class="sa-alert-head">
+        <span><i class="fab fa-whatsapp me-2"></i>Absentee Alert Center</span>
+        <span class="badge bg-danger">{{ session.get('last_absentees')|length }} Absent</span>
+    </div>
+    {% for absentee in session.get('last_absentees') %}
+    <div class="sa-alert-row">
+        <div>
+            <strong>{{ absentee.name }}</strong>
+            <span class="text-muted font-monospace small ms-1">({{ absentee.roll }})</span>
+            <br><small class="text-muted">{{ absentee.phone or 'No phone' }}</small>
+        </div>
+        {% if absentee.phone %}
+        {% set phone_clean = absentee.phone | replace(' ','') | replace('-','') | replace('+','') %}
+        {% if phone_clean.startswith('0') %}
+            {% set phone_intl = '92' + phone_clean[1:] %}
+        {% else %}
+            {% set phone_intl = phone_clean %}
+        {% endif %}
+        {% set msg = 'Dear Parent, your child ' ~ absentee.name ~ ' (Roll No: ' ~ absentee.roll ~ ') was marked ABSENT today. Please contact the school if needed.' %}
+        <div class="d-flex gap-1">
+            <a href="whatsapp://send?phone={{ phone_intl }}&text={{ msg | urlencode }}" class="btn btn-success btn-sm">
+                <i class="fab fa-whatsapp me-1"></i> WhatsApp
+            </a>
+            <a href="tel:{{ absentee.phone }}" class="btn btn-outline-secondary btn-sm" aria-label="Call">
+                <i class="fas fa-phone"></i>
+            </a>
+        </div>
+        {% else %}
+        <span class="badge bg-secondary">No Phone</span>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Class + date -->
+<div class="sa-filters no-print">
+    <form method="GET" action="{{ url_for('main.student_attendance') }}">
+        <select class="form-select" name="class_id" aria-label="Class" onchange="this.form.submit()">
+            {% for c in classes %}
+            <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
+        <div class="sa-daybox">
+            <a class="sa-daybtn" href="{{ url_for('main.student_attendance', class_id=selected_class_id, date=prev_date) }}" title="Previous day" aria-label="Previous day"><i class="fas fa-chevron-left"></i></a>
+            <input type="date" class="form-control" name="date" value="{{ selected_date }}" aria-label="Date" onchange="this.form.submit()">
+            <a class="sa-daybtn" href="{{ url_for('main.student_attendance', class_id=selected_class_id, date=next_date) }}" title="Next day" aria-label="Next day"><i class="fas fa-chevron-right"></i></a>
+        </div>
+        <a class="sa-today {% if is_today %}is-on{% endif %}" href="{{ url_for('main.student_attendance', class_id=selected_class_id, date=today_date) }}">Today</a>
+    </form>
+</div>
+
+{% if students %}
+{% set ns = namespace(names=[], n_present=0, n_absent=0, n_late=0, n_leave=0) %}
+{% for s in students %}
+    {% if s.id not in marked_ids %}{% set ns.names = ns.names + [s] %}{% endif %}
+    {% set st = attendance_map.get(s.id) %}
+    {% if st == 'Absent' %}{% set ns.n_absent = ns.n_absent + 1 %}
+    {% elif st == 'Late' %}{% set ns.n_late = ns.n_late + 1 %}
+    {% elif st == 'Leave' %}{% set ns.n_leave = ns.n_leave + 1 %}
+    {% elif st == 'Present' or not is_locked %}{% set ns.n_present = ns.n_present + 1 %}
+    {% endif %}
+{% endfor %}
+{% set n_total = students | length %}
+
+<!-- Summary: total, live counts, saved / open -->
+<section class="sa-ribbon no-print" aria-label="Summary">
+    <div class="sa-stat">
+        <span class="sa-num">{{ n_total }}</span>
+        <span class="sa-lab">Students in this class</span>
+    </div>
+    <div class="sa-stat">
+        <div class="sa-bar" role="img" aria-label="Attendance of this class">
+            <i class="p" id="barPresent"></i><i class="l" id="barLate"></i><i class="a" id="barAbsent"></i><i class="v" id="barLeave"></i>
+        </div>
+        <div class="sa-legend">
+            <span><span class="dot" style="background:#16a34a"></span>Present <b id="cntPresent">{{ ns.n_present }}</b></span>
+            <span><span class="dot" style="background:#dc2626"></span>Absent <b id="cntAbsent">{{ ns.n_absent }}</b></span>
+            <span><span class="dot" style="background:#f59e0b"></span>Late <b id="cntLate">{{ ns.n_late }}</b></span>
+            <span><span class="dot" style="background:#94a3b8"></span>Leave <b id="cntLeave">{{ ns.n_leave }}</b></span>
+        </div>
+    </div>
+    <div class="sa-stat sa-state {% if is_locked %}is-locked{% endif %}">
         {% if is_locked %}
+        <span class="sa-num"><i class="fas fa-lock"></i> Attendance Locked</span>
+        <span class="sa-lab">Saved. Nobody can change it by mistake.</span>
         <form action="{{ url_for('main.lock_attendance') }}" method="POST">
             <input type="hidden" name="class_id" value="{{ selected_class_id }}">
             <input type="hidden" name="date" value="{{ selected_date }}">
@@ -245,139 +451,161 @@ window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
                 <i class="fas fa-lock-open me-1"></i> Unlock
             </button>
         </form>
+        {% else %}
+        <span class="sa-num"><i class="fas fa-lock-open"></i> Open — Not Yet Saved</span>
+        <span class="sa-lab">Press Save when you are done.</span>
         {% endif %}
     </div>
+</section>
+
+<!-- What to do now -->
+<div class="sa-hint no-print" role="status">
+    {% if is_locked %}
+    <b><i class="fas fa-circle-info me-1"></i>What to do now:</b> This day is saved. To correct a mistake press <b>Unlock</b>, change the student and save again.
+    {% else %}
+    <b><i class="fas fa-circle-info me-1"></i>What to do now:</b> Tap <b>Absent</b>, <b>Late</b> or <b>Leave</b> for the students who need it, then press <b>Save Attendance</b> at the bottom.
+    {% endif %}
+    {% if not is_locked %}
+    <span class="sa-sub">School hours: {{ school_start_time }}–{{ school_end_time }}. {% if late_auto %}Late is automatic after start + {{ attendance_grace_minutes }} minute(s) grace.{% else %}Arrivals after the cutoff stay <strong>Present</strong> (school setting); choose Late by hand when needed.{% endif %} Enter each student’s actual check-in time, or use <strong>All Students at Time</strong> to mark everyone on time and only change the late ones.</span>
+    {% endif %}
 </div>
 
-<div class="alert alert-info py-2 small mb-3">
-    <i class="fas fa-clock me-1"></i>School hours: {{ school_start_time }}–{{ school_end_time }}. Late is automatic after start + {{ attendance_grace_minutes }} minute(s) grace. Enter each student’s actual check-in time, or use <strong>All Students at Time</strong> to mark everyone on time and only change the late ones.
-    <span id="allAtTimeNote" class="fw-bold ms-1"></span>
-</div>
-
-<!-- Quick Actions & Live Attendance Counter -->
-{% if not is_locked %}
-<div class="card bg-light border-0 mb-3 shadow-sm">
-    <div class="card-body py-2 d-flex justify-content-between align-items-center flex-wrap gap-3">
-        <div class="d-flex gap-2 align-items-center flex-wrap">
-            <span class="text-muted small fw-bold"><i class="fas fa-bolt text-warning me-1"></i>Quick Actions:</span>
-            <button type="button" class="btn btn-outline-success btn-sm px-3" onclick="markAll('Present')">
-                <i class="fas fa-check-double me-1"></i> All Present
-            </button>
-            <button type="button" class="btn btn-outline-danger btn-sm px-3" onclick="markAll('Absent')">
-                <i class="fas fa-times-circle me-1"></i> All Absent
-            </button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetToInitial()">
-                <i class="fas fa-undo me-1"></i> Reset
-            </button>
-            <div class="input-group input-group-sm" style="width:auto;" title="Paper register? Mark everyone on time with one click, then only edit the late students.">
-                <span class="input-group-text bg-white"><i class="fas fa-clock text-primary"></i></span>
-                <input type="time" id="allAtTime" class="form-control" value="{{ school_start_time }}" style="max-width:120px;" aria-label="On-time check-in time">
-                <button type="button" class="btn btn-primary" onclick="markAllAtTime()">
-                    <i class="fas fa-user-clock me-1"></i> All Students at Time
-                </button>
-            </div>
-        </div>
-        <div class="d-flex gap-2 align-items-center flex-wrap">
-            <span class="badge bg-dark px-2 py-2 fs-7">Total: {{ students|length }}</span>
-            <span class="badge bg-success px-2 py-2 fs-7"><i class="fas fa-user-check me-1"></i>Present: <span id="cntPresent">0</span></span>
-            <span class="badge bg-danger px-2 py-2 fs-7"><i class="fas fa-user-times me-1"></i>Absent: <span id="cntAbsent">0</span></span>
-            <span class="badge bg-warning text-dark px-2 py-2 fs-7"><i class="fas fa-clock me-1"></i>Late: <span id="cntLate">0</span></span>
-            <span class="badge bg-secondary px-2 py-2 fs-7"><i class="fas fa-envelope-open-text me-1"></i>Leave: <span id="cntLeave">0</span></span>
-        </div>
+{% if ns.names %}
+<div class="sa-warn no-print">
+    <div>
+        <i class="fas fa-exclamation-triangle me-1"></i>
+        <strong>{{ ns.names|length }} of {{ students|length }}</strong> students: attendance not marked yet
+        <span class="sa-sub">{% for s in ns.names[:10] %}{{ s.student_name }}{% if not loop.last %}, {% endif %}{% endfor %}{% if ns.names|length > 10 %} &hellip; and {{ ns.names|length - 10 }} more{% endif %}</span>
+        {% if not is_locked %}<span class="sa-sub">Students you do not touch are saved as <strong>Present</strong> when you press Save.</span>{% endif %}
     </div>
+    <button type="button" class="btn btn-sm btn-warning" id="toggleUnmarkedBtn" onclick="toggleUnmarkedOnly()">
+        <i class="fas fa-filter me-1"></i> Show only these students</button>
 </div>
 {% endif %}
 
-<!-- Attendance Form -->
+<!-- Quick tools -->
+<div class="sa-toolbar no-print">
+    <div class="sa-search">
+        <i class="fas fa-search"></i>
+        <input type="text" class="form-control" id="saSearch" aria-label="Find a student"
+               placeholder="Find a student by name or roll no…" autocomplete="off">
+    </div>
+    {% if not is_locked %}
+    <button type="button" class="btn btn-outline-success" onclick="markAll('Present')">
+        <i class="fas fa-check-double me-1"></i> All Present
+    </button>
+    <button type="button" class="btn btn-outline-secondary" onclick="resetToInitial()">
+        <i class="fas fa-undo me-1"></i> Reset
+    </button>
+    <div class="dropdown">
+        <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-label="More quick actions">
+            <i class="fas fa-ellipsis-h"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+            <li><button type="button" class="dropdown-item text-danger" onclick="markAllAbsentAsk()">
+                <i class="fas fa-times-circle me-2"></i>All Absent</button></li>
+        </ul>
+    </div>
+    <div class="sa-timebox" title="Paper register? Mark everyone on time with one click, then only edit the late students.">
+        <label for="allAtTime"><i class="fas fa-clock text-primary me-1"></i>Arrival time</label>
+        <input type="time" id="allAtTime" class="form-control" value="{{ school_start_time }}" aria-label="On-time check-in time">
+        <button type="button" class="btn btn-primary btn-sm" onclick="markAllAtTime()">
+            <i class="fas fa-user-clock me-1"></i> All Students at Time
+        </button>
+    </div>
+    <span id="allAtTimeNote" class="sa-note w-100"></span>
+    {% endif %}
+</div>
+
+<!-- Attendance form -->
 <form method="POST" action="{{ url_for('main.student_attendance') }}">
     <input type="hidden" name="date" value="{{ selected_date }}">
     <input type="hidden" name="class_id" value="{{ selected_class_id }}">
 
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-0 table-responsive">
-            <table class="table table-hover align-middle mb-0" id="attTable">
-                <thead class="table-dark">
+    <div class="card border-0 sa-panel">
+        <div class="sa-count">
+            <span>Showing <strong id="saVisible">{{ n_total }}</strong> of <strong>{{ n_total }}</strong> students</span>
+            <span class="small text-muted" id="saNoMatch" hidden>No student matches your search.</span>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-hover align-middle sa-table" id="attTable">
+                <thead>
                     <tr>
-                        <th class="py-3 ps-3">#</th>
-                        <th class="py-3">Roll No</th>
-                        <th class="py-3">Student Name</th>
-                        <th class="py-3">Father Name</th>
-                        <th class="py-3 text-center">Status</th>
-                        <th class="py-3 text-center">Check-in / Late</th>
+                        <th class="ps-3">Roll No</th>
+                        <th>Student Name</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-center">Check-in / Late</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for student in students %}
                     {% set current_status = attendance_map.get(student.id, 'Present') %}
+                    {% set is_marked = student.id in marked_ids %}
                     {% set current_late = late_time_map.get(student.id, '') %}
                     {% set checkin_default = current_late or (current_checkin_time if current_status in ['Present', 'Late'] else '') %}
-                    <tr id="row_{{ student.id }}"
-                        data-checkin="{{ checkin_default }}"
-                        class="{% if current_status == 'Absent' %}table-danger{% elif current_status == 'Late' %}table-warning{% elif current_status == 'Leave' %}table-secondary{% endif %}">
-                        <td class="ps-3 text-muted small">{{ loop.index }}</td>
-                        <td class="font-monospace fw-bold text-primary">{{ student.roll_number }}</td>
-                        <td class="fw-bold">{{ student.student_name }}</td>
-                        <td class="text-muted small">{{ student.father_name }}</td>
-                        <td class="text-center">
-                            {% if is_locked %}
-                                <span class="badge px-3 py-2
-                                    {% if current_status == 'Present' %}bg-success
-                                    {% elif current_status == 'Absent' %}bg-danger
-                                    {% elif current_status == 'Late' %}bg-warning text-dark
-                                    {% else %}bg-secondary{% endif %}">
-                                    {{ current_status }}
-                                </span>
+                    <tr id="row_{{ student.id }}" class="sa-row"
+                        data-unmarked="{{ 0 if is_marked else 1 }}"
+                        data-status="{{ current_status if (is_marked or not is_locked) else 'none' }}"
+                        data-search="{{ (student.student_name ~ ' ' ~ student.roll_number ~ ' ' ~ (student.father_name or '')) | lower }}">
+                        <td class="ps-3 sa-c-roll"><span class="sa-roll">{{ student.roll_number }}</span></td>
+                        <td class="sa-c-name">
+                            <div class="sa-who">
+                                {{ avatar('student', student, 38) }}
+                                <div class="sa-who-text">
+                                    <div class="sa-who-name">{{ student.student_name }}{% if not is_marked %} <span class="sa-tag sa-tag-new" id="unmarked_{{ student.id }}">Not marked yet</span>{% endif %}{% if qr_time_map.get(student.id) %} <span class="sa-tag sa-tag-qr" title="Gate QR scan time"><i class="fas fa-qrcode me-1"></i>QR {{ qr_time_map.get(student.id) }}</span>{% endif %}</div>
+                                    {% if student.father_name %}<div class="sa-who-sub">{{ student.father_name }}</div>{% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-center sa-c-status">
+                            {% if is_locked and not is_marked %}
+                                <span class="sa-pill n">Not marked</span>
+                            {% elif is_locked %}
+                                <span class="sa-pill {% if current_status == 'Present' %}p{% elif current_status == 'Absent' %}a{% elif current_status == 'Late' %}l{% else %}v{% endif %}">{{ current_status }}</span>
                             {% else %}
-                            <div class="btn-group btn-group-sm" role="group">
-                                <input type="radio" class="btn-check" name="status_{{ student.id }}"
-                                       id="p_{{ student.id }}" value="Present"
+                            <div class="sa-seg" role="radiogroup" aria-label="Attendance of {{ student.student_name }}">
+                                <input type="radio" name="status_{{ student.id }}" id="p_{{ student.id }}" value="Present"
                                        {% if current_status == 'Present' %}checked{% endif %}
                                        onchange="updateRow({{ student.id }}, 'Present')">
-                                <label class="btn btn-outline-success" for="p_{{ student.id }}">Present</label>
+                                <label class="p" for="p_{{ student.id }}"><i class="fas fa-check"></i>Present</label>
 
-                                <input type="radio" class="btn-check" name="status_{{ student.id }}"
-                                       id="a_{{ student.id }}" value="Absent"
+                                <input type="radio" name="status_{{ student.id }}" id="a_{{ student.id }}" value="Absent"
                                        {% if current_status == 'Absent' %}checked{% endif %}
                                        onchange="updateRow({{ student.id }}, 'Absent')">
-                                <label class="btn btn-outline-danger" for="a_{{ student.id }}">Absent</label>
+                                <label class="a" for="a_{{ student.id }}"><i class="fas fa-xmark"></i>Absent</label>
 
-                                <input type="radio" class="btn-check" name="status_{{ student.id }}"
-                                       id="l_{{ student.id }}" value="Late"
+                                <input type="radio" name="status_{{ student.id }}" id="l_{{ student.id }}" value="Late"
                                        {% if current_status == 'Late' %}checked{% endif %}
                                        onchange="updateRow({{ student.id }}, 'Late')">
-                                <label class="btn btn-outline-warning" for="l_{{ student.id }}">Late</label>
+                                <label class="l" for="l_{{ student.id }}"><i class="fas fa-clock"></i>Late</label>
 
-                                <input type="radio" class="btn-check" name="status_{{ student.id }}"
-                                       id="lv_{{ student.id }}" value="Leave"
+                                <input type="radio" name="status_{{ student.id }}" id="lv_{{ student.id }}" value="Leave"
                                        {% if current_status == 'Leave' %}checked{% endif %}
                                        onchange="updateRow({{ student.id }}, 'Leave')">
-                                <label class="btn btn-outline-secondary" for="lv_{{ student.id }}">Leave</label>
+                                <label class="v" for="lv_{{ student.id }}"><i class="fas fa-envelope-open-text"></i>Leave</label>
                             </div>
                             {% endif %}
                         </td>
 
                         <!-- Check-in / late arrival column -->
-                        <td class="text-center" id="latecell_{{ student.id }}">
+                        <td class="text-center sa-c-time" id="latecell_{{ student.id }}">
                             {% if is_locked %}
-                                {% if current_late %}<span class="badge bg-light text-dark border">{{ current_late }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                                {% if current_late %}<span class="badge bg-light text-dark border">{{ current_late }}</span>{% else %}<span class="sa-dash">—</span>{% endif %}
                                 {% if current_status == 'Late' %}
-                                    <span class="badge bg-warning text-dark ms-1">Late{% if late_minutes_map.get(student.id) is not none %} · {{ late_minutes_map.get(student.id) }} min{% endif %}</span>
+                                    <span class="badge bg-warning text-dark ms-1">Late{% if (late_minutes_map.get(student.id) or 0) > 0 %} · {{ late_minutes_map.get(student.id) }} min{% endif %}</span>
                                 {% endif %}
-                            {% elif current_status in ['Present', 'Late'] %}
-                                <div class="d-flex gap-1 justify-content-center align-items-center">
+                            {% else %}
+                                <div class="sa-time" id="timebox_{{ student.id }}" {% if current_status not in ['Present', 'Late'] %}hidden{% endif %}>
                                     <input type="time" class="form-control form-control-sm"
                                            name="checkin_time_{{ student.id }}"
                                            id="checkintime_{{ student.id }}"
                                            value="{{ checkin_default }}"
-                                           oninput="this.closest('tr').dataset.checkin=this.value"
-                                           style="width:125px; max-width:100%;">
-                                    <button type="button" class="btn btn-outline-secondary btn-sm px-2"
-                                            onclick="setNow({{ student.id }})" title="Use current time" data-bs-toggle="tooltip" aria-label="Use current time">
-                                        <i class="fas fa-clock"></i>
-                                    </button>
+                                           aria-label="Check-in time of {{ student.student_name }}"
+                                           {% if current_status not in ['Present', 'Late'] %}disabled{% endif %}>
+                                    <button type="button" class="btn" onclick="setNow({{ student.id }})"
+                                            title="Use current time" aria-label="Use current time"><i class="fas fa-clock"></i></button>
                                 </div>
-                            {% else %}
-                            <span class="text-muted small" id="lateshow_{{ student.id }}">—</span>
+                                <span class="sa-dash" id="lateshow_{{ student.id }}" {% if current_status in ['Present', 'Late'] %}hidden{% endif %}>—</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -387,88 +615,118 @@ window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
         </div>
 
         {% if not is_locked %}
-        <div class="card-footer bg-white d-flex justify-content-between align-items-center py-3">
-            <span class="text-muted small">
-                <i class="fas fa-info-circle me-1"></i>
-                Saving will <strong>lock</strong> this attendance and move to the next class.
-            </span>
-            <button type="submit" class="btn btn-success btn-lg px-5">
-                <i class="fas fa-save me-2"></i> Save &amp; Next Class
+        <div class="sa-save">
+            <div class="sa-save-sum">
+                Ready to save: <b id="sumPresent">{{ ns.n_present }}</b> present ·
+                <b id="sumAbsent">{{ ns.n_absent }}</b> absent ·
+                <b id="sumLate">{{ ns.n_late }}</b> late ·
+                <b id="sumLeave">{{ ns.n_leave }}</b> on leave
+                <span class="sa-save-sub">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Saving will <strong>lock</strong> this attendance and move to the next class.
+                </span>
+            </div>
+            <button type="submit" class="btn btn-success btn-lg">
+                <i class="fas fa-save me-2"></i> Save Attendance
             </button>
         </div>
         {% else %}
-        <div class="card-footer bg-light d-flex justify-content-between align-items-center py-3">
-            <span class="text-muted small">
-                <i class="fas fa-lock me-1"></i> Attendance is locked. Click Unlock to make changes.
-            </span>
+        <div class="sa-savedbar">
+            <i class="fas fa-lock me-1"></i> Attendance is locked. Click Unlock to make changes.
         </div>
         {% endif %}
     </div>
 </form>
 
 {% else %}
-<div class="text-center py-5">
-    <i class="fas fa-users-slash fa-3x text-muted mb-3"></i>
-    <p class="text-muted">No students found in this class.</p>
+<div class="sa-empty">
+    <div class="sa-empty-icon"><i class="fas fa-users-slash"></i></div>
+    {% if classes %}
+    <p>No students found in this class.</p>
+    <a href="{{ url_for('main.students_list') }}" class="btn btn-primary"><i class="fas fa-user-plus me-1"></i> Go to Students</a>
+    {% else %}
+    <p>There are no classes yet. Add a class first, then its students will appear here.</p>
+    <a href="{{ url_for('main.classes_list') }}" class="btn btn-primary"><i class="fas fa-plus me-1"></i> Go to Classes</a>
+    {% endif %}
 </div>
 {% endif %}
 
 <script>
-// Capture initial attendance states on page load for reset functionality
+// The page remembers each student's starting status, so Reset can undo this visit's changes.
 var initialAttendanceState = {};
+var unmarkedOnly = false;
+var IS_TODAY = {{ 'true' if is_today else 'false' }};
 
 document.addEventListener('DOMContentLoaded', function() {
-    var radios = document.querySelectorAll('#attTable input[type="radio"]:checked');
-    radios.forEach(function(r) {
+    document.querySelectorAll('#attTable input[type="radio"]:checked').forEach(function(r) {
         initialAttendanceState[r.name] = r.value;
     });
+    var search = document.getElementById('saSearch');
+    if (search) search.addEventListener('input', applyRowFilters);
     updateLiveCounters();
 });
 
-// Update dynamic attendance counters in toolbar
+// Counts come from each row's data-status, so they also work on a locked day.
 function updateLiveCounters() {
+    var c = {Present: 0, Absent: 0, Late: 0, Leave: 0};
     var rows = document.querySelectorAll('#attTable tbody tr');
-    var p = 0, a = 0, l = 0, lv = 0;
     rows.forEach(function(row) {
-        var id = row.id.replace('row_', '');
-        if (document.getElementById('p_' + id)?.checked) p++;
-        else if (document.getElementById('a_' + id)?.checked) a++;
-        else if (document.getElementById('l_' + id)?.checked) l++;
-        else if (document.getElementById('lv_' + id)?.checked) lv++;
+        if (c.hasOwnProperty(row.dataset.status)) c[row.dataset.status]++;
     });
-    var elP = document.getElementById('cntPresent');
-    var elA = document.getElementById('cntAbsent');
-    var elL = document.getElementById('cntLate');
-    var elLV = document.getElementById('cntLeave');
-    if (elP) elP.textContent = p;
-    if (elA) elA.textContent = a;
-    if (elL) elL.textContent = l;
-    if (elLV) elLV.textContent = lv;
+    var total = rows.length || 1;
+    var set = function(id, value) { var el = document.getElementById(id); if (el) el.textContent = value; };
+    set('cntPresent', c.Present); set('cntAbsent', c.Absent); set('cntLate', c.Late); set('cntLeave', c.Leave);
+    set('sumPresent', c.Present); set('sumAbsent', c.Absent); set('sumLate', c.Late); set('sumLeave', c.Leave);
+    var bar = function(id, value) { var el = document.getElementById(id); if (el) el.style.width = (value * 100 / total) + '%'; };
+    bar('barPresent', c.Present); bar('barLate', c.Late); bar('barAbsent', c.Absent); bar('barLeave', c.Leave);
 }
 
-// Update row colour when status changes
+// One place decides which rows are visible: the search box and "show only not marked yet".
+function applyRowFilters() {
+    var search = document.getElementById('saSearch');
+    var needle = search ? search.value.trim().toLowerCase() : '';
+    var shown = 0, total = 0;
+    document.querySelectorAll('#attTable tbody tr').forEach(function(row) {
+        total++;
+        var hide = (unmarkedOnly && row.dataset.unmarked === '0') ||
+                   (needle && (row.dataset.search || '').indexOf(needle) === -1);
+        row.style.display = hide ? 'none' : '';
+        if (!hide) shown++;
+    });
+    var count = document.getElementById('saVisible');
+    if (count) count.textContent = shown;
+    var none = document.getElementById('saNoMatch');
+    if (none) none.hidden = shown !== 0 || total === 0;
+}
+
+// Show only the students whose attendance is not marked yet (and back to everyone)
+function toggleUnmarkedOnly() {
+    unmarkedOnly = !unmarkedOnly;
+    applyRowFilters();
+    var btn = document.getElementById('toggleUnmarkedBtn');
+    if (btn) btn.innerHTML = unmarkedOnly
+        ? '<i class="fas fa-users me-1"></i> Show all students'
+        : '<i class="fas fa-filter me-1"></i> Show only these students';
+}
+
+// Row colour + check-in box follow the chosen status
 function updateRow(id, status) {
     var row = document.getElementById('row_' + id);
     if (!row) return;
-    row.className = row.className.replace(/table-\w+/g, '').trim();
-    if (status === 'Absent') row.classList.add('table-danger');
-    else if (status === 'Late') row.classList.add('table-warning');
-    else if (status === 'Leave') row.classList.add('table-secondary');
+    var flag = document.getElementById('unmarked_' + id);   // teacher touched it: no longer "not marked"
+    if (flag) flag.remove();
+    row.dataset.status = status;
 
-    // Keep a check-in time for Present and Late marks so the server can apply school timing.
-    var cell = document.getElementById('latecell_' + id);
-    if (cell) {
-        if (status === 'Present' || status === 'Late') {
-            var row = document.getElementById('row_' + id);
-            var previousValue = row?.dataset.checkin || '';
-            cell.innerHTML = '<div class="d-flex gap-1 justify-content-center align-items-center">' +
-                '<input type="time" class="form-control form-control-sm" name="checkin_time_' + id + '" id="checkintime_' + id + '" value="' + previousValue + '" oninput="this.closest(\'tr\').dataset.checkin=this.value" style="width:125px; max-width:100%;">' +
-                '<button type="button" class="btn btn-outline-secondary btn-sm px-2" onclick="setNow(' + id + ')" title="Use current time" aria-label="Use current time"><i class="fas fa-clock"></i></button>' +
-                '</div>';
-                            if (!previousValue && {{ 'true' if is_today else 'false' }}) setNow(id);
-        } else {
-            cell.innerHTML = '<span class="text-muted small">—</span>';
-        }
+    // Present and Late keep a check-in time so the server can apply school timing.
+    var withTime = (status === 'Present' || status === 'Late');
+    var box = document.getElementById('timebox_' + id);
+    var input = document.getElementById('checkintime_' + id);
+    var dash = document.getElementById('lateshow_' + id);
+    if (box) box.hidden = !withTime;
+    if (dash) dash.hidden = withTime;
+    if (input) {
+        input.disabled = !withTime;       // a disabled box is not sent, exactly like before
+        if (withTime && !input.value && IS_TODAY) setNow(id);
     }
     updateLiveCounters();
 }
@@ -478,29 +736,28 @@ function setNow(id) {
     var el = document.getElementById('checkintime_' + id);
     if (!el) return;
     var now = new Date();
-    var hh = String(now.getHours()).padStart(2, '0');
-    var mm = String(now.getMinutes()).padStart(2, '0');
-    el.value = hh + ':' + mm;
-    var row = document.getElementById('row_' + id);
-    if (row) row.dataset.checkin = el.value;
+    el.value = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
 }
 
 // Mark all students with a single status
 function markAll(status) {
-    var rows = document.querySelectorAll('#attTable tbody tr');
-    rows.forEach(function(row) {
+    var key = status === 'Present' ? 'p_' : status === 'Absent' ? 'a_' : status === 'Late' ? 'l_' : 'lv_';
+    document.querySelectorAll('#attTable tbody tr').forEach(function(row) {
         var id = row.id.replace('row_', '');
-        var radio = document.getElementById(
-            status === 'Present' ? 'p_' + id :
-            status === 'Absent'  ? 'a_' + id :
-            status === 'Late'    ? 'l_' + id : 'lv_' + id
-        );
-        if (radio) { 
-            radio.checked = true; 
-            updateRow(parseInt(id), status); 
+        var radio = document.getElementById(key + id);
+        if (radio) {
+            radio.checked = true;
+            updateRow(parseInt(id), status);
         }
     });
     updateLiveCounters();
+}
+
+// "All Absent" is rarely right, so it asks first (the shared styled dialog).
+function markAllAbsentAsk() {
+    window.SchoolUI.confirm('Mark every student of this class as Absent?', {
+        okLabel: 'Mark all Absent', variant: 'danger'
+    }).then(function(ok) { if (ok) markAll('Absent'); });
 }
 
 // All Students at Time: one click marks everyone Present with the same check-in time
@@ -511,15 +768,13 @@ function markAllAtTime() {
     var timeInput = document.getElementById('allAtTime');
     var value = timeInput ? timeInput.value : '';
     if (!value) { window.SchoolUI.toast('Please choose a time first.', 'warning'); if (timeInput) timeInput.focus(); return; }
-    var rows = document.querySelectorAll('#attTable tbody tr');
     var changed = 0;
-    rows.forEach(function(row) {
+    document.querySelectorAll('#attTable tbody tr').forEach(function(row) {
         var id = row.id.replace('row_', '');
         if (document.getElementById('a_' + id)?.checked || document.getElementById('lv_' + id)?.checked) return;
         var present = document.getElementById('p_' + id);
         if (!present) return;
         present.checked = true;
-        row.dataset.checkin = value;      // updateRow() builds the time box from this value
         updateRow(parseInt(id), 'Present');
         var input = document.getElementById('checkintime_' + id);
         if (input) input.value = value;
@@ -530,10 +785,9 @@ function markAllAtTime() {
     if (note) note.textContent = changed + ' student(s) set to ' + value + '. Edit the time of anyone who came late.';
 }
 
-// Reset selection back to initial state
+// Reset selection back to the state the page was opened with
 function resetToInitial() {
-    var rows = document.querySelectorAll('#attTable tbody tr');
-    rows.forEach(function(row) {
+    document.querySelectorAll('#attTable tbody tr').forEach(function(row) {
         var id = row.id.replace('row_', '');
         var origStatus = initialAttendanceState['status_' + id] || 'Present';
         var radio = document.getElementById(
@@ -549,4 +803,5 @@ function resetToInitial() {
     updateLiveCounters();
 }
 </script>
+{% endif %}
 {% endblock %}

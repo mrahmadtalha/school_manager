@@ -165,6 +165,10 @@ def test_creation_buttons_are_consistent(admin_client, app):
     labels = set()
     for name, content in _all_templates(app):
         for match in pattern.finditer(content):
+            # A row action that pre-fills the Add modal from an existing record
+            # ("Copy" on an expense) is not a creation button; it keeps its verb.
+            if 'continue-expense-btn' in match.group(0):
+                continue
             label = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', match.group(1))).strip()
             if label:
                 labels.add(label)

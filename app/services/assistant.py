@@ -13,6 +13,8 @@ How it works
 The assistant only READS data.  It never creates, edits or deletes anything.
 """
 import difflib
+import json
+import logging
 import re
 import unicodedata
 from datetime import date, timedelta
@@ -29,6 +31,11 @@ from app.services.payroll_service import (month_bounds, month_label,
 
 MAX_QUESTION_LENGTH = 300
 MAX_LIST_ROWS = 15
+MAX_CONTEXT_LENGTH = 600        # the follow-up memory the browser sends back
+AT_RISK_PERCENT = 75.0          # same line the attendance summary page uses
+PAYROLL_REMINDER_DAY = 25       # "payroll not generated" is only nagged late in the month
+
+log = logging.getLogger(__name__)
 
 MONTHS = {
     'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
@@ -49,6 +56,20 @@ MALE_WORDS = {'boys', 'boy', 'larkay', 'larke', 'ladkay', 'ladke', 'larka',
               'male'}
 FEMALE_WORDS = {'girls', 'girl', 'larkiyan', 'ladkiyan', 'larki', 'ladki',
                 'female'}
+STUDENT_WORDS = {'student', 'students', 'bachay', 'bache', 'bachon', 'talib',
+                 'talaba', 'children', 'kids', 'pupils'}
+
+# --- follow-up memory -------------------------------------------------------
+# "aur kal?", "class 6 ka?", "uska phone number?" only make sense with the
+# previous answer in mind.  The browser sends back the small ``context`` dict
+# every answer carries, so the server itself stays stateless.
+PRONOUN_WORDS = {'us', 'uska', 'uski', 'uske', 'usko', 'iska', 'iski', 'iske',
+                 'unka', 'unki', 'unke', 'his', 'her', 'their', 'him', 'them'}
+FOLLOW_WORDS = {'aur', 'and', 'also', 'phir', 'about', 'or'}
+FOLLOWABLE = {'attendance', 'fees_collected', 'fees_due', 'expenses', 'profit',
+              'salary', 'students_count', 'low_attendance', 'new_admissions',
+              'class_fees', 'compare', 'fees_payments'}
+STUDENT_INTENTS = {'student_info', 'fees_due', 'attendance'}
 
 
 # --------------------------------------------------------------------------- #
@@ -179,10 +200,13 @@ class Ctx:
                        'Female' if token_set & FEMALE_WORDS else None)
         self.status = self._status(token_set)
         self.day = self._day(token_set)
+        self.month_named = False
         self.month, self.month_explicit = self._month(token_set)
         self.class_obj = None
         self.students = []
         self.exact_student = False
+        self.teachers = []
+        self.exact_teacher = False
 
     def t(self, en, ur):
         return ur if self.lang == 'ur' else en
@@ -223,6 +247,7 @@ class Ctx:
             use_year = year or today.year
             if not year and number > today.month:
                 use_year -= 1
+            self.month_named = True
             return '%04d-%02d' % (use_year, number), True
         if tokens & PREVIOUS_WORDS and tokens & MONTH_WORDS:
             return shift_month(current, -1), True
@@ -258,30 +283,30 @@ def _find_class(ctx):
     return None
 
 
-def _find_students(ctx):
-    """Active students whose name appears in the question."""
+def _name_candidates(ctx):
+    """Words of the question that could be part of a person's name."""
     vocab = _vocab()
-    candidates = [t for t in ctx.tokens
-                  if len(t) >= 3 and t.isalpha()
-                  and t not in catalogue.STOPWORDS and t not in vocab
-                  and t not in catalogue.HOW_MARKERS
-                  and t not in MONTHS and t not in TODAY_WORDS
-                  and t not in YESTERDAY_WORDS and t not in PREVIOUS_WORDS
-                  and t not in MONTH_WORDS and t not in THIS_WORDS]
-    if not candidates:
-        return [], False
-    rows = (StudentModel.query.filter_by(is_active=True)
-            .with_entities(StudentModel.id, StudentModel.student_name).all())
+    return [t for t in ctx.tokens
+            if len(t) >= 3 and t.isalpha()
+            and t not in catalogue.STOPWORDS and t not in vocab
+            and t not in catalogue.HOW_MARKERS
+            and t not in MONTHS and t not in TODAY_WORDS
+            and t not in YESTERDAY_WORDS and t not in PREVIOUS_WORDS
+            and t not in MONTH_WORDS and t not in THIS_WORDS]
+
+
+def _match_names(ctx, candidates, rows):
+    """``rows`` is [(id, full name)].  -> (ids, exact_full_name_match?)."""
     by_token = {}
     names = {}
-    for student_id, name in rows:
+    for person_id, name in rows:
         tokens = normalize(name).split()
-        names[student_id] = ' '.join(tokens)
+        names[person_id] = ' '.join(tokens)
         for token in tokens:
-            by_token.setdefault(token, set()).add(student_id)
+            by_token.setdefault(token, set()).add(person_id)
 
     padded = ' %s ' % ctx.norm
-    exact = [sid for sid, name in names.items()
+    exact = [pid for pid, name in names.items()
              if len(name.split()) >= 2 and ' %s ' % name in padded]
     if exact:
         return exact, True
@@ -292,13 +317,164 @@ def _find_students(ctx):
     matching = set.intersection(*(by_token[t] for t in hits))
     if matching:
         return sorted(matching), False
-    # Words belong to different students: keep the best-covered ones.
+    # Words belong to different people: keep the best-covered ones.
     counts = {}
     for token in hits:
-        for sid in by_token[token]:
-            counts[sid] = counts.get(sid, 0) + 1
+        for pid in by_token[token]:
+            counts[pid] = counts.get(pid, 0) + 1
     top = max(counts.values())
-    return sorted(sid for sid, c in counts.items() if c == top), False
+    return sorted(pid for pid, c in counts.items() if c == top), False
+
+
+def _find_students(ctx):
+    """Active students whose name appears in the question."""
+    candidates = _name_candidates(ctx)
+    if not candidates:
+        return [], False
+    rows = (StudentModel.query.filter_by(is_active=True)
+            .with_entities(StudentModel.id, StudentModel.student_name).all())
+    return _match_names(ctx, candidates, rows)
+
+
+def _find_teachers(ctx):
+    """Active teachers whose name appears in the question."""
+    candidates = _name_candidates(ctx)
+    if not candidates:
+        return [], False
+    rows = (TeacherModel.query.filter_by(is_active=True)
+            .with_entities(TeacherModel.id, TeacherModel.teacher_name).all())
+    return _match_names(ctx, candidates, rows)
+
+
+def _settle_people(ctx):
+    """A name can match both a student and a teacher: keep only one kind."""
+    if not (ctx.students and ctx.teachers):
+        return
+    if ctx.exact_teacher and not ctx.exact_student:
+        prefer_teacher = True
+    elif ctx.exact_student and not ctx.exact_teacher:
+        prefer_teacher = False
+    else:
+        prefer_teacher = ctx.is_teacher
+    if prefer_teacher:
+        ctx.students, ctx.exact_student = [], False
+    else:
+        ctx.teachers, ctx.exact_teacher = [], False
+
+
+# --------------------------------------------------------------------------- #
+# Follow-up memory
+# --------------------------------------------------------------------------- #
+
+def _clean_context(raw):
+    """Trust nothing the browser sends back: keep only well-formed values."""
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for key in ('intent', 'awaiting'):
+        value = raw.get(key)
+        if isinstance(value, str) and value in catalogue.INTENTS_BY_ID:
+            out[key] = value
+    for key in ('class_id', 'student_id', 'teacher_id'):
+        value = raw.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            out[key] = value
+    month = raw.get('month')
+    if isinstance(month, str) and re.fullmatch(r'\d{4}-\d{2}', month):
+        if month_label(month):
+            out['month'] = month
+    day = raw.get('day')
+    if isinstance(day, str):
+        try:
+            out['day'] = date.fromisoformat(day).isoformat()
+        except ValueError:
+            pass
+    if raw.get('status') in ('Present', 'Absent', 'Late', 'Leave'):
+        out['status'] = raw['status']
+    if raw.get('gender') in ('Male', 'Female'):
+        out['gender'] = raw['gender']
+    for key in ('month_explicit', 'is_teacher'):
+        if raw.get(key) is True:
+            out[key] = True
+    return out
+
+
+def _context_out(ctx, intent_id, awaiting=None):
+    """The small memory sent back to the browser with every answer."""
+    out = {'intent': intent_id}
+    if awaiting:
+        out['awaiting'] = awaiting
+    if ctx.class_obj:
+        out['class_id'] = ctx.class_obj.id
+    if ctx.month_explicit:
+        out['month'] = ctx.month
+        out['month_explicit'] = True
+    if ctx.day:
+        out['day'] = ctx.day.isoformat()
+    if ctx.status:
+        out['status'] = ctx.status
+    if ctx.gender:
+        out['gender'] = ctx.gender
+    if ctx.is_teacher:
+        out['is_teacher'] = True
+    if ctx.students and (len(ctx.students) == 1 or ctx.exact_student) \
+            and intent_id in STUDENT_INTENTS:
+        out['student_id'] = ctx.students[0]
+    if ctx.teachers and (len(ctx.teachers) == 1 or ctx.exact_teacher) \
+            and intent_id == 'teacher_info':
+        out['teacher_id'] = ctx.teachers[0]
+    return out
+
+
+def _resolve_pronoun(ctx, prev):
+    """\"uska phone number?\" -> the person the last answer was about."""
+    if ctx.students or ctx.teachers or not (set(ctx.tokens) & PRONOUN_WORDS):
+        return
+    student_id = prev.get('student_id')
+    if student_id and db.session.get(StudentModel, student_id):
+        ctx.students, ctx.exact_student = [student_id], True
+        return
+    teacher_id = prev.get('teacher_id')
+    if teacher_id and db.session.get(TeacherModel, teacher_id):
+        ctx.teachers, ctx.exact_teacher = [teacher_id], True
+
+
+def _follow_up(ctx, prev, has_how):
+    """Fill the gaps of a short question from the previous answer.
+
+    Returns True when the question is a follow-up (it then repeats the
+    previous intent with the new class / day / month / status on top).
+    """
+    intent_id = prev.get('intent')
+    if intent_id not in FOLLOWABLE or has_how or len(ctx.tokens) > 8:
+        return False
+    tokens = set(ctx.tokens)
+    has_entity = bool(ctx.class_obj or ctx.day or ctx.month_explicit
+                      or ctx.status or ctx.gender or ctx.is_teacher
+                      or ctx.students)
+    if not (has_entity or tokens & FOLLOW_WORDS):
+        return False
+
+    if ctx.class_obj is None and prev.get('class_id') and not ctx.is_teacher:
+        ctx.class_obj = db.session.get(ClassModel, prev['class_id'])
+    if ctx.day is None and prev.get('day') and not ctx.month_explicit:
+        ctx.day = date.fromisoformat(prev['day'])
+    if (not ctx.month_explicit and ctx.day is None and prev.get('month')
+            and prev.get('month_explicit')):
+        ctx.month, ctx.month_explicit = prev['month'], True
+    if ctx.status is None:
+        ctx.status = prev.get('status')
+    if ctx.gender is None:
+        ctx.gender = prev.get('gender')
+    if (not ctx.is_teacher and prev.get('is_teacher')
+            and not tokens & STUDENT_WORDS):
+        ctx.is_teacher = True
+    if (intent_id in STUDENT_INTENTS and not ctx.students
+            and prev.get('student_id') and not ctx.class_obj
+            and not ctx.is_teacher):
+        if db.session.get(StudentModel, prev['student_id']):
+            ctx.students, ctx.exact_student = [prev['student_id']], True
+    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -313,6 +489,11 @@ def _reply(intent, text, *, table=None, links=None, suggestions=None):
         'links': links or [],
         'suggestions': suggestions or [],
     }
+
+
+def _with_context(reply, context):
+    reply['context'] = context
+    return reply
 
 
 def _period_label(ctx):
@@ -332,15 +513,24 @@ def h_help(ctx):
     text = ctx.t(
         'I am the offline school assistant. I answer from your own data, with '
         'no internet and no AI service. I can only read data, never change it.\n'
-        'You can ask about: today\'s attendance, fee collection, defaulters, a '
-        'student\'s dues, expenses, salary, profit, student/teacher counts, and '
-        'how to do common tasks.',
+        'You can ask about: today\'s attendance (with parents\' phone numbers), '
+        'fee collection and who paid, defaulters (also class-wise), a student\'s '
+        'dues, low-attendance students, expenses, salary, profit, comparison '
+        'with last month, new admissions, birthdays, a teacher\'s details, '
+        '"what needs attention today", and how to do common tasks.\n'
+        'I remember the last answer, so you can follow up with short questions '
+        'like "aur kal?" or "uska phone number?".',
         'Main offline school assistant hoon. Aap ke apne data se jawab deta '
         'hoon, internet ya kisi AI service ke baghair. Main sirf data parhta '
         'hoon, kuch badalta nahi.\n'
-        'Aap poochh sakte hain: aaj ki attendance, fees ki wasooli, defaulters, '
-        'kisi student ka baqaya, kharcha, salary, profit, students/teachers ki '
-        'tadad, aur aam kaam kaise karte hain.')
+        'Aap poochh sakte hain: aaj ki attendance (walid ke phone ke saath), '
+        'fees ki wasooli aur kis ne fees di, defaulters (class wise bhi), kisi '
+        'student ka baqaya, kam attendance wale students, kharcha, salary, '
+        'profit, pichle mahine se muqabla, naye admissions, birthdays, kisi '
+        'teacher ki maloomat, "aaj kya kaam baqi hai", aur aam kaam kaise '
+        'karte hain.\n'
+        'Main pichla jawab yaad rakhta hoon, is liye "aur kal?" ya "uska phone '
+        'number?" jaisay chhotay sawal bhi poochh sakte hain.')
     return _reply('help', text, suggestions=examples)
 
 
@@ -547,7 +737,8 @@ def h_attendance(ctx):
         if counts[ctx.status]:
             names = _attendance_names(ctx, day, ctx.status)
             table = {'columns': [ctx.t('Name', 'Naam'),
-                                 ctx.t('Class / ID', 'Class / ID')],
+                                 ctx.t('Class / ID', 'Class / ID'),
+                                 ctx.t('Phone', 'Phone')],
                      'rows': names[:MAX_LIST_ROWS]}
             if len(names) > MAX_LIST_ROWS:
                 text += ctx.t(' (showing first %d)', ' (pehle %d dikhaye gaye)'
@@ -569,16 +760,18 @@ def _attendance_names(ctx, day, status):
     rows = []
     if ctx.is_teacher:
         query = (db.session.query(TeacherModel.teacher_name,
-                                  TeacherModel.teacher_id_str)
+                                  TeacherModel.teacher_id_str,
+                                  TeacherModel.contact_number)
                  .join(AttendanceModel,
                        AttendanceModel.target_id == TeacherModel.id)
                  .filter(AttendanceModel.target_type == 'teacher',
                          AttendanceModel.date == day,
                          AttendanceModel.status == status)
                  .order_by(TeacherModel.teacher_name))
-        return [[name, ident] for name, ident in query.all()]
+        return [[name, ident, phone or '-'] for name, ident, phone in query.all()]
     query = (db.session.query(StudentModel.student_name, ClassModel.name,
-                              StudentModel.roll_number)
+                              StudentModel.roll_number,
+                              StudentModel.guardian_phone)
              .join(AttendanceModel, AttendanceModel.target_id == StudentModel.id)
              .join(ClassModel, ClassModel.id == StudentModel.class_id)
              .filter(AttendanceModel.target_type == 'student',
@@ -586,9 +779,9 @@ def _attendance_names(ctx, day, status):
                      AttendanceModel.status == status))
     if ctx.class_obj:
         query = query.filter(StudentModel.class_id == ctx.class_obj.id)
-    for name, class_name, roll in query.order_by(ClassModel.name,
-                                                 StudentModel.roll_number).all():
-        rows.append([name, '%s (#%s)' % (class_name, roll)])
+    for name, class_name, roll, phone in query.order_by(
+            ClassModel.name, StudentModel.roll_number).all():
+        rows.append([name, '%s (#%s)' % (class_name, roll), phone or '-'])
     return rows
 
 
@@ -687,7 +880,22 @@ def _ask_which_student(ctx, students, intent):
                        s.class_info.name if s.class_info else '-',
                        s.father_name] for s in shown]}
     suggestions = [s.student_name for s in shown]
-    return _reply(intent, text, table=table, suggestions=suggestions)
+    reply = _reply(intent, text, table=table, suggestions=suggestions)
+    reply['awaiting'] = intent      # the next bare name answers THIS question
+    return reply
+
+
+def _ask_which_teacher(ctx, teachers):
+    shown = teachers[:8]
+    text = ctx.t('I found %d teachers with that name. Which one do you mean?',
+                 'Is naam ke %d teachers mile hain. Kaunsa chahiye?'
+                 ) % len(teachers)
+    table = {'columns': [ctx.t('Teacher', 'Teacher'), ctx.t('ID', 'ID')],
+             'rows': [[t.teacher_name, t.teacher_id_str] for t in shown]}
+    reply = _reply('teacher_info', text, table=table,
+                   suggestions=[t.teacher_name for t in shown])
+    reply['awaiting'] = 'teacher_info'
+    return reply
 
 
 def h_expenses(ctx):
@@ -760,6 +968,12 @@ def h_salary(ctx):
 
 def h_student_info(ctx):
     from app.services import fee_ledger
+    if not ctx.students and ctx.is_teacher:
+        return _reply('student_info', ctx.t(
+            'Which teacher? Please type the teacher\'s name, for example '
+            '"Sir Ahmed phone number".',
+            'Kaunsa teacher? Teacher ka naam likhein, maslan '
+            '"Sir Ahmed ka phone number".'))
     if not ctx.students:
         return _reply('student_info', ctx.t(
             'Which student? Please type the student\'s name, for example '
@@ -788,6 +1002,401 @@ def h_student_info(ctx):
                                      student_id=student.id)))
 
 
+def _pct_change(current, previous):
+    if not previous:
+        return '-'
+    change = (current - previous) * 100.0 / previous
+    return '%+.0f%%' % change
+
+
+def _is_working_day(day):
+    """False on weekends / holidays the school has configured."""
+    try:
+        from app.models import SchoolSettings
+        from app.services.teacher_payroll import get_school_working_days
+        settings = SchoolSettings.query.first() or type(
+            'DefaultSettings', (), {'weekend_off': True,
+                                    'custom_off_days': ''})()
+        return day in set(get_school_working_days(day, day, settings))
+    except Exception:  # pragma: no cover - never block an answer on this
+        return True
+
+
+def h_attention(ctx):
+    """One short to-do list built from the numbers the software already has."""
+    from app.services import dashboard_service
+    from app.services.financial_summary import payroll_snapshot, summary_alerts
+
+    today = date.today()
+    lines, links = [], []
+
+    attendance = dashboard_service.today_attendance()
+    if _is_working_day(today):
+        students = attendance['student']
+        if students['expected'] and not students['marked']:
+            lines.append(ctx.t('Student attendance has not been marked today.',
+                               'Aaj ki student attendance abhi mark nahi hui.'))
+            links.append(_link('Daily attendance', 'main.student_attendance'))
+        elif students['not_marked']:
+            lines.append(ctx.t(
+                'Attendance is still missing for %d students today.',
+                'Aaj %d students ki attendance baqi hai.')
+                % students['not_marked'])
+            links.append(_link('Daily attendance', 'main.student_attendance'))
+        teachers = attendance['teacher']
+        if teachers['expected'] and not teachers['marked']:
+            lines.append(ctx.t('Teacher attendance has not been marked today.',
+                               'Aaj ki teacher attendance abhi mark nahi hui.'))
+            links.append(_link('Teacher attendance', 'main.teacher_attendance'))
+    absent = attendance['student']['counts']['Absent']
+    if absent:
+        lines.append(ctx.t('%d students are absent today (ask "aaj kaun absent '
+                           'hai?" for names and phone numbers).',
+                           'Aaj %d students ghair hazir hain ("aaj kaun absent '
+                           'hai?" se naam aur phone dekhein).') % absent)
+
+    if today.day >= PAYROLL_REMINDER_DAY \
+            and TeacherModel.query.filter_by(is_active=True).count():
+        snap = payroll_snapshot(current_month_key())
+        if not snap['count']:
+            lines.append(ctx.t('Payroll for %s has not been generated yet.',
+                               '%s ki payroll abhi generate nahi hui.')
+                         % month_label(current_month_key()))
+            links.append(_link('Payroll', 'main.payroll_page'))
+
+    try:
+        alerts = summary_alerts(current_month_key())
+    except Exception:  # pragma: no cover - degrade, do not fail the answer
+        db.session.rollback()
+        log.exception('assistant: summary alerts failed')
+        alerts = []
+    seen_urls = set()
+    for alert in alerts[:5]:
+        lines.append(alert['text'])
+        url = alert.get('url')
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            links.append({'label': alert.get('link_text') or 'Open',
+                          'url': url})
+
+    try:
+        birthdays_today = dashboard_service.birthdays()['today']
+    except Exception:  # pragma: no cover
+        db.session.rollback()
+        birthdays_today = []
+    if birthdays_today:
+        names = ', '.join(entry['name'] for entry in birthdays_today[:5])
+        lines.append(ctx.t('Birthday today: %s.', 'Aaj ki birthday: %s.')
+                     % names)
+
+    links = _links(*links)[:5]
+    if not lines:
+        return _reply('attention', ctx.t(
+            'Nothing needs attention right now. Attendance is done and there '
+            'are no alerts.',
+            'Abhi kisi cheez par tawajjuh ki zaroorat nahi. Attendance mukammal '
+            'hai aur koi alert nahi.'),
+            suggestions=['defaulters kaun hain?'])
+    text = ctx.t('Things that need attention:', 'In cheezon par tawajjuh dein:')
+    text += '\n' + '\n'.join('%d. %s' % (i, line)
+                             for i, line in enumerate(lines, 1))
+    return _reply('attention', text, links=links,
+                  suggestions=['defaulters kaun hain?',
+                               'aaj kis kis ne fees di?'])
+
+
+def h_birthdays(ctx):
+    from app.services import dashboard_service
+    data = dashboard_service.birthdays()
+    today_list, soon = data['today'], data['soon']
+    rows = []
+    for entry in today_list + soon:
+        rows.append([entry['name'],
+                     ('%s %s' % (entry['kind'], entry['meta'])).strip(),
+                     entry['date'].strftime('%d %b'),
+                     entry['age'] if entry['age'] else '-'])
+    if not data['total_with_dob']:
+        return _reply('birthdays', ctx.t(
+            'No birthdays are recorded yet. Add a date of birth on a student '
+            'or teacher to see them here.',
+            'Abhi kisi ki date of birth darj nahi. Student ya teacher mein '
+            'date of birth likhein to yahan nazar aayegi.'),
+            links=_links(_link('Students', 'main.students_list')))
+    if today_list:
+        names = ', '.join(entry['name'] for entry in today_list[:5])
+        text = ctx.t('Birthday today: %s.', 'Aaj ki birthday: %s.') % names
+        if soon:
+            text += ' ' + ctx.t('More in the next 7 days are listed below.',
+                                'Agle 7 din ki birthdays neeche hain.')
+    elif soon:
+        text = ctx.t('No birthdays today. %d coming up in the next 7 days.',
+                     'Aaj kisi ki birthday nahi. Agle 7 din mein %d hain.'
+                     ) % len(soon)
+    else:
+        text = ctx.t('No birthdays today or in the next 7 days.',
+                     'Aaj ya agle 7 din mein kisi ki birthday nahi.')
+    table = None
+    if rows:
+        table = {'columns': [ctx.t('Name', 'Naam'), ctx.t('Who', 'Kaun'),
+                             ctx.t('Date', 'Tareekh'), ctx.t('Turns', 'Umar')],
+                 'rows': rows[:MAX_LIST_ROWS]}
+    return _reply('birthdays', text, table=table,
+                  links=_links(_link('Dashboard', 'main.dashboard')))
+
+
+def h_low_attendance(ctx):
+    from app.services.attendance_service import build_school_attendance_summary
+    start, end = month_bounds(ctx.month)
+    summary = build_school_attendance_summary(start, end)
+    if not summary['taken_dates']:
+        return _reply('low_attendance', ctx.t(
+            'No attendance has been marked in %s yet.',
+            '%s mein abhi tak koi attendance mark nahi hui.')
+            % _period_label(ctx),
+            links=_links(_link('Daily attendance', 'main.student_attendance')))
+    risky = [row for row in summary['matrix_data']
+             if row['is_at_risk']
+             and (not ctx.class_obj
+                  or row['student'].class_id == ctx.class_obj.id)]
+    risky.sort(key=lambda row: (row['percentage'], row['student'].student_name))
+    scope = (' (%s)' % ctx.class_obj.name) if ctx.class_obj else ''
+    if not risky:
+        return _reply('low_attendance', ctx.t(
+            'Nobody is below %d%% attendance in %s%s.',
+            '%s%s mein koi student %d%% attendance se neeche nahi.'
+        ) % ((AT_RISK_PERCENT, _period_label(ctx), scope) if ctx.lang == 'en'
+             else (_period_label(ctx), scope, AT_RISK_PERCENT)),
+            links=_links(_link('Attendance summary',
+                               'main.attendance_summary')))
+    text = ctx.t(
+        '%d students are below %d%% attendance in %s%s.',
+        '%s%s mein %d students ki attendance %d%% se kam hai.'
+    ) % ((len(risky), AT_RISK_PERCENT, _period_label(ctx), scope)
+         if ctx.lang == 'en'
+         else (_period_label(ctx), scope, len(risky), AT_RISK_PERCENT))
+    if len(risky) > MAX_LIST_ROWS:
+        text += ctx.t(' Lowest %d shown.', ' Sab se kam wale %d dikhaye gaye.'
+                      ) % MAX_LIST_ROWS
+    table = {'columns': [ctx.t('Student', 'Student'), ctx.t('Class', 'Class'),
+                         '%', ctx.t('Absent', 'Ghair hazir'),
+                         ctx.t('Phone', 'Phone')],
+             'rows': [[row['student'].student_name,
+                       summary['classes'][row['student'].class_id].name
+                       if row['student'].class_id in summary['classes'] else '-',
+                       '%.0f%%' % row['percentage'], row['a_count'],
+                       row['student'].guardian_phone or '-']
+                      for row in risky[:MAX_LIST_ROWS]]}
+    return _reply('low_attendance', text, table=table,
+                  links=_links(_link('Attendance summary',
+                                     'main.attendance_summary')))
+
+
+def h_class_fees(ctx):
+    from app.services.financial_summary import student_outstanding_rows
+    month_key = ctx.month if ctx.month_explicit else None
+    rows = student_outstanding_rows(month_year=month_key)
+    scope = (' (%s)' % month_label(month_key)) if month_key else ''
+    if not rows:
+        return _reply('class_fees', ctx.t('No outstanding fees%s.',
+                                          'Koi baqaya fees nahi%s.') % scope,
+                      links=_links(_link('Fees Management', 'main.fees_list')))
+    per_class = {}
+    for item in rows:
+        entry = per_class.setdefault(item['class_name'], [0, 0.0])
+        entry[0] += 1
+        entry[1] += item['outstanding']
+    ranked = sorted(per_class.items(), key=lambda pair: -pair[1][1])
+    total = sum(item['outstanding'] for item in rows)
+    text = ctx.t('%d students in %d classes owe %s%s.',
+                 '%d students (%d classes mein) ka baqaya %s hai%s.'
+                 ) % (len(rows), len(per_class), rs(total), scope)
+    table = {'columns': [ctx.t('Class', 'Class'),
+                         ctx.t('Students owing', 'Baqaya wale students'),
+                         ctx.t('Total due', 'Kul baqaya')],
+             'rows': [[name, count, rs(amount)]
+                      for name, (count, amount) in ranked]}
+    return _reply('class_fees', text, table=table,
+                  links=_links(_link('Student dues',
+                                     'main.financials_student_outstanding'),
+                               _link('Fees Management', 'main.fees_list')),
+                  suggestions=[ctx.t('defaulters of %s' % ranked[0][0],
+                                     '%s ke defaulters' % ranked[0][0])])
+
+
+def h_compare(ctx):
+    from app.services.financial_summary import month_snapshot
+    # "pichle mahine se muqabla" means THIS month against last month, so the
+    # word "pichle" must not shift the base month; only a named month does.
+    base = ctx.month if ctx.month_named else current_month_key()
+    before = shift_month(base, -1)
+    now_snap, old_snap = month_snapshot(base), month_snapshot(before)
+    pairs = [
+        (ctx.t('Fees collected', 'Fees wasooli'),
+         now_snap['fee_income'], old_snap['fee_income']),
+        (ctx.t('Expenses', 'Kharcha'),
+         now_snap['expenses'], old_snap['expenses']),
+        (ctx.t('Net (cash in - cash out)', 'Bachat (aamdani - kharcha)'),
+         now_snap['net'], old_snap['net']),
+    ]
+    table = {'columns': [ctx.t('Item', 'Cheez'), month_label(base),
+                         month_label(before), ctx.t('Change', 'Farq')],
+             'rows': [[label, rs(now), rs(old), _pct_change(now, old)]
+                      for label, now, old in pairs]}
+    tokens = set(ctx.tokens)
+    if tokens & {'expense', 'expenses', 'kharcha', 'kharch', 'kharche'}:
+        label, now, old = pairs[1]
+        word = ctx.t('higher', 'zyada') if now > old else ctx.t('lower', 'kam')
+    elif tokens & {'profit', 'munafa', 'nafa', 'net', 'loss', 'nuqsan'}:
+        label, now, old = pairs[2]
+        word = ctx.t('higher', 'zyada') if now > old else ctx.t('lower', 'kam')
+    else:
+        label, now, old = pairs[0]
+        word = ctx.t('higher', 'zyada') if now > old else ctx.t('lower', 'kam')
+    if now == old:
+        text = ctx.t('%s is the same in %s and %s (%s).',
+                     '%s %s aur %s mein barabar hai (%s).') % (
+                         label, month_label(base), month_label(before), rs(now))
+    else:
+        text = ctx.t('%s: %s in %s, which is %s %s than %s (%s).',
+                     '%s: %s mein %s, jo %s ke muqable mein %s %s hai.'
+                     ) % ((label, rs(now), month_label(base), rs(abs(now - old)),
+                           word, month_label(before), rs(old))
+                          if ctx.lang == 'en' else
+                          (label, month_label(base), rs(now),
+                           month_label(before), rs(abs(now - old)), word))
+    return _reply('compare', text, table=table,
+                  links=_links(_link('Financial Overview',
+                                     'main.financials_summary')))
+
+
+def h_new_admissions(ctx):
+    start, end = month_bounds(ctx.month)
+    query = StudentModel.query.filter(StudentModel.admission_date >= start,
+                                      StudentModel.admission_date <= end)
+    if ctx.class_obj:
+        query = query.filter(StudentModel.class_id == ctx.class_obj.id)
+    students = query.order_by(StudentModel.admission_date,
+                              StudentModel.student_name).all()
+    scope = (' (%s)' % ctx.class_obj.name) if ctx.class_obj else ''
+    links = _links(_link('Students', 'main.students_list'))
+    if not students:
+        text = ctx.t('No admissions recorded in %s%s.',
+                     '%s%s mein koi admission darj nahi.') % (
+                         _period_label(ctx), scope)
+        missing = StudentModel.query.filter(
+            StudentModel.is_active.is_(True),
+            StudentModel.admission_date.is_(None)).count()
+        if missing:
+            text += ' ' + ctx.t('(%d students have no admission date, so they '
+                                'cannot be counted.)',
+                                '(%d students ki admission date darj nahi, is '
+                                'liye shumar nahi hue.)') % missing
+        return _reply('new_admissions', text, links=links)
+    text = ctx.t('%d new admissions in %s%s.', '%s%s mein %d naye admissions.'
+                 ) % ((len(students), _period_label(ctx), scope)
+                      if ctx.lang == 'en'
+                      else (_period_label(ctx), scope, len(students)))
+    if len(students) > MAX_LIST_ROWS:
+        text += ctx.t(' (showing first %d)', ' (pehle %d dikhaye gaye)'
+                      ) % MAX_LIST_ROWS
+    table = {'columns': [ctx.t('Student', 'Student'), ctx.t('Class', 'Class'),
+                         ctx.t('Admitted', 'Dakhla')],
+             'rows': [[s.student_name,
+                       s.class_info.name if s.class_info else '-',
+                       s.admission_date.strftime('%d %b')]
+                      for s in students[:MAX_LIST_ROWS]]}
+    return _reply('new_admissions', text, table=table, links=links)
+
+
+def h_fees_payments(ctx):
+    """Who paid on a given day (default today) - the cash-book view."""
+    from app.models import FeeTransaction
+    from app.services.financial_summary import _cash_date_column
+    day = ctx.day or date.today()
+    is_today = day == date.today()
+    day_word = ctx.t('today' if is_today else 'on %s' % day.strftime('%d %b'),
+                     'aaj' if is_today else '%s ko' % day.strftime('%d %b'))
+    cash_date = _cash_date_column()
+    query = (db.session.query(StudentModel.student_name, ClassModel.name,
+                              FeeTransaction.amount_paisa,
+                              FeeTransaction.method)
+             .select_from(FeeTransaction)
+             .join(StudentModel, StudentModel.id == FeeTransaction.student_id)
+             .outerjoin(ClassModel, ClassModel.id == StudentModel.class_id)
+             .filter(FeeTransaction.txn_type == 'payment',
+                     FeeTransaction.is_void.is_(False),
+                     # same comparison shape as financial_summary.fee_collections
+                     cash_date >= day.isoformat(),
+                     cash_date <= day.isoformat()))
+    if ctx.class_obj:
+        query = query.filter(StudentModel.class_id == ctx.class_obj.id)
+    rows = query.order_by(FeeTransaction.id).all()
+    links = _links(_link('Fees Management', 'main.fees_list'))
+    if not rows:
+        return _reply('fees_payments', ctx.t('No fee payments %s.',
+                                             'Fees ki koi wasooli %s nahi hui.'
+                                             ) % day_word, links=links)
+    total = sum(paisa or 0 for _n, _c, paisa, _m in rows) / 100.0
+    text = ctx.t('%d payments %s, %s in total.',
+                 '%s: %d payments, kul %s.') % (
+                     (len(rows), day_word, rs(total)) if ctx.lang == 'en'
+                     else (day_word, len(rows), rs(total)))
+    if len(rows) > MAX_LIST_ROWS:
+        text += ctx.t(' (showing first %d)', ' (pehle %d dikhaye gaye)'
+                      ) % MAX_LIST_ROWS
+    table = {'columns': [ctx.t('Student', 'Student'), ctx.t('Class', 'Class'),
+                         ctx.t('Amount', 'Raqam'), ctx.t('Method', 'Tareeqa')],
+             'rows': [[name, class_name or '-', rs((paisa or 0) / 100.0),
+                       (method or '-').title()]
+                      for name, class_name, paisa, method in rows[:MAX_LIST_ROWS]]}
+    return _reply('fees_payments', text, table=table, links=links,
+                  suggestions=[ctx.t('defaulters', 'defaulters kaun hain?')])
+
+
+def _json_list(value):
+    try:
+        data = json.loads(value or '[]')
+    except (TypeError, ValueError):
+        return []
+    return [str(item) for item in data] if isinstance(data, list) else []
+
+
+def h_teacher_info(ctx):
+    if not ctx.teachers:
+        return _reply('teacher_info', ctx.t(
+            'Which teacher? Please type the teacher\'s name, for example '
+            '"Sir Ahmed phone number".',
+            'Kaunsa teacher? Teacher ka naam likhein, maslan '
+            '"Sir Ahmed ka phone number".'))
+    teachers = TeacherModel.query.filter(
+        TeacherModel.id.in_(ctx.teachers)).all()
+    if len(teachers) > 1 and not ctx.exact_teacher:
+        return _ask_which_teacher(ctx, teachers)
+    teacher = teachers[0]
+    classes = ', '.join(_json_list(teacher.assigned_classes)) \
+        or teacher.assigned_class or '-'
+    subjects = ', '.join(_json_list(teacher.assigned_subjects)) or '-'
+    lines = [ctx.t('%s (%s)%s', '%s (%s)%s') % (
+        teacher.teacher_name, teacher.teacher_id_str,
+        ' - %s' % teacher.designation if teacher.designation else ''),
+        ctx.t('Phone: %s.', 'Phone: %s.') % (teacher.contact_number or '-'),
+        ctx.t('Classes: %s. Subjects: %s.', 'Classes: %s. Subjects: %s.'
+              ) % (classes, subjects),
+        ctx.t('Joined: %s.', 'Shamil hue: %s.') % (
+            teacher.joining_date.strftime('%d %b %Y')
+            if teacher.joining_date else '-')]
+    if set(ctx.tokens) & {'salary', 'salaries', 'tankhwah', 'tankhwa',
+                          'tankha', 'wages'}:
+        if teacher.salary_type == 'hourly':
+            lines.append(ctx.t('Salary: %s per hour.', 'Tankhwah: %s per ghanta.'
+                               ) % rs(teacher.hourly_rate))
+        else:
+            lines.append(ctx.t('Salary: %s per month.', 'Tankhwah: %s mahana.'
+                               ) % rs(teacher.monthly_salary or teacher.salary))
+    return _reply('teacher_info', '\n'.join(lines),
+                  links=_links(_link('Teachers', 'main.teachers_list')))
+
+
 def h_howto(ctx, intent):
     guide = intent['guide']
     steps = guide['steps_ur'] if ctx.lang == 'ur' else guide['steps_en']
@@ -811,6 +1420,14 @@ HANDLERS = {
     'profit': h_profit,
     'salary': h_salary,
     'student_info': h_student_info,
+    'attention': h_attention,
+    'birthdays': h_birthdays,
+    'low_attendance': h_low_attendance,
+    'class_fees': h_class_fees,
+    'compare': h_compare,
+    'new_admissions': h_new_admissions,
+    'fees_payments': h_fees_payments,
+    'teacher_info': h_teacher_info,
 }
 
 
@@ -835,21 +1452,38 @@ def _unknown(ctx, scores):
     return _reply('unknown', text, suggestions=suggestions)
 
 
-def answer(question):
-    """Answer one question. Always returns a dict (never raises on bad input)."""
+def answer(question, context=None):
+    """Answer one question. Always returns a dict (never raises on bad input).
+
+    ``context`` is the small memory dict the previous answer carried (see
+    ``_context_out``); it lets short follow-ups such as "aur kal?" work.
+    """
+    prev = _clean_context(context)
     ctx = Ctx(question)
     if not ctx.norm:
-        return _reply('empty', 'Please type a question.',
-                      suggestions=catalogue.STARTER_QUESTIONS[:4])
+        return _with_context(
+            _reply('empty', 'Please type a question.',
+                   suggestions=catalogue.STARTER_QUESTIONS[:4]), prev)
 
     has_how = _has_how_marker(ctx.tokens, ctx.norm)
     scores = score_intents(ctx.tokens, ctx.norm, has_how)
+    # How strongly the WORDS alone pointed at an intent (before name boosts):
+    # a bare name such as "Ali Khan" answers a pending "which student?".
+    keyword_peak = max(scores.values(), default=0)
 
     ctx.class_obj = _find_class(ctx)
     ctx.students, ctx.exact_student = _find_students(ctx)
+    ctx.teachers, ctx.exact_teacher = _find_teachers(ctx)
+    _settle_people(ctx)
+    _resolve_pronoun(ctx, prev)
     if ctx.students and not has_how:
         # A student's name is a strong hint: a bare name shows their details.
         scores['student_info'] = scores.get('student_info', 0) + 2.5
+    if ctx.teachers and not has_how:
+        # A teacher's name works the same way; "uski salary" must reach the
+        # teacher, not the whole-school payroll.
+        boost = 2.5 + (1.5 if scores.get('salary', 0) >= 2.5 else 0)
+        scores['teacher_info'] = scores.get('teacher_info', 0) + boost
     if ctx.students and not has_how and scores.get('fees_due', 0) >= 1:
         scores['fees_due'] = scores.get('fees_due', 0) + 1.5
     if ctx.class_obj and scores.get('students_count', 0) >= 1:
@@ -859,16 +1493,24 @@ def answer(question):
             and scores.get('fees_due', 0) < 2.5):
         # "october ki fees" - a month plus "fees" means the collection.
         scores['fees_collected'] += 1.5
-    if ctx.students:
+    if ctx.students or ctx.teachers:
         # A name rules out whole-school counts such as "kitne students".
         for intent_id in ('students_count', 'teachers_count', 'class_strength'):
             scores.pop(intent_id, None)
+    if ctx.teachers:
+        # "Ahmed ka phone number" is about the teacher; the words "phone" and
+        # "number" must not pull it towards the student details.
+        scores.pop('student_info', None)
 
     best_id, best_score = None, 0.0
     for intent in catalogue.INTENTS:   # catalogue order breaks ties
         score = scores.get(intent['id'], 0)
         if score >= intent['min_score'] and score > best_score:
             best_id, best_score = intent['id'], score
+    if (prev.get('awaiting') and (ctx.students or ctx.teachers)
+            and keyword_peak < 2 and not has_how):
+        # "Which student?" was asked and the person just typed a name.
+        best_id = prev['awaiting']
     if best_id is None and not has_how:
         # A bare topic such as "backup" or "student add" still gets its guide.
         guide_scores = score_intents(ctx.tokens, ctx.norm, True)
@@ -877,18 +1519,23 @@ def answer(question):
             if intent.get('howto') and score >= intent['min_score'] \
                     and score > best_score:
                 best_id, best_score = intent['id'], score
+    if best_id is None and _follow_up(ctx, prev, has_how):
+        best_id = prev['intent']
     if best_id is None:
-        return _unknown(ctx, scores)
+        return _with_context(_unknown(ctx, scores), prev)
 
     intent = catalogue.INTENTS_BY_ID[best_id]
     try:
         if intent.get('howto'):
-            return h_howto(ctx, intent)
-        return HANDLERS[best_id](ctx)
+            return _with_context(h_howto(ctx, intent), prev)
+        reply = HANDLERS[best_id](ctx)
+        awaiting = reply.pop('awaiting', None)
+        if best_id == 'help':
+            return _with_context(reply, prev)
+        return _with_context(reply, _context_out(ctx, best_id, awaiting))
     except Exception:  # pragma: no cover - never show a stack trace in chat
         db.session.rollback()
-        import logging
-        logging.getLogger(__name__).exception('assistant: handler failed')
-        return _reply(best_id, ctx.t(
+        log.exception('assistant: handler failed')
+        return _with_context(_reply(best_id, ctx.t(
             'Sorry, something went wrong while reading that data.',
-            'Maaf kijiye, yeh data parhte hue masla aa gaya.'))
+            'Maaf kijiye, yeh data parhte hue masla aa gaya.')), prev)

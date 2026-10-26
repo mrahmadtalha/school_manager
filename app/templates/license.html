@@ -16,44 +16,53 @@
         <div class="card shadow-sm border-0 h-100">
             <div class="card-body">
                 <h2 class="h5 fw-bold mb-3">Status</h2>
-                <div class="alert alert-{{ license_status.level }} mb-3">
-                    <strong>{{ license_status.title }}.</strong> {{ license_status.message }}
+                <div class="alert alert-{{ real_status.level }} mb-3">
+                    <strong>{{ real_status.title }}.</strong> {{ real_status.message }}
                 </div>
+                {% if real_status.notice %}
+                <div class="alert alert-info mb-3"><i class="fas fa-bullhorn me-1"></i>
+                    <strong>Notice from your software provider:</strong> {{ real_status.notice }}</div>
+                {% endif %}
+                {% if real_status.reminder_stage %}
+                <div class="alert alert-warning mb-3"><i class="fas fa-bell me-1"></i>
+                    Renewal reminder: {{ real_status.days_left }} day{{ '' if real_status.days_left == 1 else 's' }} left.
+                    Reminders appear 30, 14, 7, 3 and 1 day before the end.</div>
+                {% endif %}
 
-                {% if license_status.licensee %}
+                {% if real_status.licensee %}
                 <dl class="row mb-0 small">
                     <dt class="col-sm-4">Licensed to</dt>
-                    <dd class="col-sm-8">{{ license_status.licensee }}</dd>
+                    <dd class="col-sm-8">{{ real_status.licensee }}</dd>
                     <dt class="col-sm-4">License ID</dt>
-                    <dd class="col-sm-8"><code>{{ license_status.license_id }}</code></dd>
+                    <dd class="col-sm-8"><code>{{ real_status.license_id }}</code></dd>
                     <dt class="col-sm-4">Issued</dt>
-                    <dd class="col-sm-8">{{ license_status.issued.strftime('%d %b %Y') }}</dd>
+                    <dd class="col-sm-8">{{ real_status.issued.strftime('%d %b %Y') }}</dd>
                     <dt class="col-sm-4">Expires</dt>
-                    <dd class="col-sm-8">{{ license_status.expires.strftime('%d %b %Y') }}
-                        {% if license_status.days_left is not none and license_status.days_left >= 0 %}
-                        <span class="text-muted">({{ license_status.days_left }} day{{ '' if license_status.days_left == 1 else 's' }} left)</span>
+                    <dd class="col-sm-8">{{ real_status.expires.strftime('%d %b %Y') }}
+                        {% if real_status.days_left is not none and real_status.days_left >= 0 %}
+                        <span class="text-muted">({{ real_status.days_left }} day{{ '' if real_status.days_left == 1 else 's' }} left)</span>
                         {% endif %}
                     </dd>
                     <dt class="col-sm-4">Read-only after</dt>
-                    <dd class="col-sm-8">{{ license_status.grace_ends.strftime('%d %b %Y') }}</dd>
-                    {% if license_status.plan %}
+                    <dd class="col-sm-8">{{ real_status.grace_ends.strftime('%d %b %Y') }}</dd>
+                    {% if real_status.plan %}
                     <dt class="col-sm-4">Plan</dt>
-                    <dd class="col-sm-8">{{ license_status.plan|title }}</dd>
+                    <dd class="col-sm-8">{{ real_status.plan|title }}</dd>
                     {% endif %}
-                    {% if license_status.rev %}
+                    {% if real_status.rev %}
                     <dt class="col-sm-4">Key revision</dt>
-                    <dd class="col-sm-8">{{ license_status.rev }}</dd>
+                    <dd class="col-sm-8">{{ real_status.rev }}</dd>
                     {% endif %}
                 </dl>
                 {% endif %}
 
-                {% if license_status.licensee and feature_catalog %}
+                {% if real_status.licensee and feature_catalog %}
                 <hr>
                 <h3 class="h6 fw-bold mb-2">Included features</h3>
                 <div class="row row-cols-1 row-cols-sm-2 g-1 small mb-3">
                     {% for item in feature_catalog %}
                     <div class="col">
-                        {% if license_status.feature_enabled(item[0]) %}
+                        {% if real_status.feature_enabled(item[0]) %}
                         <i class="fas fa-check-circle text-success me-1"></i>{{ item[1] }}
                         {% else %}
                         <i class="fas fa-lock text-muted me-1"></i><span class="text-muted">{{ item[1] }}</span>
@@ -92,12 +101,27 @@
             </div>
         </div>
 
+        {% if license_status.inspection %}
+        <div class="card shadow-sm border-0 border-start border-info border-4 mb-4">
+            <div class="card-body">
+                <h2 class="h5 fw-bold mb-2"><i class="fas fa-magnifying-glass text-info me-2"></i>Inspection mode is on</h2>
+                <p class="small text-muted mb-2">View-only: every module and the audit log can be opened, but nothing can be
+                    changed. It ends by itself on <strong>{{ license_status.inspection_until.strftime('%d %b %Y, %H:%M') }} UTC</strong>.
+                    Key: <code>{{ license_status.inspection_id }}</code></p>
+                <form method="post">
+                    <input type="hidden" name="action" value="end_inspection">
+                    <button type="submit" class="btn btn-outline-dark btn-sm"><i class="fas fa-stop me-1"></i>End inspection now</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
         <div class="card shadow-sm border-0">
             <div class="card-body">
-                <h2 class="h5 fw-bold mb-3">{{ 'Activate license' if fresh_install or license_status.read_only else 'Enter a new license key' }}</h2>
+                <h2 class="h5 fw-bold mb-3">{{ 'Activate license' if fresh_install or real_status.read_only else 'Enter a new license key' }}</h2>
                 <form method="post" enctype="multipart/form-data" autocomplete="off">
                     <div class="mb-3">
-                        <label for="license_key" class="form-label">License key</label>
+                        <label for="license_key" class="form-label">License key <span class="text-muted small">(or an inspection key)</span></label>
                         <textarea class="form-control font-monospace small" id="license_key" name="license_key"
                                   rows="4" placeholder="SM1.…"></textarea>
                     </div>

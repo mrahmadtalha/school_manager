@@ -153,7 +153,7 @@ def test_pages_and_posts_end_to_end(admin_client, app, world):
         shirt_id = shirt.id
 
     body = admin_client.get('/inventory').get_data(as_text=True)
-    assert 'School Shirt' in body and 'Add product' in body
+    assert 'School Shirt' in body and 'Add a new item' in body
 
     # Purchase through the real form.
     response = admin_client.post('/inventory/purchase', data={

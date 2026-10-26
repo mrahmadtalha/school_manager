@@ -140,13 +140,34 @@ def items_by_class():
     return result
 
 
+def _inventory_set_prices(class_id):
+    """Selling price (rupees) of the class's books / uniform set in Inventory, or
+    ``None`` - shown next to the fee boxes so the two numbers can be matched."""
+    from app.services import inventory_service, student_stock
+    result = {'books': None, 'uniform': None}
+    try:
+        if not inventory_service.inventory_enabled():
+            return result
+        for kind in ('books', 'uniform'):
+            target = student_stock.class_set(class_id, kind)
+            if target is not None:
+                price = inventory_service.set_price_paisa(target)
+                result[kind] = to_rupees(price) if price else None
+    except Exception:       # a hint must never break the settings page
+        return {'books': None, 'uniform': None}
+    return result
+
+
 def settings_context():
     """Everything the Fees page settings dialog needs."""
     default = default_paisa()
     rows = []
     for class_obj in ClassModel.query.order_by(ClassModel.id).all():
         override = class_override_paisa(class_obj)
+        set_prices = _inventory_set_prices(class_obj.id)
         rows.append({
+            'set_books': set_prices['books'],
+            'set_uniform': set_prices['uniform'],
             'id': class_obj.id,
             'name': class_obj.name,
             'override': None if override is None else to_rupees(override),
@@ -255,8 +276,20 @@ def compute_net(standard_paisa, discount_type, discount_value):
 # Per-student terms and status
 # --------------------------------------------------------------------------- #
 
-def books_paisa(student):
+def books_unit_paisa(student):
+    """Price of ONE set of books (``books_fee_paisa`` holds the price per set)."""
     return student.books_fee_paisa or 0
+
+
+def books_qty(student):
+    """Number of book sets (0 = none).  Older records have no count: that means 1."""
+    if not student.books_fee_paisa:
+        return 0
+    return student.books_qty or 1
+
+
+def books_paisa(student):
+    return books_unit_paisa(student) * books_qty(student)
 
 
 def uniform_paisa(student):
@@ -292,8 +325,8 @@ def components(student):
         parts.append({'key': 'admission', 'label': 'Admission fee', 'qty': 1,
                       'unit': net, 'due': net})
     if books_paisa(student) > 0:
-        parts.append({'key': 'books', 'label': 'Books', 'qty': 1,
-                      'unit': books_paisa(student), 'due': books_paisa(student)})
+        parts.append({'key': 'books', 'label': 'Books', 'qty': books_qty(student),
+                      'unit': books_unit_paisa(student), 'due': books_paisa(student)})
     if uniform_paisa(student) > 0:
         parts.append({'key': 'uniform', 'label': 'Uniform',
                       'qty': student.uniform_qty, 'unit': student.uniform_unit_paisa,
@@ -377,6 +410,8 @@ def summary(student):
         'concession': concession_paisa(student),
         'net': net,                      # admission fee after concession
         'books': books_paisa(student),
+        'books_qty': books_qty(student),
+        'books_unit': books_unit_paisa(student),
         'uniform_qty': student.uniform_qty or 0,
         'uniform_unit': student.uniform_unit_paisa or 0,
         'uniform': uniform_paisa(student),
@@ -394,9 +429,26 @@ def summary(student):
     }
 
 
-def set_items(student, books_rupees, uniform_qty, uniform_unit_rupees):
+def _sets(value, label, default=0):
+    """A whole number of sets between 0 and 20 (blank -> ``default``)."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return default
+    try:
+        number = int(float(value))
+    except (TypeError, ValueError):
+        raise ValueError('Please enter a whole number of %s sets.' % label)
+    if number < 0:
+        raise ValueError('Books and uniform amounts cannot be negative.')
+    if number > 20:
+        raise ValueError('The number of %s sets must be between 0 and 20.' % label)
+    return number
+
+
+def set_items(student, books_rupees, uniform_qty, uniform_unit_rupees, books_sets=1):
     """Record the books and uniform agreed for a student (0 / blank = none).
 
+    ``books_rupees`` is the price of ONE set of books and ``books_sets`` how many
+    sets the student takes (default 1, so older callers keep working).
     Does not commit.  Returns ``(books_paisa, uniform_paisa)``.
     """
     books = to_paisa(books_rupees)
@@ -409,12 +461,18 @@ def set_items(student, books_rupees, uniform_qty, uniform_unit_rupees):
         raise ValueError('Books and uniform amounts cannot be negative.')
     if qty > 20:
         raise ValueError('The number of uniform sets must be between 0 and 20.')
-    student.books_fee_paisa = books or None
+    book_sets = _sets(books_sets, 'book', default=1)
+    if books > 0 and book_sets > 0:
+        student.books_fee_paisa, student.books_qty = books, book_sets
+    else:
+        student.books_fee_paisa = student.books_qty = None
+        books = 0
+        book_sets = 0
     if qty > 0 and unit > 0:
         student.uniform_qty, student.uniform_unit_paisa = qty, unit
     else:
         student.uniform_qty = student.uniform_unit_paisa = None
-    return books, qty * unit if qty > 0 and unit > 0 else 0
+    return books * book_sets, qty * unit if qty > 0 and unit > 0 else 0
 
 
 def apply_terms(student, standard_rupees, discount_type=None, discount_value=None,
@@ -463,7 +521,7 @@ def apply_terms(student, standard_rupees, discount_type=None, discount_value=Non
 
 def adjust_terms(student, standard_rupees, discount_type=None, discount_value=None,
                  note=None, books_rupees=None, uniform_qty=None,
-                 uniform_unit_rupees=None):
+                 uniform_unit_rupees=None, books_sets=None):
     """Admin change of an existing student's terms (also first-time setup for
     students admitted before the feature).  Never goes below what was received.
 
@@ -473,9 +531,12 @@ def adjust_terms(student, standard_rupees, discount_type=None, discount_value=No
     received = received_paisa(student.id)
     standard = to_paisa(standard_rupees)
     change_items = not (books_rupees is None and uniform_qty is None
-                        and uniform_unit_rupees is None)
+                        and uniform_unit_rupees is None and books_sets is None)
     if change_items:
-        books = to_paisa(books_rupees)
+        if books_sets is None:       # not sent: keep the sets the student already has
+            books_sets = books_qty(student) or 1
+        book_sets = _sets(books_sets, 'book', default=1)
+        books = to_paisa(books_rupees) * book_sets
         try:
             qty = int(float(uniform_qty or 0))
         except (TypeError, ValueError):
@@ -500,7 +561,7 @@ def adjust_terms(student, standard_rupees, discount_type=None, discount_value=No
             'that. Void a payment first if it was taken by mistake.' % money(received))
     before = _terms_text(student)
     if change_items:
-        set_items(student, books_rupees, uniform_qty, uniform_unit_rupees)
+        set_items(student, books_rupees, uniform_qty, uniform_unit_rupees, book_sets)
     apply_terms(student, standard_rupees, discount_type, discount_value, note,
                 keep_row=extras_paisa(student) > 0)
     after = _terms_text(student)
@@ -518,7 +579,7 @@ def _terms_text(student):
         'concession_type': student.admission_discount_type,
         'concession_value': student.admission_discount_value,
         'net': to_rupees(student.admission_fee_net_paisa),
-        'books': to_rupees(books_paisa(student)),
+        'books': '%s x %s' % (books_qty(student), to_rupees(books_unit_paisa(student))),
         'uniform': '%s x %s' % (student.uniform_qty or 0,
                                 to_rupees(student.uniform_unit_paisa or 0)),
         'note': student.admission_note,
@@ -638,13 +699,21 @@ def apply_on_admission(student, form, actor, can_manage):
         discount_type = form.get('admission_discount_type')
         discount_value = form.get('admission_discount_value')
         note = form.get('admission_note')
-        books = _form_amount(form.get('books_fee'), item['books'], 'books fee')
+        # Books and uniform PRICES are fixed by the class; the form only says what this
+        # student takes: books yes / no, and how many uniform sets.
+        # Book sets: the new "books_qty" box; older forms send books_taken = 1 / 0.
+        if (form.get('books_qty') or '').strip() != '':
+            book_sets = _sets(form.get('books_qty'), 'book')
+        else:
+            book_sets = 0 if (form.get('books_taken') or '1').strip() == '0' else 1
+        books = item['books']
         sets = _form_amount(form.get('uniform_qty'), item['sets'], 'number of uniform sets')
-        unit = _form_amount(form.get('uniform_price'), item['uniform'], 'uniform price')
+        unit = item['uniform']
     else:
         standard, discount_type, discount_value, note = default_rupees, None, None, None
         books, sets, unit = item['books'], item['sets'], item['uniform']
-    books_p, uniform_p = set_items(student, books, sets, unit)
+        book_sets = 1
+    books_p, uniform_p = set_items(student, books, sets, unit, book_sets)
     extras = books_p + uniform_p
     if to_paisa(standard) == 0 and extras == 0:
         return None

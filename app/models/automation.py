@@ -93,10 +93,12 @@ class MessageQueue(db.Model):
 
     # Context (for display)
     trigger     = db.Column(db.String(50),  nullable=True)
-    # 'attendance_absent' | 'attendance_late' | 'result'
+    # 'attendance_absent' | 'attendance_late' | 'attendance_correction' | 'result'
     student_id  = db.Column(db.Integer, db.ForeignKey("students.id"), nullable=True)
     ref_date    = db.Column(db.Date,    nullable=True)   # attendance date / test date
     retry_count = db.Column(db.Integer, default=0)
+    # Do not hand this message to WhatsApp before this moment (UTC). None = now.
+    send_after  = db.Column(db.DateTime, nullable=True)
 
     # Timing
     created_at  = db.Column(db.DateTime, default=datetime.utcnow)

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+{% include "_simple_ui.html" %}
 
 <div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
     <div>
@@ -20,59 +21,92 @@
     </div>
 </div>
 
-<div class="row g-3 mb-3">
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Other Income — {{ month_label }} <span class="badge bg-dark ms-1">CASH</span></div>
-            <div class="h4 fw-bold mb-1 text-success">Rs. {{ '{:,.2f}'.format(total) }}</div>
-            <div class="text-muted small">included in Cash In and Net Position on the Financial Overview</div>
-        </div></div>
+{% set map_active = 'other_income' %}{% include '_money_map.html' %}
+{% if canteen_in_inventory %}
+<div class="alert alert-info d-flex align-items-center gap-2 py-2 small">
+    <i class="fas fa-utensils"></i>
+    <div>The canteen is kept in <a href="{{ url_for('main.inventory_page') }}#canteen" class="fw-bold">Inventory &rarr; Canteen</a>, so a <strong>Canteen</strong> amount cannot be typed here (it would be counted twice). Canteen sales already show below and in every total.</div>
+</div>
+{% endif %}
+
+{% set live_rows = rows|rejectattr('is_void')|list %}
+<div class="su-tiles mb-3">
+    <div class="su-tile">
+        <div class="su-label">Received in {{ month_label }} <span class="badge bg-dark ms-1">CASH</span></div>
+        <div class="su-num text-success">Rs. {{ '{:,.2f}'.format(total) }}</div>
+        <div class="su-hint">already included in Cash In on the Financial Overview</div>
     </div>
-    <div class="col-md-8">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <form method="post" action="{{ url_for('main.other_income_add') }}" class="row g-2 align-items-end">
-                <div class="col-md-3">
-                    <label class="form-label small fw-bold mb-1">Category</label>
-                    <select class="form-select form-select-sm" name="category_id" required>
-                        {% for category in categories %}
-                        <option value="{{ category.id }}">{{ category.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small fw-bold mb-1">Amount (PKR)</label>
-                    <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" name="amount" required>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label small fw-bold mb-1">Date</label>
-                    <input type="date" class="form-control form-control-sm" name="income_date" value="{{ today.strftime('%Y-%m-%d') }}" required>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label small fw-bold mb-1">Description</label>
-                    <input type="text" class="form-control form-control-sm" name="description" maxlength="200" placeholder="optional">
-                </div>
-                <div class="col-md-1 d-grid">
-                    <button class="btn btn-success btn-sm">Save</button>
-                </div>
-            </form>
-            <form method="post" action="{{ url_for('main.other_income_category_add') }}" class="row g-2 align-items-end mt-2 border-top pt-2">
-                <div class="col-md-4">
-                    <label class="form-label small fw-bold mb-1">New category</label>
-                    <input type="text" class="form-control form-control-sm" name="name" maxlength="80" placeholder="e.g. Transport fines" required>
-                </div>
-                <div class="col-md-2 d-grid">
-                    <button class="btn btn-outline-secondary btn-sm">Add category</button>
-                </div>
-            </form>
-        </div></div>
+    <div class="su-tile">
+        <div class="su-label">Entries this month</div>
+        <div class="su-num">{{ live_rows|length }}</div>
+        <div class="su-hint">voided entries are not counted</div>
     </div>
 </div>
 
-<div class="card border-0 shadow-sm">
+{% if live_rows %}
+<div class="mb-3">
+    {% for group in live_rows|groupby('category.name') %}
+    <span class="su-chip">{{ group.grouper }}: Rs. {{ '{:,.2f}'.format(group.list|sum(attribute='amount')) }}</span>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="card su-simple-card shadow-sm border-0 mb-3">
+    <div class="card-body">
+        <h2 class="h6 fw-bold mb-3"><i class="fas fa-plus-circle text-success me-1"></i>Add money received</h2>
+        <form method="post" action="{{ url_for('main.other_income_add') }}" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="su-big-label">What is it for?</label>
+                <select class="form-select" name="category_id" required>
+                    {% for category in categories %}
+                    <option value="{{ category.id }}">{{ category.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="su-big-label">Amount (PKR)</label>
+                <input type="number" step="0.01" min="0.01" class="form-control" name="amount" id="oiAmount" required>
+                <details class="mt-1">
+                    <summary class="small text-primary" style="cursor:pointer">Charged per student? Work it out</summary>
+                    <div class="d-flex gap-1 align-items-center mt-1 small">
+                        <input type="number" min="0" step="0.01" class="form-control form-control-sm" id="oiPer" placeholder="Rs each" aria-label="Rupees per student">
+                        &times;
+                        <input type="number" min="0" step="1" class="form-control form-control-sm" id="oiCount" placeholder="students" aria-label="Number of students">
+                    </div>
+                    <div class="text-muted small mt-1">e.g. party Rs 150 &times; 200 students. The total fills the Amount box.</div>
+                </details>
+            </div>
+            <div class="col-md-2">
+                <label class="su-big-label">Date</label>
+                <input type="date" class="form-control" name="income_date" value="{{ today.strftime('%Y-%m-%d') }}" required>
+            </div>
+            <div class="col-md-3">
+                <label class="su-big-label">Note <span class="text-muted fw-normal">(optional)</span></label>
+                <input type="text" class="form-control" name="description" maxlength="200" placeholder="e.g. Annual day tickets">
+            </div>
+            <div class="col-md-2 d-grid">
+                <button class="btn btn-success"><i class="fas fa-check me-1"></i>Save</button>
+            </div>
+        </form>
+        <details class="mt-3">
+            <summary class="small text-muted">Need a new type of income? Add a category</summary>
+            <form method="post" action="{{ url_for('main.other_income_category_add') }}" class="row g-2 align-items-end mt-1">
+                <div class="col-md-5">
+                    <input type="text" class="form-control form-control-sm" name="name" maxlength="80" placeholder="e.g. Transport fines" required>
+                </div>
+                <div class="col-md-3 d-grid">
+                    <button class="btn btn-outline-secondary btn-sm">Add category</button>
+                </div>
+            </form>
+        </details>
+    </div>
+</div>
+
+<div class="card su-simple-card border-0 shadow-sm">
     <div class="card-body p-0 table-responsive">
         <table class="table table-sm table-striped align-middle mb-0">
             <thead class="table-light"><tr>
-                <th class="ps-3">Date</th><th>Category</th><th>Description</th>
+                <th class="ps-3">Date</th><th>Category</th><th>Note</th><th>Receipt</th>
                 <th class="text-end">Amount (Rs.)</th><th>Recorded by</th>
                 <th class="text-end pe-3">Action</th>
             </tr></thead>
@@ -81,7 +115,9 @@
                 <tr class="{% if row.is_void %}text-decoration-line-through text-muted{% endif %}">
                     <td class="ps-3">{{ row.income_date.strftime('%d %b %Y') }}</td>
                     <td>{{ row.category.name if row.category else '—' }}</td>
-                    <td class="small text-muted">{{ row.description or '' }}</td>
+                    <td class="small text-muted">{{ row.description or '' }}
+                        {% if sources.get(row.id) %}<div><a href="{{ sources[row.id][1] }}" class="text-decoration-none"><i class="fas fa-link me-1"></i>{{ sources[row.id][0] }}</a></div>{% endif %}</td>
+                    <td class="small font-monospace">{{ row.receipt_no or '' }}</td>
                     <td class="text-end fw-bold">{{ '{:,.2f}'.format(row.amount) }}</td>
                     <td class="small">{{ row.created_by_name or 'system' }}</td>
                     <td class="text-end pe-3">
@@ -94,12 +130,24 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="6" class="text-center text-muted py-4">No other income recorded for {{ month_label }}.</td></tr>
+                <tr><td colspan="7" class="text-center text-muted py-4">Nothing received in {{ month_label }} yet. Use the box above to add the first one.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
+
+<script>
+(function () {
+    var per = document.getElementById('oiPer'), cnt = document.getElementById('oiCount'),
+        amt = document.getElementById('oiAmount');
+    function calc() {
+        var p = parseFloat(per.value), c = parseFloat(cnt.value);
+        if (p > 0 && c > 0) { amt.value = (Math.round(p * c * 100) / 100).toFixed(2); }
+    }
+    if (per && cnt && amt) { per.addEventListener('input', calc); cnt.addEventListener('input', calc); }
+})();
+</script>
 
 {% for row in rows %}
 {% if not row.is_void %}

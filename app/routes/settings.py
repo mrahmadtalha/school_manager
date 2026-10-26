@@ -20,7 +20,7 @@ from flask import (
 from flask_login import current_user
 
 from app.database import db
-from app.services import admission_numbers
+from app.services import admission_numbers, i18n
 from app.models.settings import (get_timetable_structure,
                                  set_timetable_structure)
 from app.models import (
@@ -81,6 +81,17 @@ def get_whatsapp_service_status():
     return status
 
 
+@main.route('/language/<code>')
+def set_language(code):
+    """Switch the interface between English ('en') and Urdu ('ur')."""
+    if i18n.switch_allowed():
+        i18n.set_lang(code)
+    target = request.referrer or ''
+    if not target.startswith(request.host_url):      # only ever go back to this app
+        target = url_for('main.dashboard')
+    return redirect(target)
+
+
 @main.route('/settings', methods=['GET', 'POST'])
 def school_settings():
     settings = SchoolSettings.query.first()
@@ -136,6 +147,12 @@ def school_settings():
             settings.school_start_time = request.form.get('school_start_time', '08:30').strip() or '08:30'
             settings.school_end_time = request.form.get('school_end_time', '15:00').strip() or '15:00'
             settings.attendance_grace_minutes = grace_minutes
+            if 'late_display' in request.form:
+                # 'late' (default) = after the cutoff shows Late | 'present' = stays Present
+                settings.late_after_cutoff = request.form.get('late_display') != 'present'
+            if 'percent_basis' in request.form:
+                # 'present_late' (default) = Present + Late count | 'present_only'
+                settings.late_counts_as_present = request.form.get('percent_basis') != 'present_only'
             if 'saturday_off' in request.form or 'sunday_off' in request.form:
                 settings.saturday_off = request.form.get('saturday_off') == 'on'
                 settings.sunday_off = request.form.get('sunday_off') == 'on'
@@ -210,9 +227,30 @@ def school_settings():
         active_tab = 'general'
     return render_template('settings.html', settings=settings, backup_state=backup_state, grading_scale=grading_scale, student_custom_fields=student_custom_fields, teacher_custom_fields=teacher_custom_fields, active_tab=active_tab, holiday_ranges=get_holiday_ranges(),
                            auto_admission_number=admission_numbers.is_auto(),
+                           missing_admission_count=admission_numbers.count_missing(),
                            admission_number_config=admission_numbers.get_config(),
                            admission_number_next=admission_numbers.next_number(),
                            timetable_structure=get_timetable_structure())
+
+
+@main.route('/settings/admission-numbers/assign', methods=['POST'])
+@role_required(ROLE_ADMIN)
+def assign_missing_admission_numbers():
+    """One click: give every student without an Admission No the next numbers."""
+    result = admission_numbers.assign_missing()
+    if result['count']:
+        log_action('admission_numbers_assigned', entity_type='StudentModel',
+                   summary='Admission numbers given to %d students (%s to %s)'
+                           % (result['count'], result['first'], result['last']),
+                   after=result)
+        db.session.commit()
+        flash('Admission No given to %d students (%s to %s).'
+              % (result['count'], result['first'], result['last']), 'success')
+    else:
+        flash('Every student already has an Admission No.', 'info')
+    if request.form.get('return_to') == 'students':
+        return redirect(url_for('main.students_list'))
+    return redirect(url_for('main.school_settings'))
 
 
 @main.route('/settings/grading', methods=['POST'])
@@ -686,6 +724,9 @@ def whatsapp_pending_messages():
         dispatchable_statuses.append('pending')
     candidates = (MessageQueue.query
                   .filter(MessageQueue.status.in_(dispatchable_statuses))
+                  # Held messages (e.g. absent notices with a delay) wait for their time.
+                  .filter(db.or_(MessageQueue.send_after.is_(None),
+                                 MessageQueue.send_after <= datetime.utcnow()))
                   .order_by(MessageQueue.created_at.asc(), MessageQueue.id.asc()).all())
     items = []
     allowance = whatsapp_quota.allowance()       # None = unlimited (see license caps)

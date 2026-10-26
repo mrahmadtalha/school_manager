@@ -217,6 +217,7 @@ def _draw_id_card(c, x, y, person, school, session):
 
 
 def student_card_payload(student):
+    from app.services.qr_attendance import student_qr_payload
     class_name = student.class_info.name if student.class_info else 'N/A'
     section = student.section_info.name if student.section_info else ''
     class_label = f'{class_name}{f" / {section}" if section else ""}'
@@ -225,7 +226,7 @@ def student_card_payload(student):
         'role_label': 'STUDENT IDENTITY CARD',
         'badge': f'ID {student.roll_number}',
         'photo_path': photos.photo_path('student', getattr(student, 'photo_filename', None)),
-        'qr': f'STUDENT|{student.roll_number}|{student.student_name}',
+        'qr': student_qr_payload(student),
         'rows': [
             ('Roll No', student.roll_number),
             ('Class', class_label),

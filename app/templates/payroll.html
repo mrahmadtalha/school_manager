@@ -1,412 +1,667 @@
 {% extends "base.html" %}
 {% block content %}
 
-{# ---- Small helpers computed once, used by the guide banner and buttons ---- #}
+{# ---- Small helpers computed once, used by the guide banner, chips and buttons ---- #}
 {% set total_rows = rows|length %}
 {% set saved_count = rows|selectattr('record')|list|length %}
 {% set pending_count = rows|selectattr('record')|rejectattr('locked')|list|length %}
 {% set paid_count = rows|selectattr('locked')|list|length %}
 {% set unsaved_count = total_rows - saved_count %}
+{% set ns = namespace(partial=0) %}
+{% for r in rows %}{% if r.record and not r.locked and r.record.paid_amount > 0 %}{% set ns.partial = ns.partial + 1 %}{% endif %}{% endfor %}
+{% set partial_count = ns.partial %}
+{% set waiting_count = pending_count - partial_count %}
+{% set paid_pct = ((totals.paid / totals.total * 100) if totals.total else 0)|round|int %}
 
-<!-- Header: month picker -->
+<style>
+    /* Staff Salaries - same "staff room" family as Teachers and Expenses: one bar for the
+       month, big plain numbers, one card per teacher, labelled buttons.
+       Everything is scoped under .pr-page. */
+    .pr-page [class*="dashboard-head"] { background: none !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; margin: 0.25rem 0 1.1rem !important; align-items: flex-end !important; }
+    .pr-page [class*="dashboard-head"] .eyebrow { margin-bottom: 0.3rem !important; }
+    .pr-page [class*="dashboard-head"] h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; line-height: 1.1; }
+    .pr-page [class*="dashboard-head"] h1 i { display: none; }
+    .pr-page [class*="dashboard-head"] .btn { border-radius: 12px; font-weight: 700; box-shadow: none; }
+    .pr-page .btn-outline-secondary { background: #fff; }
+
+    /* month bar */
+    .pr-bar { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.8rem 0.9rem; margin-bottom: 0.9rem; }
+    .pr-bar-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.7rem; }
+    .pr-period { font-weight: 800; color: #0f172a; font-size: 1.05rem; }
+    .pr-period small { display: block; font-weight: 500; color: #64748b; font-size: 0.82rem; }
+    .pr-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; }
+    .pr-nav .btn { box-shadow: none; border-radius: 12px; }
+    .pr-nav .form-select { height: 2.4rem; border-radius: 12px; border-color: #e2e8f0; background-color: #f8fafc; font-weight: 700; min-width: 11rem; }
+    .pr-seg { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; }
+    .pr-seg a, .pr-seg button { margin: 0; padding: 0.4rem 0.85rem; border: 0; background: transparent; border-radius: 9px; font-size: 0.85rem; font-weight: 600; color: #475569; cursor: pointer; text-decoration: none; white-space: nowrap; }
+    .pr-seg a.is-on, .pr-seg button[aria-pressed="true"] { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+    .pr-seg a:focus-visible, .pr-seg button:focus-visible { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 1px; }
+
+    /* what to do now */
+    .pr-next { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.9rem 1.1rem; margin-bottom: 0.9rem; }
+    .pr-steps { list-style: none; display: flex; gap: 0.5rem; padding: 0; margin: 0 0 0.8rem; }
+    .pr-steps li { flex: 1; display: flex; align-items: center; gap: 0.55rem; padding: 0.45rem 0.7rem; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 0.85rem; font-weight: 600; color: #64748b; min-width: 0; }
+    .pr-steps .n { flex: none; width: 1.7rem; height: 1.7rem; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #e2e8f0; color: #475569; font-size: 0.82rem; font-weight: 800; }
+    .pr-steps li.is-now { background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; }
+    .pr-steps li.is-now .n { background: #2563eb; color: #fff; }
+    .pr-steps li.is-done { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+    .pr-steps li.is-done .n { background: #16a34a; color: #fff; }
+    .pr-say { display: flex; gap: 0.7rem; align-items: flex-start; border-radius: 14px; padding: 0.7rem 0.95rem; font-size: 0.92rem; line-height: 1.45; }
+    .pr-say i { margin-top: 0.2rem; }
+    .pr-say.is-info { background: #f0f7ff; border: 1px solid #d3e6fb; border-left: 4px solid #3b82f6; color: #1e3a5f; }
+    .pr-say.is-info i { color: #3b82f6; }
+    .pr-say.is-wait { background: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; color: #78350f; }
+    .pr-say.is-wait i { color: #d97706; }
+    .pr-say.is-ok { background: #f0fdf4; border: 1px solid #bbf7d0; border-left: 4px solid #16a34a; color: #14532d; }
+    .pr-say.is-ok i { color: #16a34a; }
+    .pr-say.is-none { background: #fff7ed; border: 1px solid #fed7aa; border-left: 4px solid #f97316; color: #7c2d12; }
+
+    /* summary */
+    .pr-band { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .pr-stat { padding: 0.85rem 1.2rem; display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+    .pr-stat + .pr-stat { border-left: 1px solid #eef2f7; }
+    .pr-num { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .pr-num small { font-size: 0.9rem; font-weight: 700; color: #94a3b8; letter-spacing: 0; }
+    .pr-num.is-paid { color: #15803d; }
+    .pr-num.is-owed { color: #b45309; }
+    .pr-lab { font-size: 0.8rem; color: #64748b; }
+    .pr-prog { grid-column: 1 / -1; display: flex; align-items: center; gap: 0.8rem; padding: 0.55rem 1.2rem 0.7rem; border-top: 1px solid #eef2f7; font-size: 0.8rem; color: #64748b; }
+    .pr-prog .bar { flex: 1; height: 10px; border-radius: 99px; background: #eef2f7; overflow: hidden; }
+    .pr-prog .bar i { display: block; height: 100%; background: #16a34a; border-radius: 99px; }
+    .pr-prog b { color: #0f172a; }
+
+    /* rules */
+    .pr-rules { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.9rem 1.1rem; margin-bottom: 0.9rem; }
+    .pr-rules .form-control { border-radius: 12px; border-color: #cbd5e1; min-height: 2.6rem; }
+    .pr-rules .btn { border-radius: 12px; font-weight: 700; }
+
+    /* find a teacher */
+    .pr-find { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-bottom: 0.8rem; }
+    .pr-search { position: relative; flex: 1 1 14rem; min-width: 12rem; max-width: 26rem; }
+    .pr-search i { position: absolute; left: 0.95rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+    .pr-search input { padding-left: 2.5rem; height: 2.6rem; border-radius: 12px; border-color: #e2e8f0; background: #fff; }
+    .pr-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .pr-chip { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.2rem 0.75rem; border: 1px solid #e2e8f0; border-radius: 99px; background: #fff; font-size: 0.82rem; font-weight: 600; color: #334155; cursor: pointer; }
+    .pr-chip:hover { background: #f8fafc; }
+    .pr-chip[aria-pressed="true"] { background: #0f172a; border-color: #0f172a; color: #fff; }
+    .pr-chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--pr-c, #94a3b8); }
+    .pr-chip b { font-variant-numeric: tabular-nums; }
+    .pr-count { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; padding: 0.1rem 0.1rem 0.7rem; font-size: 0.86rem; color: #64748b; }
+    .pr-count strong { color: #0f172a; }
+    .pr-tickall { display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 600; color: #334155; cursor: pointer; margin: 0; }
+
+    /* one card per teacher */
+    .pr-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(23rem, 1fr)); gap: 0.9rem; }
+    .pr-card { --pr-c: #94a3b8; position: relative; display: flex; flex-direction: column; gap: 0.7rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.95rem 1rem 0.85rem 1.25rem; overflow: hidden; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+    .pr-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--pr-c); }
+    .pr-card[hidden] { display: none; }
+    .pr-card:hover, .pr-card:focus-within { border-color: var(--pr-c); box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08); }
+    .pr-card[data-status="waiting"] { --pr-c: #f59e0b; }
+    .pr-card[data-status="partial"] { --pr-c: #3b82f6; }
+    .pr-card[data-status="paid"] { --pr-c: #16a34a; background: #fbfefc; }
+    .pr-chip[data-filter="unsaved"] { --pr-c: #94a3b8; }
+    .pr-chip[data-filter="waiting"] { --pr-c: #f59e0b; }
+    .pr-chip[data-filter="partial"] { --pr-c: #3b82f6; }
+    .pr-chip[data-filter="paid"] { --pr-c: #16a34a; }
+    .pr-id { display: flex; align-items: center; gap: 0.7rem; min-width: 0; }
+    .pr-av { flex: none; width: 2.7rem; height: 2.7rem; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.1rem; background: rgba(var(--bs-primary-rgb), 0.1); color: rgb(var(--bs-primary-rgb)); }
+    .pr-who { min-width: 0; flex: 1; }
+    .pr-name { font-weight: 800; color: #0f172a; font-size: 1.02rem; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pr-code { font-size: 0.78rem; color: #64748b; }
+    .pr-pick { flex: none; display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; font-weight: 600; color: #475569; margin: 0; cursor: pointer; }
+    .pr-pick .form-check-input { width: 1.25rem; height: 1.25rem; margin: 0; cursor: pointer; }
+    .pr-pick.is-locked { color: #15803d; cursor: default; }
+    .pr-pill { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.12rem 0.7rem; border-radius: 99px; background: #f1f5f9; border: 1px solid #e2e8f0; color: #334155; font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
+    .pr-pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--pr-c); }
+    .pr-when { font-size: 0.78rem; color: #64748b; margin-left: 0.4rem; }
+    .pr-att { font-size: 0.8rem; color: #64748b; }
+    .pr-att .pr-chipmini { display: inline-block; padding: 0.05rem 0.55rem; border-radius: 99px; font-weight: 700; font-size: 0.76rem; margin: 0 0.25rem 0.25rem 0; border: 1px solid transparent; }
+    .pr-chipmini.p { background: #dcfce7; color: #166534; }
+    .pr-chipmini.a { background: #fee2e2; color: #991b1b; }
+    .pr-chipmini.l { background: #fef3c7; color: #92400e; }
+    .pr-chipmini.v { background: #e0f2fe; color: #075985; }
+    .pr-flds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.55rem; }
+    .pr-fld label { display: block; font-size: 0.76rem; font-weight: 700; color: #475569; margin-bottom: 0.2rem; }
+    .pr-fld .form-control { border-radius: 12px; border-color: #cbd5e1; min-height: 2.5rem; font-variant-numeric: tabular-nums; font-weight: 600; padding-left: 0.6rem; padding-right: 0.4rem; }
+    .pr-fld .pr-fixed { font-weight: 800; font-size: 1.02rem; color: #0f172a; font-variant-numeric: tabular-nums; }
+    .pr-sugg { font-size: 0.75rem; color: #64748b; margin-top: 0.05rem; line-height: 1.3; }
+    .pr-sugg button { padding: 0; border: 0; background: none; color: rgb(var(--bs-primary-rgb)); font-weight: 700; font-size: 0.75rem; cursor: pointer; text-decoration: underline; }
+    .pr-warn { font-size: 0.8rem; color: #b91c1c; font-weight: 600; }
+    .pr-warn a { color: #b91c1c; }
+    .pr-noteline { font-size: 0.8rem; }
+    .pr-noteline .form-control { border-radius: 12px; min-height: 2.3rem; margin-top: 0.35rem; }
+    .pr-take { display: flex; align-items: flex-end; justify-content: space-between; gap: 0.6rem; padding: 0.6rem 0.8rem; border-radius: 14px; background: #f8fafc; border: 1px solid #eef2f7; }
+    .pr-take .t { font-size: 0.78rem; font-weight: 700; color: #64748b; }
+    .pr-take .t small { display: block; font-weight: 500; font-size: 0.72rem; }
+    .pr-take .m { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em; color: #0f172a; font-variant-numeric: tabular-nums; line-height: 1.1; text-align: right; }
+    .pr-take .m small { font-size: 0.8rem; font-weight: 700; color: #94a3b8; letter-spacing: 0; margin-right: 0.2rem; }
+    .pr-paidline { font-size: 0.8rem; color: #475569; text-align: right; }
+    .pr-paidline b { color: #0f172a; }
+    .pr-arrears { font-size: 0.8rem; color: #b91c1c; font-weight: 600; }
+    .pr-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.4rem; padding-top: 0.6rem; margin-top: auto; border-top: 1px dashed #e2e8f0; }
+    .pr-foot .btn { border-radius: 10px; font-weight: 700; font-size: 0.82rem; padding: 0.3rem 0.7rem; white-space: nowrap; box-shadow: none; }
+    .pr-foot .pr-hint { margin-right: auto; font-size: 0.78rem; color: #94a3b8; }
+
+    /* "List" view: same cards, one teacher per row (wide screens) */
+    @media (min-width: 1200px) {
+        .pr-mode-list .pr-list { grid-template-columns: 1fr; gap: 0.6rem; }
+        .pr-mode-list .pr-card { display: grid; grid-template-columns: 18rem minmax(14rem, 1fr) 11.5rem 12rem; grid-template-areas: "id flds take foot" "att flds take foot"; align-items: center; gap: 0.35rem 1rem; padding: 0.75rem 1rem 0.75rem 1.25rem; }
+        .pr-mode-list .pr-id { grid-area: id; }
+        .pr-mode-list .pr-meta { grid-area: att; }
+        .pr-mode-list .pr-flds { grid-area: flds; }
+        .pr-mode-list .pr-take { grid-area: take; flex-direction: column; align-items: flex-end; }
+        .pr-mode-list .pr-foot { grid-area: foot; border-top: 0; padding-top: 0; justify-content: flex-start; }
+        .pr-mode-list .pr-noteblock { grid-column: 1 / -1; }
+    }
+
+    /* save bar */
+    .pr-save { position: sticky; bottom: 0.75rem; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.8rem; background: #fff; border: 1px solid #cbd5e1; border-radius: 18px; padding: 0.7rem 1rem; margin-top: 1rem; box-shadow: 0 14px 36px rgba(15, 23, 42, 0.14); }
+    .pr-save .lab { font-size: 0.78rem; color: #64748b; }
+    .pr-save .tot { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; color: #0f172a; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .pr-save .btn { border-radius: 12px; font-weight: 700; }
+    .pr-fine { font-size: 0.8rem; color: #64748b; margin: 0.7rem 0.2rem 0; }
+
+    .pr-empty { text-align: center; padding: 3rem 1rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; color: #64748b; }
+    .pr-empty .pr-empty-icon { width: 72px; height: 72px; border-radius: 24px; margin: 0 auto 0.9rem; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); }
+    .pr-empty p { font-weight: 700; color: #334155; margin-bottom: 0.3rem; }
+    .pr-nomatch { display: none; text-align: center; padding: 1.6rem 1rem; background: #fff; border: 1px dashed #cbd5e1; border-radius: 18px; color: #64748b; margin-top: 0.9rem; }
+
+    /* Pay / Void windows */
+    .pr-page .modal .modal-content { border-radius: 20px; border: 0; }
+    .pr-page .modal .modal-header { border-bottom: 1px solid #eef2f7; }
+    .pr-page .modal .modal-footer { border-top: 1px solid #eef2f7; }
+    .pr-page .modal .btn { border-radius: 12px; font-weight: 700; }
+    .pr-form .pr-q { font-size: 0.88rem; font-weight: 700; color: #0f172a; margin-bottom: 0.3rem; display: block; }
+    .pr-form .pr-q small { font-weight: 500; color: #64748b; }
+    .pr-form .form-control { border-radius: 12px; border-color: #cbd5e1; min-height: 2.8rem; }
+    .pr-form .pr-amount { font-size: 1.5rem; font-weight: 800; height: 3.4rem; font-variant-numeric: tabular-nums; }
+    .pr-form .pr-quick { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; }
+    .pr-form .pr-quick button { border: 1px solid #e2e8f0; background: #fff; border-radius: 99px; padding: 0.15rem 0.8rem; font-size: 0.8rem; font-weight: 600; color: #475569; }
+    .pr-form .pr-quick button:hover { border-color: rgb(var(--bs-primary-rgb)); color: rgb(var(--bs-primary-rgb)); }
+    .pr-form .pr-pay { display: flex; gap: 0.5rem; }
+    .pr-form .pr-pay input { position: absolute; opacity: 0; pointer-events: none; }
+    .pr-form .pr-pay label { flex: 1; text-align: center; margin: 0; padding: 0.6rem 0.4rem; border: 2px solid #e2e8f0; border-radius: 12px; font-weight: 700; font-size: 0.9rem; color: #475569; cursor: pointer; background: #fff; }
+    .pr-form .pr-pay input:checked + label { border-color: rgb(var(--bs-primary-rgb)); background: rgba(var(--bs-primary-rgb), 0.08); color: #0f172a; }
+    .pr-form .pr-pay input:focus-visible + label { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 2px; }
+    .pr-form .pr-who-line { font-weight: 800; font-size: 1.05rem; color: #0f172a; }
+    .pr-form .pr-who-line small { display: block; font-weight: 500; color: #64748b; font-size: 0.82rem; }
+
+    @media (max-width: 991.98px) {
+        .pr-band { grid-template-columns: 1fr 1fr; }
+        .pr-stat:nth-child(3) { border-left: 0; border-top: 1px solid #eef2f7; }
+        .pr-stat:nth-child(4) { border-top: 1px solid #eef2f7; }
+    }
+    @media (max-width: 575.98px) {
+        .pr-band { grid-template-columns: 1fr; }
+        .pr-stat + .pr-stat { border-left: 0; border-top: 1px solid #eef2f7; }
+        .pr-list { grid-template-columns: 1fr; }
+        .pr-steps { flex-direction: column; }
+        .pr-flds { grid-template-columns: 1fr 1fr; }
+        .pr-save .btn { flex: 1; }
+    }
+</style>
+
+<div class="pr-page" id="prPage">
+
+<!-- Header -->
 <div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
     <div>
         <p class="eyebrow mb-2">Finance</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-money-check-dollar text-primary me-2"></i>Staff Salaries</h1>
+        <h1 class="h2 fw-bold text-dark mb-1">Staff Salaries</h1>
         <p class="text-muted small mb-0">Prepare and pay your teachers' monthly salaries.</p>
     </div>
     <div class="btn-toolbar mb-2 mb-md-0 gap-2">
-        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.payroll_page', month=prev_month) }}" title="Previous month">
-            <i class="fas fa-chevron-left me-1"></i>Previous
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#rulesBox"
+                aria-expanded="{{ 'true' if (per_late or leave_as_absent) else 'false' }}" aria-controls="rulesBox"
+                title="Optional: take money off for late days and approved leave">
+            <i class="fas fa-sliders me-1"></i>Deduction rules
+        </button>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.teachers_list') }}" title="Change a teacher's salary or add a teacher">
+            <i class="fas fa-chalkboard-user me-1"></i>Teachers
         </a>
-        <form method="get" action="{{ url_for('main.payroll_page') }}" class="d-flex gap-2">
-            <input type="month" class="form-control form-control-sm" name="month" value="{{ month }}" style="width: 175px;" aria-label="Choose month">
-            <button class="btn btn-primary btn-sm">Show</button>
-        </form>
-        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.payroll_page', month=next_month) }}" title="Next month">
-            Next<i class="fas fa-chevron-right ms-1"></i>
-        </a>
+    </div>
+</div>
+
+<!-- Which month? -->
+<div class="pr-bar">
+    <div class="pr-bar-top">
+        <div class="pr-period">
+            <i class="fas fa-calendar-days me-2 text-primary"></i>Showing: {{ month_label }}
+            <small>{% if total_rows %}{{ total_rows }} teacher{{ 's' if total_rows != 1 else '' }} &mdash; take-home total Rs. {{ '{:,.0f}'.format(totals.total) }} saved so far{% else %}No teachers to pay yet.{% endif %}</small>
+        </div>
+        <div class="pr-nav">
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.payroll_page', month=prev_month, per_late=(per_late or None), leave_as_absent=('1' if leave_as_absent else None)) }}" title="Previous month"><i class="fas fa-chevron-left me-1"></i>Previous</a>
+            <form method="get" action="{{ url_for('main.payroll_page') }}" class="m-0">
+                {% if per_late %}<input type="hidden" name="per_late" value="{{ '%g'|format(per_late) }}">{% endif %}
+                {% if leave_as_absent %}<input type="hidden" name="leave_as_absent" value="1">{% endif %}
+                <select class="form-select form-select-sm" name="month" aria-label="Choose month" onchange="this.form.submit()">
+                    {% for key, label in month_options %}
+                    <option value="{{ key }}" {% if key == month %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <noscript><button class="btn btn-primary btn-sm">Show</button></noscript>
+            </form>
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.payroll_page', month=next_month, per_late=(per_late or None), leave_as_absent=('1' if leave_as_absent else None)) }}" title="Next month">Next<i class="fas fa-chevron-right ms-1"></i></a>
+            <div class="pr-seg" role="group" aria-label="Period">
+                <a href="{{ url_for('main.payroll_page') }}" class="{{ 'is-on' if month == current_month }}" title="Jump back to this month">This Month</a>
+            </div>
+        </div>
     </div>
 </div>
 
 <!-- Where am I? : 3 simple steps + what to do next -->
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-            <h2 class="h5 fw-bold mb-0">Salaries for {{ month_label }}</h2>
-            {% if total_rows and paid_count == total_rows %}
-            <span class="badge bg-success fs-6"><i class="fas fa-circle-check me-1"></i>All salaries paid</span>
-            {% endif %}
-        </div>
+<div class="pr-next">
+    <ol class="pr-steps">
+        {% set s1_done = total_rows and saved_count == total_rows %}
+        {% set s3_done = total_rows and paid_count == total_rows %}
+        <li class="{{ 'is-done' if s1_done else 'is-now' }}"><span class="n">{% if s1_done %}<i class="fas fa-check"></i>{% else %}1{% endif %}</span>Check the amounts</li>
+        <li class="{{ 'is-done' if s1_done else '' }}"><span class="n">{% if s1_done %}<i class="fas fa-check"></i>{% else %}2{% endif %}</span>Save the salaries</li>
+        <li class="{{ 'is-done' if s3_done else ('is-now' if s1_done else '') }}"><span class="n">{% if s3_done %}<i class="fas fa-check"></i>{% else %}3{% endif %}</span>Pay and mark as paid</li>
+    </ol>
 
-        <div class="row g-2 mb-3 text-center">
-            <div class="col-4">
-                <div class="rounded p-2 border {% if total_rows and saved_count == total_rows %}bg-success-subtle border-success{% else %}bg-primary-subtle border-primary{% endif %}">
-                    <div class="fw-bold">{% if total_rows and saved_count == total_rows %}<i class="fas fa-check-circle text-success me-1"></i>{% endif %}Step 1</div>
-                    <div class="small">Check the amounts</div>
-                </div>
-            </div>
-            <div class="col-4">
-                <div class="rounded p-2 border {% if total_rows and saved_count == total_rows %}bg-success-subtle border-success{% else %}bg-light{% endif %}">
-                    <div class="fw-bold">{% if total_rows and saved_count == total_rows %}<i class="fas fa-check-circle text-success me-1"></i>{% endif %}Step 2</div>
-                    <div class="small">Save the salaries</div>
-                </div>
-            </div>
-            <div class="col-4">
-                <div class="rounded p-2 border {% if total_rows and paid_count == total_rows %}bg-success-subtle border-success{% else %}bg-light{% endif %}">
-                    <div class="fw-bold">{% if total_rows and paid_count == total_rows %}<i class="fas fa-check-circle text-success me-1"></i>{% endif %}Step 3</div>
-                    <div class="small">Pay and mark as paid</div>
-                </div>
-            </div>
-        </div>
-
-        {% if not total_rows %}
-        <div class="alert alert-warning mb-0">
-            <i class="fas fa-triangle-exclamation me-1"></i>
-            There are no active teachers yet. Add teachers first, then come back here.
-            <a href="{{ url_for('main.teachers_list') }}" class="alert-link">Go to Teachers</a>
-        </div>
-        {% elif saved_count == 0 %}
-        <div class="alert alert-info mb-0">
-            <b>What to do now:</b> The amounts below are filled in for you from each teacher's salary and attendance.
-            Look them over, change anything that is wrong, then press <b>Save Salaries</b> at the bottom of the list.
-        </div>
-        {% elif unsaved_count > 0 %}
-        <div class="alert alert-info mb-0">
-            <b>What to do now:</b> {{ saved_count }} salar{{ 'ies are' if saved_count != 1 else 'y is' }} saved.
-            {{ unsaved_count }} teacher{{ 's are' if unsaved_count != 1 else ' is' }} still <b>not saved</b> — check the amounts and press <b>Save Salaries</b>.
-        </div>
-        {% elif pending_count > 0 %}
-        <div class="alert alert-warning mb-0">
-            <b>What to do now:</b> All salaries are saved. {{ pending_count }} teacher{{ 's are' if pending_count != 1 else ' is' }} still waiting to be paid.
-            After you hand over a salary, press <b>Mark as Paid</b> next to that teacher — or use <b>Mark All as Paid</b> if you paid everyone.
-        </div>
-        {% else %}
-        <div class="alert alert-success mb-0">
-            <i class="fas fa-circle-check me-1"></i><b>All done.</b> Every salary for {{ month_label }} has been paid.
-            You can still download any payslip from the list below.
-        </div>
-        {% endif %}
+    {% if not total_rows %}
+    <div class="pr-say is-none">
+        <i class="fas fa-triangle-exclamation"></i>
+        <div>There are no active teachers yet. Add teachers first, then come back here.
+            <a href="{{ url_for('main.teachers_list') }}" class="fw-bold">Go to Teachers</a></div>
     </div>
+    {% elif saved_count == 0 %}
+    <div class="pr-say is-info">
+        <i class="fas fa-circle-info"></i>
+        <div><b>What to do now:</b> The amounts below are filled in for you from each teacher's salary and attendance.
+            Look them over, change anything that is wrong, then press <b>Save Salaries</b> at the bottom of the page.</div>
+    </div>
+    {% elif unsaved_count > 0 %}
+    <div class="pr-say is-info">
+        <i class="fas fa-circle-info"></i>
+        <div><b>What to do now:</b> {{ saved_count }} salar{{ 'ies are' if saved_count != 1 else 'y is' }} saved.
+            {{ unsaved_count }} teacher{{ 's are' if unsaved_count != 1 else ' is' }} still <b>not saved</b> &mdash; check the amounts and press <b>Save Salaries</b>.</div>
+    </div>
+    {% elif pending_count > 0 %}
+    <div class="pr-say is-wait">
+        <i class="fas fa-hand-holding-dollar"></i>
+        <div><b>What to do now:</b> All salaries are saved. {{ pending_count }} teacher{{ 's are' if pending_count != 1 else ' is' }} still waiting to be paid.
+            After you hand over a salary, press <b>Pay</b> on that teacher's card &mdash; or use <b>Mark All as Paid</b> if you paid everyone.</div>
+    </div>
+    {% else %}
+    <div class="pr-say is-ok">
+        <i class="fas fa-circle-check"></i>
+        <div><b>All done.</b> Every salary for {{ month_label }} has been paid.
+            You can still download any payslip from the cards below. Paid salaries also appear in <a href="{{ url_for('main.expenses_list') }}" class="fw-bold">Expenses</a> as <i>Salaries</i>.</div>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Month summary -->
-<div class="row g-3 mb-3">
-    <div class="col-6 col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small fw-bold">Teachers saved</div>
-            <div class="h4 fw-bold mb-0">{{ totals.count }} <span class="text-muted fs-6 fw-normal">of {{ total_rows }}</span></div>
-        </div></div>
+<div class="pr-band">
+    <div class="pr-stat">
+        <div class="pr-num">{{ totals.count }} <small>of {{ total_rows }}</small></div>
+        <div class="pr-lab">Teachers saved</div>
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small fw-bold">Total salaries (after deductions)</div>
-            <div class="h4 fw-bold mb-0">Rs. {{ '{:,.2f}'.format(totals.total) }}</div>
-        </div></div>
+    <div class="pr-stat">
+        <div class="pr-num"><small>Rs.</small> {{ '{:,.0f}'.format(totals.total) }}</div>
+        <div class="pr-lab">Total salaries (after deductions)</div>
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small fw-bold">Already paid</div>
-            <div class="h4 fw-bold mb-0 text-success">Rs. {{ '{:,.2f}'.format(totals.paid) }}</div>
-        </div></div>
+    <div class="pr-stat">
+        <div class="pr-num is-paid"><small>Rs.</small> {{ '{:,.0f}'.format(totals.paid) }}</div>
+        <div class="pr-lab">Already paid</div>
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small fw-bold">Still to pay</div>
-            <div class="h4 fw-bold mb-0 text-warning">Rs. {{ '{:,.2f}'.format(totals.pending) }}</div>
-        </div></div>
+    <div class="pr-stat">
+        <div class="pr-num is-owed"><small>Rs.</small> {{ '{:,.0f}'.format(totals.pending) }}</div>
+        <div class="pr-lab">Still to pay</div>
     </div>
+    {% if totals.total %}
+    <div class="pr-prog">
+        <span><b>{{ paid_pct }}%</b> paid</span>
+        <span class="bar" role="img" aria-label="{{ paid_pct }} percent of salaries paid"><i style="width: {{ paid_pct }}%"></i></span>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Deduction rules (optional, collapsed) -->
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-body py-2">
-        <a class="d-flex justify-content-between align-items-center text-decoration-none text-dark fw-bold py-1"
-           data-bs-toggle="collapse" href="#rulesBox" role="button"
-           aria-expanded="{{ 'true' if (per_late or leave_as_absent) else 'false' }}" aria-controls="rulesBox">
-            <span><i class="fas fa-sliders me-2 text-secondary"></i>Deduction rules <span class="text-muted fw-normal small">(optional — for late days and leave)</span></span>
-            <i class="fas fa-chevron-down small text-muted"></i>
-        </a>
-        <div class="collapse {% if per_late or leave_as_absent %}show{% endif %}" id="rulesBox">
-            <hr class="mt-2">
-            <p class="small text-muted mb-3">
-                By default, a teacher loses one day's pay for every day marked <b>Absent</b>.
-                You can also deduct for late days and for approved leave. These rules only change the <b>suggested</b> deduction —
-                you can still type any amount yourself in the list below.
-            </p>
-            <form method="get" action="{{ url_for('main.payroll_page') }}" class="row g-3 align-items-end">
-                <input type="hidden" name="month" value="{{ month }}">
-                <div class="col-md-4">
-                    <label class="form-label small fw-bold mb-1">Deduct this much for each late day (Rs.)</label>
-                    <input type="number" class="form-control form-control-sm" name="per_late" step="1" min="0" value="{{ '%g'|format(per_late) }}" placeholder="0 = no deduction for late days">
+<div class="collapse {% if per_late or leave_as_absent %}show{% endif %}" id="rulesBox">
+    <div class="pr-rules">
+        <div class="fw-bold mb-1"><i class="fas fa-sliders me-2 text-secondary"></i>Deduction rules <span class="text-muted fw-normal small">(optional &mdash; for late days and leave)</span></div>
+        <p class="small text-muted mb-3">
+            By default, a teacher loses one day's pay for every day marked <b>Absent</b>.
+            You can also deduct for late days and for approved leave. These rules only change the <b>suggested</b> deduction &mdash;
+            you can still type any amount yourself on the cards below.
+        </p>
+        <form method="get" action="{{ url_for('main.payroll_page') }}" class="row g-3 align-items-end">
+            <input type="hidden" name="month" value="{{ month }}">
+            <div class="col-md-4">
+                <label class="form-label small fw-bold mb-1" for="perLateBox">Deduct this much for each late day (Rs.)</label>
+                <input type="number" class="form-control" id="perLateBox" name="per_late" step="1" min="0" value="{{ '%g'|format(per_late) }}" placeholder="0 = no deduction for late days">
+            </div>
+            <div class="col-md-5">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="leave_as_absent" value="1" id="leaveAsAbsent" {% if leave_as_absent %}checked{% endif %}>
+                    <label class="form-check-label small" for="leaveAsAbsent">Treat approved leave as unpaid (deduct a day's pay)</label>
                 </div>
-                <div class="col-md-5">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="leave_as_absent" value="1" id="leaveAsAbsent" {% if leave_as_absent %}checked{% endif %}>
-                        <label class="form-check-label small" for="leaveAsAbsent">Treat approved leave as unpaid (deduct a day's pay)</label>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <button class="btn btn-dark btn-sm w-100"><i class="fas fa-calculator me-1"></i>Apply Rules</button>
-                </div>
-            </form>
-            <div class="small text-muted mt-2"><i class="fas fa-circle-info me-1"></i>Applying rules reloads the page, so press it <b>before</b> you type changes into the list. Attendance is taken from what has been marked on the Attendance page.</div>
-        </div>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-dark w-100"><i class="fas fa-calculator me-1"></i>Apply Rules</button>
+            </div>
+        </form>
+        <div class="small text-muted mt-2"><i class="fas fa-circle-info me-1"></i>Applying rules reloads the page, so press it <b>before</b> you type changes on the cards. Attendance is taken from what has been marked on the Attendance page.</div>
     </div>
 </div>
 
 <form id="bulkPaidForm" method="post" action="{{ url_for('main.payroll_mark_all_paid') }}">
     <input type="hidden" name="month" value="{{ month }}">
 </form>
+<form id="payrollForm" method="post" action="{{ url_for('main.payroll_generate') }}">
+    <input type="hidden" name="month" value="{{ month }}">
+</form>
 
-<!-- Salary list -->
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-header bg-dark text-white fw-bold border-0 d-flex justify-content-between align-items-center">
-        <span><i class="fas fa-list-check me-2"></i>Teacher salaries — {{ month_label }}</span>
-        <span class="badge bg-light text-dark">{{ total_rows }} teacher{{ 's' if total_rows != 1 else '' }}</span>
+{% if not total_rows %}
+<div class="pr-empty">
+    <div class="pr-empty-icon"><i class="fas fa-chalkboard-user"></i></div>
+    <p>No teachers to pay yet</p>
+    <div class="mb-3">Salaries are made from your teachers' list. Add a teacher with a monthly salary and they will appear here.</div>
+    <a href="{{ url_for('main.teachers_list') }}" class="btn btn-primary"><i class="fas fa-plus me-1"></i>Go to Teachers</a>
+</div>
+{% else %}
+
+<!-- Find a teacher / filter by state -->
+<div class="pr-find">
+    <div class="pr-search">
+        <i class="fas fa-search"></i>
+        <input type="text" class="form-control" id="prSearch" aria-label="Search teacher" placeholder="Search a teacher's name or ID&hellip;" autocomplete="off">
     </div>
-    <div class="card-body">
-        <form id="payrollForm" method="post" action="{{ url_for('main.payroll_generate') }}">
-            <input type="hidden" name="month" value="{{ month }}">
-        </form>
-
-        <p class="small text-muted mb-2">
-            <b>Take-home salary = Salary + Bonus − Deductions.</b>
-            Tick the teachers you want to save. Paid salaries are locked and cannot be changed (use <i>Undo Paid</i> if you must edit one).
-        </p>
-
-        <div class="table-responsive">
-            <table class="table align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th class="text-center" style="width:70px;">
-                            {% if pending_count or unsaved_count %}
-                            <input class="form-check-input" type="checkbox" id="selectAllRows" checked title="Tick / untick all">
-                            {% endif %}
-                            <div class="small fw-normal">Save?</div>
-                        </th>
-                        <th>Teacher</th>
-                        <th style="min-width:120px;">Monthly Salary (Rs.)</th>
-                        <th style="min-width:200px;">Attendance this month</th>
-                        <th style="min-width:160px;">Deductions (Rs.)</th>
-                        <th style="min-width:110px;">Bonus (Rs.)</th>
-                        <th class="text-end" style="min-width:120px;">Take-home (Rs.)</th>
-                        <th class="text-center" style="min-width:190px;">Status &amp; Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in rows %}
-                    {% set tid = row.teacher.id %}
-                    <tr class="{% if row.locked %}table-success{% endif %}" data-net-row>
-                        <td class="text-center">
-                            {% if row.locked %}
-                            <i class="fas fa-lock text-success" title="Paid — locked"></i>
-                            {% else %}
-                            <input class="form-check-input include-box" type="checkbox" form="payrollForm"
-                                   name="include_{{ tid }}" checked aria-label="Save salary for {{ row.teacher.teacher_name }}">
-                            {% endif %}
-                        </td>
-                        <td>
-                            <div class="fw-bold">{{ row.teacher.teacher_name }}</div>
-                            <div class="text-muted small">{{ row.teacher.teacher_id_str or '' }}</div>
-                            {% if not row.locked %}
-                            {% if row.base <= 0 %}
-                            <div class="small text-danger mt-1">
-                                <i class="fas fa-triangle-exclamation me-1"></i>No salary set.
-                                <a href="{{ url_for('main.teacher_profile', id=tid) }}">Open profile</a> or type it here.
-                            </div>
-                            {% endif %}
-                            <a class="small text-decoration-none" data-bs-toggle="collapse" href="#note{{ tid }}" role="button"
-                               aria-expanded="{{ 'true' if row.notes else 'false' }}">
-                                <i class="fas fa-pen me-1"></i>{{ 'Edit note' if row.notes else 'Add note' }}
-                            </a>
-                            <div class="collapse {% if row.notes %}show{% endif %} mt-1" id="note{{ tid }}">
-                                <input type="text" class="form-control form-control-sm" form="payrollForm"
-                                       name="notes_{{ tid }}" value="{{ row.notes }}" maxlength="255"
-                                       placeholder="Note (optional), e.g. extra duty">
-                            </div>
-                            {% elif row.notes %}
-                            <div class="small text-muted mt-1"><i class="fas fa-note-sticky me-1"></i>{{ row.notes }}</div>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if row.locked %}
-                            <span class="fw-bold">{{ '{:,.2f}'.format(row.base) }}</span>
-                            {% else %}
-                            <input type="number" step="0.01" min="0" class="form-control form-control-sm"
-                                   form="payrollForm" name="base_{{ tid }}"
-                                   value="{{ '%.2f'|format(row.base) }}" aria-label="Monthly salary">
-                            {% endif %}
-                        </td>
-                        <td class="small">
-                            {% if row.stats and row.stats.marked_days %}
-                            <span class="badge bg-success-subtle text-success-emphasis border">Present {{ row.stats.present }}</span>
-                            <span class="badge bg-danger-subtle text-danger-emphasis border">Absent {{ row.stats.absent }}</span>
-                            <span class="badge bg-warning-subtle text-warning-emphasis border">Late {{ row.stats.late }}</span>
-                            <span class="badge bg-info-subtle text-info-emphasis border">Leave {{ row.stats.leave }}</span>
-                            <div class="text-muted mt-1">
-                                out of {{ row.stats.working_days }} working days · one day's pay ≈ Rs. {{ '{:,.0f}'.format(row.daily_rate) }}
-                            </div>
-                            {% elif row.stats %}
-                            <span class="text-muted">No attendance marked for this month</span>
-                            <div class="text-muted">{{ row.stats.working_days }} working days</div>
-                            {% else %}<span class="text-muted">—</span>{% endif %}
-                        </td>
-                        <td>
-                            {% if row.locked %}
-                            <span class="fw-bold">{{ '{:,.2f}'.format(row.deductions) }}</span>
-                            {% else %}
-                            <input type="number" step="0.01" min="0" class="form-control form-control-sm"
-                                   form="payrollForm" name="deductions_{{ tid }}"
-                                   value="{{ '%.2f'|format(row.deductions) }}" aria-label="Deductions">
-                            <div class="small text-muted mt-1">
-                                Suggested: Rs. {{ '{:,.0f}'.format(row.auto_deduction) }}
-                                {% if row.stats and (row.stats.absent or row.stats.late or (leave_as_absent and row.stats.leave)) %}
-                                <span class="text-muted">({{ row.stats.absent }} absent{% if per_late and row.stats.late %}, {{ row.stats.late }} late{% endif %}{% if leave_as_absent and row.stats.leave %}, {{ row.stats.leave }} leave{% endif %})</span>
-                                {% endif %}
-                                <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline use-suggested"
-                                        data-target="deductions_{{ tid }}"
-                                        data-value="{{ '%.2f'|format(row.auto_deduction) }}">Use suggested</button>
-                            </div>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if row.locked %}
-                            <span class="fw-bold">{{ '{:,.2f}'.format(row.bonus) }}</span>
-                            {% else %}
-                            <input type="number" step="0.01" min="0" class="form-control form-control-sm"
-                                   form="payrollForm" name="bonus_{{ tid }}"
-                                   value="{{ '%.2f'|format(row.bonus) }}" aria-label="Bonus">
-                            {% endif %}
-                        </td>
-                        <td class="text-end"><span class="net-cell fw-bold fs-6">{{ '{:,.2f}'.format(row.net) }}</span></td>
-                        <td class="text-center">
-                            {% if row.record %}
-                            <span class="badge {% if row.record.payment_status == 'Paid' %}bg-success{% elif row.record.payment_status == 'Partial' %}bg-warning text-dark{% else %}bg-secondary{% endif %} mb-1">
-                                {{ row.record.payment_status }}{% if row.record.paid_amount %} · Rs. {{ '{:,.0f}'.format(row.record.paid_amount) }} / {{ '{:,.0f}'.format(row.record.net_salary) }}{% endif %}
-                            </span>
-                            {% if row.record.payment_date %}<div class="small text-muted mb-1">last paid {{ row.record.payment_date.strftime('%d %b %Y') }}</div>{% endif %}
-                            {% else %}
-                            <span class="badge bg-secondary mb-1">Not saved yet</span>
-                            {% endif %}
-                            {% if row.prior_balance %}
-                            <div class="small text-danger">+ arrears Rs. {{ '{:,.0f}'.format(row.prior_balance) }}</div>
-                            {% endif %}
-                            {% if row.record %}
-                            <div class="d-flex flex-wrap justify-content-center gap-1">
-                                <a class="btn btn-sm btn-outline-dark" href="{{ url_for('main.payroll_payslip_pdf', id=row.record.id) }}" title="Download payslip (PDF)">
-                                    <i class="fas fa-file-invoice me-1"></i>Payslip
-                                </a>
-                                {% if row.remaining > 0.009 %}
-                                <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#markPaidModal"
-                                        data-action="{{ url_for('main.payroll_pay', id=row.record.id) }}"
-                                        data-teacher="{{ row.teacher.teacher_name | e }}"
-                                        data-amount="{{ '%.2f'|format(row.remaining) }}" title="Record a salary payment">
-                                    <i class="fas fa-check me-1"></i>Pay{% if row.remaining < row.net - 0.009 %} rest{% endif %}
-                                </button>
-                                {% endif %}
-                                {% if row.record.paid_amount > 0 %}
-                                <button type="button" class="btn btn-sm btn-outline-warning void-salary-btn"
-                                        data-payments="{{ row.record.payments | map(attribute='id') | join(',') }}"
-                                        data-teacher="{{ row.teacher.teacher_name | e }}"
-                                        title="Void a salary payment (with reason)">
-                                    <i class="fas fa-ban me-1"></i>Void payment
-                                </button>
-                                {% endif %}
-                            </div>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
-        {% if total_rows %}
-        <div class="d-flex flex-wrap justify-content-between align-items-center mt-3 gap-3">
-            <div>
-                <div class="small text-muted">Total take-home of ticked teachers</div>
-                <div class="h5 fw-bold mb-0">Rs. <span id="ticked-total">0.00</span></div>
-            </div>
-            <div class="d-flex flex-wrap gap-2">
-                {% if pending_count or unsaved_count %}
-                <button class="btn btn-primary" form="payrollForm" type="submit">
-                    <i class="fas fa-floppy-disk me-1"></i>Save Salaries
-                </button>
-                {% endif %}
-                {% if pending_count %}
-                <button class="btn btn-outline-success" form="bulkPaidForm" type="submit"
-                        data-confirm="Mark all {{ pending_count }} saved-but-unpaid salar{{ 'ies' if pending_count != 1 else 'y' }} for {{ month_label }} as paid (Cash, today)?"
-                        data-confirm-ok="Mark all paid">
-                    <i class="fas fa-check-double me-1"></i>Mark All as Paid ({{ pending_count }})
-                </button>
-                {% endif %}
-            </div>
-        </div>
-        {% if pending_count or unsaved_count %}
-        <div class="small text-muted mt-2">
-            <i class="fas fa-circle-info me-1"></i><b>Save Salaries</b> stores the amounts but does not mean the money was handed over.
-            <b>Mark All as Paid</b> only affects salaries that are already saved, and records them as Cash paid today — use the individual <b>Mark as Paid</b> button if you paid by Bank or Cheque.
-        </div>
-        {% endif %}
-        {% endif %}
+    <div class="pr-chips" role="group" aria-label="Show only">
+        <button type="button" class="pr-chip" data-filter="all" aria-pressed="true">Everyone <b>{{ total_rows }}</b></button>
+        {% if unsaved_count %}<button type="button" class="pr-chip" data-filter="unsaved" aria-pressed="false"><span class="dot"></span>Not saved <b>{{ unsaved_count }}</b></button>{% endif %}
+        {% if waiting_count %}<button type="button" class="pr-chip" data-filter="waiting" aria-pressed="false"><span class="dot"></span>Waiting to be paid <b>{{ waiting_count }}</b></button>{% endif %}
+        {% if partial_count %}<button type="button" class="pr-chip" data-filter="partial" aria-pressed="false"><span class="dot"></span>Part paid <b>{{ partial_count }}</b></button>{% endif %}
+        {% if paid_count %}<button type="button" class="pr-chip" data-filter="paid" aria-pressed="false"><span class="dot"></span>Paid <b>{{ paid_count }}</b></button>{% endif %}
     </div>
 </div>
 
-<!-- Mark Paid modal -->
+<div class="pr-count">
+    <div>
+        <strong id="prShown">{{ total_rows }}</strong> of {{ total_rows }} teacher{{ 's' if total_rows != 1 else '' }} &middot;
+        <b>Take-home = Salary + Bonus &minus; Deductions.</b>
+        {% if pending_count or unsaved_count %}<label class="pr-tickall ms-2"><input class="form-check-input" type="checkbox" id="selectAllRows" checked>Tick all</label>{% endif %}
+    </div>
+    <div class="pr-seg" role="group" aria-label="How to show the teachers">
+        <button type="button" data-mode="cards" aria-pressed="true"><i class="fas fa-table-cells-large me-1"></i>Cards</button>
+        <button type="button" data-mode="list" aria-pressed="false"><i class="fas fa-list me-1"></i>List</button>
+    </div>
+</div>
+
+<div id="prBody" class="pr-mode-cards">
+<div class="pr-list">
+    {% for row in rows %}
+    {% set tid = row.teacher.id %}
+    {% if row.locked %}{% set st = 'paid' %}
+    {% elif row.record and row.record.paid_amount > 0 %}{% set st = 'partial' %}
+    {% elif row.record %}{% set st = 'waiting' %}
+    {% else %}{% set st = 'unsaved' %}{% endif %}
+    <article class="pr-card" data-net-row data-status="{{ st }}"
+             data-search="{{ (row.teacher.teacher_name ~ ' ' ~ (row.teacher.teacher_id_str or ''))|lower|e }}">
+        <div class="pr-id">
+            <span class="pr-av" aria-hidden="true">{{ (row.teacher.teacher_name or '?')[:1]|upper }}</span>
+            <div class="pr-who">
+                <div class="pr-name" title="{{ row.teacher.teacher_name }}">{{ row.teacher.teacher_name }}</div>
+                <div class="pr-code">{{ row.teacher.teacher_id_str or '' }}</div>
+            </div>
+            {% if row.locked %}
+            <span class="pr-pick is-locked" title="Paid &mdash; locked"><i class="fas fa-lock"></i>Paid</span>
+            {% else %}
+            <label class="pr-pick" title="Tick to save this teacher's salary">
+                <input class="form-check-input include-box" type="checkbox" form="payrollForm"
+                       name="include_{{ tid }}" checked aria-label="Save salary for {{ row.teacher.teacher_name }}">Save
+            </label>
+            {% endif %}
+        </div>
+
+        <div class="pr-meta">
+            <div class="mb-1">
+                {% if row.record %}
+                <span class="pr-pill">{% if st == 'paid' %}Paid{% elif st == 'partial' %}Part paid{% else %}Waiting to be paid{% endif %}</span>
+                {% if row.record.payment_date %}<span class="pr-when">last paid {{ row.record.payment_date.strftime('%d %b %Y') }}</span>{% endif %}
+                {% else %}
+                <span class="pr-pill">Not saved yet</span>
+                {% endif %}
+            </div>
+            <div class="pr-att">
+                {% if row.stats and row.stats.marked_days %}
+                <span class="pr-chipmini p">Present {{ row.stats.present }}</span><span class="pr-chipmini a">Absent {{ row.stats.absent }}</span><span class="pr-chipmini l">Late {{ row.stats.late }}</span><span class="pr-chipmini v">Leave {{ row.stats.leave }}</span>
+                <div>out of {{ row.stats.working_days }} working days &middot; one day's pay &asymp; Rs. {{ '{:,.0f}'.format(row.daily_rate) }}</div>
+                {% elif row.stats %}
+                No attendance marked for this month ({{ row.stats.working_days }} working days)
+                {% else %}&mdash;{% endif %}
+            </div>
+        </div>
+
+        <div class="pr-flds">
+            <div class="pr-fld">
+                <label for="base_{{ tid }}">Monthly salary</label>
+                {% if row.locked %}
+                <div class="pr-fixed">{{ '{:,.2f}'.format(row.base) }}</div>
+                {% else %}
+                <input type="number" step="0.01" min="0" class="form-control" id="base_{{ tid }}"
+                       form="payrollForm" name="base_{{ tid }}" value="{{ '%.2f'|format(row.base) }}" aria-label="Monthly salary">
+                {% endif %}
+            </div>
+            <div class="pr-fld">
+                <label for="bonus_{{ tid }}">Bonus</label>
+                {% if row.locked %}
+                <div class="pr-fixed">{{ '{:,.2f}'.format(row.bonus) }}</div>
+                {% else %}
+                <input type="number" step="0.01" min="0" class="form-control" id="bonus_{{ tid }}"
+                       form="payrollForm" name="bonus_{{ tid }}" value="{{ '%.2f'|format(row.bonus) }}" aria-label="Bonus">
+                {% endif %}
+            </div>
+            <div class="pr-fld">
+                <label for="deductions_{{ tid }}">Deductions</label>
+                {% if row.locked %}
+                <div class="pr-fixed">{{ '{:,.2f}'.format(row.deductions) }}</div>
+                {% else %}
+                <input type="number" step="0.01" min="0" class="form-control" id="deductions_{{ tid }}"
+                       form="payrollForm" name="deductions_{{ tid }}" value="{{ '%.2f'|format(row.deductions) }}" aria-label="Deductions">
+                {% endif %}
+            </div>
+            {% if not row.locked %}
+            <div class="pr-sugg" style="grid-column: 1 / -1;">
+                Suggested deduction: <b>Rs. {{ '{:,.0f}'.format(row.auto_deduction) }}</b>
+                {% if row.stats and (row.stats.absent or row.stats.late or (leave_as_absent and row.stats.leave)) %}
+                ({{ row.stats.absent }} absent{% if per_late and row.stats.late %}, {{ row.stats.late }} late{% endif %}{% if leave_as_absent and row.stats.leave %}, {{ row.stats.leave }} leave{% endif %})
+                {% endif %}
+                <button type="button" class="use-suggested" data-target="deductions_{{ tid }}"
+                        data-value="{{ '%.2f'|format(row.auto_deduction) }}">Use suggested</button>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="pr-noteblock">
+            {% if not row.locked %}
+            {% if row.base <= 0 %}
+            <div class="pr-warn mb-1">
+                <i class="fas fa-triangle-exclamation me-1"></i>No salary set.
+                <a href="{{ url_for('main.teacher_profile', id=tid) }}">Open profile</a> or type it above.
+            </div>
+            {% endif %}
+            <div class="pr-noteline">
+                <a class="text-decoration-none" data-bs-toggle="collapse" href="#note{{ tid }}" role="button"
+                   aria-expanded="{{ 'true' if row.notes else 'false' }}">
+                    <i class="fas fa-pen me-1"></i>{{ 'Edit note' if row.notes else 'Add note' }}
+                </a>
+                <div class="collapse {% if row.notes %}show{% endif %}" id="note{{ tid }}">
+                    <input type="text" class="form-control form-control-sm" form="payrollForm"
+                           name="notes_{{ tid }}" value="{{ row.notes }}" maxlength="255"
+                           placeholder="Note (optional), e.g. extra duty">
+                </div>
+            </div>
+            {% elif row.notes %}
+            <div class="pr-noteline text-muted"><i class="fas fa-note-sticky me-1"></i>{{ row.notes }}</div>
+            {% endif %}
+        </div>
+
+        <div class="pr-take">
+            <div class="t">Take-home<small>Salary + Bonus &minus; Deductions</small></div>
+            <div>
+                <div class="m"><small>Rs.</small><span class="net-cell">{{ '{:,.2f}'.format(row.net) }}</span></div>
+                {% if row.record and row.paid %}
+                <div class="pr-paidline">Paid <b>Rs. {{ '{:,.0f}'.format(row.paid) }}</b></div>
+                {% if row.remaining > 0.009 %}<div class="pr-paidline">Still to pay <b>Rs. {{ '{:,.0f}'.format(row.remaining) }}</b></div>{% endif %}
+                {% endif %}
+                {% if row.prior_balance %}
+                <div class="pr-arrears text-end">+ arrears Rs. {{ '{:,.0f}'.format(row.prior_balance) }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="pr-foot">
+            {% if row.record %}
+            <a class="btn btn-sm btn-outline-dark" href="{{ url_for('main.payroll_payslip_pdf', id=row.record.id) }}" title="Export this payslip (PDF)">
+                <i class="fas fa-file-invoice me-1"></i>Payslip
+            </a>
+            {% if row.record.paid_amount > 0 %}
+            <button type="button" class="btn btn-sm btn-outline-warning void-salary-btn"
+                    data-payments="{{ row.record.payments | map(attribute='id') | join(',') }}"
+                    data-teacher="{{ row.teacher.teacher_name | e }}"
+                    title="Cancel the last salary payment (you must give a reason)">
+                <i class="fas fa-ban me-1"></i>Void payment
+            </button>
+            {% endif %}
+            {% if row.remaining > 0.009 %}
+            <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#markPaidModal"
+                    data-action="{{ url_for('main.payroll_pay', id=row.record.id) }}"
+                    data-teacher="{{ row.teacher.teacher_name | e }}"
+                    data-amount="{{ '%.2f'|format(row.remaining) }}" title="Record a salary payment">
+                <i class="fas fa-check me-1"></i>Pay{% if row.remaining < row.net - 0.009 %} rest{% endif %}
+            </button>
+            {% endif %}
+            {% else %}
+            <span class="pr-hint"><i class="fas fa-circle-info me-1"></i>Save the salary first, then you can pay it.</span>
+            {% endif %}
+        </div>
+    </article>
+    {% endfor %}
+</div>
+<div class="pr-nomatch" id="prNoMatch">
+    <div class="fw-bold mb-1">No teacher matches</div>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="prClearFind"><i class="fas fa-xmark me-1"></i>Show everyone</button>
+</div>
+</div>
+
+<!-- Save bar: always in reach, however long the list is -->
+<div class="pr-save">
+    <div>
+        <div class="lab">Take-home total of ticked teachers</div>
+        <div class="tot">Rs. <span id="ticked-total">0.00</span></div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        {% if pending_count or unsaved_count %}
+        <button class="btn btn-primary" form="payrollForm" type="submit">
+            <i class="fas fa-floppy-disk me-1"></i>Save Salaries
+        </button>
+        {% endif %}
+        {% if pending_count %}
+        <button class="btn btn-outline-success" form="bulkPaidForm" type="submit"
+                data-confirm="Mark all {{ pending_count }} saved-but-unpaid salar{{ 'ies' if pending_count != 1 else 'y' }} for {{ month_label }} as paid (Cash, today)?"
+                data-confirm-ok="Mark all paid">
+            <i class="fas fa-check-double me-1"></i>Mark All as Paid ({{ pending_count }})
+        </button>
+        {% endif %}
+    </div>
+</div>
+{% if pending_count or unsaved_count %}
+<p class="pr-fine">
+    <i class="fas fa-circle-info me-1"></i><b>Save Salaries</b> stores the amounts but does not mean the money was handed over.
+    <b>Mark All as Paid</b> only affects salaries that are already saved, and records them as Cash paid today &mdash; use the <b>Pay</b> button on a teacher's card if you paid by Bank or Cheque.
+</p>
+{% endif %}
+{% endif %}
+
+<!-- Pay window: three plain questions -->
 <div class="modal fade" id="markPaidModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-sm">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <form method="post" action="">
-                <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title"><i class="fas fa-check me-2"></i>Mark Salary as Paid</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <div class="modal-header">
+                    <h5 class="modal-title text-success"><i class="fas fa-hand-holding-dollar me-2"></i>Pay salary</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
-                    <p class="small mb-1">Teacher: <b id="markPaidTeacher"></b></p>
-                    <p class="small mb-3">Amount: <b>Rs. <span id="markPaidAmount"></span></b> <span class="text-muted">(editable — partial payments allowed)</span></p>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">Amount (Rs)</label>
-                        <input type="number" step="0.01" min="0.01" class="form-control form-control-sm"
-                               name="amount" id="markPaidAmountInput">
-                        <label class="form-label small fw-bold mt-2">How was it paid?</label>
-                        <select class="form-select form-select-sm" name="payment_method">
-                            <option value="Cash">Cash</option>
-                            <option value="Bank">Bank transfer</option>
-                            <option value="Cheque">Cheque</option>
-                        </select>
+                <div class="modal-body pr-form">
+                    <div class="pr-who-line mb-3"><span id="markPaidTeacher"></span>
+                        <small>Still to pay: Rs. <span id="markPaidAmount"></span></small></div>
+
+                    <label class="pr-q" for="markPaidAmountInput">How much are you paying now? <small>(Rs. &mdash; you can pay part of it)</small></label>
+                    <input type="number" step="0.01" min="0.01" class="form-control pr-amount" name="amount" id="markPaidAmountInput">
+                    <div class="pr-quick"><button type="button" id="markPaidFull">Pay the full amount</button></div>
+
+                    <span class="pr-q mt-3">How did you pay?</span>
+                    <div class="pr-pay" role="radiogroup">
+                        <span class="flex-fill"><input type="radio" name="payment_method" id="pm_cash" value="Cash" checked><label for="pm_cash">Cash</label></span>
+                        <span class="flex-fill"><input type="radio" name="payment_method" id="pm_bank" value="Bank"><label for="pm_bank">Bank</label></span>
+                        <span class="flex-fill"><input type="radio" name="payment_method" id="pm_cheque" value="Cheque"><label for="pm_cheque">Cheque</label></span>
                     </div>
-                    <div class="mb-1">
-                        <label class="form-label small fw-bold">Date paid</label>
-                        <input type="date" class="form-control form-control-sm" name="payment_date"
-                               value="{{ today.strftime('%Y-%m-%d') }}">
+
+                    <label class="pr-q mt-3" for="markPaidDate">On which day?</label>
+                    <input type="date" class="form-control" name="payment_date" id="markPaidDate" value="{{ today.strftime('%Y-%m-%d') }}">
+                    <div class="pr-quick">
+                        <button type="button" data-quick-date="0">Today</button>
+                        <button type="button" data-quick-date="-1">Yesterday</button>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                    <button class="btn btn-success btn-sm"><i class="fas fa-check me-1"></i>Yes, Mark as Paid</button>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-success"><i class="fas fa-check me-1"></i>Yes, Mark as Paid</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
+<!-- Void window: asks the reason in a proper box (the payment stays in history) -->
+<div class="modal fade" id="voidSalaryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-danger"><i class="fas fa-ban me-2"></i>Cancel this salary payment?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body pr-form">
+                <p class="mb-2">Use this when a payment was written by mistake. The latest payment for this teacher is cancelled, the money goes back to <i>still to pay</i>, and it stays in the history.</p>
+                <p class="fw-bold mb-3" data-void-summary></p>
+                <label class="pr-q" for="voidSalaryReason">Reason <small>(required)</small></label>
+                <input type="text" class="form-control" id="voidSalaryReason" maxlength="255" placeholder="Write a short reason">
+                <div class="pr-quick">
+                    <button type="button" data-reason="Entered by mistake">Entered by mistake</button>
+                    <button type="button" data-reason="Wrong amount">Wrong amount</button>
+                    <button type="button" data-reason="Entered twice">Entered twice</button>
+                </div>
+                <div class="text-danger small mt-2 d-none" data-void-error>Please write a reason first.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">No, keep it</button>
+                <button type="button" class="btn btn-danger" data-void-confirm><i class="fas fa-ban me-1"></i>Void payment</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    var rows = document.querySelectorAll('[data-net-row]');
+    var cards = Array.prototype.slice.call(document.querySelectorAll('[data-net-row]'));
     var tickedTotal = document.getElementById('ticked-total');
 
     function fmt(n) {
         return n.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
     }
 
-    // Total of rows that are currently ticked (and not locked).
+    // Total of cards that are currently ticked (and not locked).
     function updateTickedTotal() {
         if (!tickedTotal) return;
         var sum = 0;
-        rows.forEach(function (row) {
-            var box = row.querySelector('.include-box');
-            var cell = row.querySelector('.net-cell');
+        cards.forEach(function (card) {
+            var box = card.querySelector('.include-box');
+            var cell = card.querySelector('.net-cell');
             if (box && box.checked && cell) {
                 sum += parseFloat(cell.textContent.replace(/,/g, '')) || 0;
             }
@@ -414,12 +669,12 @@ document.addEventListener('DOMContentLoaded', function () {
         tickedTotal.textContent = fmt(sum);
     }
 
-    // Live take-home recalculation per row.
-    rows.forEach(function (row) {
-        var baseInput = row.querySelector('[name^="base_"]');
-        var bonusInput = row.querySelector('[name^="bonus_"]');
-        var dedInput = row.querySelector('[name^="deductions_"]');
-        var netCell = row.querySelector('.net-cell');
+    // Live take-home recalculation per card.
+    cards.forEach(function (card) {
+        var baseInput = card.querySelector('[name^="base_"]');
+        var bonusInput = card.querySelector('[name^="bonus_"]');
+        var dedInput = card.querySelector('[name^="deductions_"]');
+        var netCell = card.querySelector('.net-cell');
         if (!baseInput || !netCell) return;
         function recalc() {
             var base = parseFloat(baseInput.value) || 0;
@@ -431,7 +686,7 @@ document.addEventListener('DOMContentLoaded', function () {
         [baseInput, bonusInput, dedInput].forEach(function (input) {
             if (input) input.addEventListener('input', recalc);
         });
-        var box = row.querySelector('.include-box');
+        var box = card.querySelector('.include-box');
         if (box) box.addEventListener('change', updateTickedTotal);
         recalc();
     });
@@ -447,7 +702,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // Tick / untick every row at once.
+    // Tick / untick every card at once.
     var selectAll = document.getElementById('selectAllRows');
     if (selectAll) {
         selectAll.addEventListener('change', function () {
@@ -458,39 +713,129 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Mark-paid modal fill.
+    // ---- Find a teacher: instant search + state chips ---- //
+    var search = document.getElementById('prSearch');
+    var shown = document.getElementById('prShown');
+    var noMatch = document.getElementById('prNoMatch');
+    var chips = Array.prototype.slice.call(document.querySelectorAll('.pr-chip'));
+    var state = 'all';
+    function applyFind() {
+        var term = (search ? search.value : '').trim().toLowerCase();
+        var count = 0;
+        cards.forEach(function (card) {
+            var ok = (state === 'all' || card.getAttribute('data-status') === state) &&
+                     (!term || (card.getAttribute('data-search') || '').indexOf(term) !== -1);
+            card.hidden = !ok;
+            if (ok) count++;
+        });
+        if (shown) shown.textContent = count;
+        if (noMatch) noMatch.style.display = count ? 'none' : 'block';
+    }
+    if (search) search.addEventListener('input', applyFind);
+    chips.forEach(function (chip) {
+        chip.addEventListener('click', function () {
+            state = chip.getAttribute('data-filter');
+            chips.forEach(function (c) { c.setAttribute('aria-pressed', c === chip ? 'true' : 'false'); });
+            applyFind();
+        });
+    });
+    var clearFind = document.getElementById('prClearFind');
+    if (clearFind) clearFind.addEventListener('click', function () {
+        if (search) search.value = '';
+        var all = document.querySelector('.pr-chip[data-filter="all"]');
+        if (all) all.click(); else applyFind();
+    });
+
+    // ---- Cards / List, remembered in this browser ---- //
+    var body = document.getElementById('prBody');
+    var KEY = 'pr-payroll-view';
+    function setMode(mode) {
+        if (!body) return;
+        body.className = 'pr-mode-' + mode;
+        document.querySelectorAll('[data-mode]').forEach(function (b) {
+            b.setAttribute('aria-pressed', b.getAttribute('data-mode') === mode ? 'true' : 'false');
+        });
+    }
+    document.querySelectorAll('[data-mode]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            var mode = b.getAttribute('data-mode');
+            setMode(mode);
+            try { localStorage.setItem(KEY, mode); } catch (e) {}
+        });
+    });
+    var savedMode = null;
+    try { savedMode = localStorage.getItem(KEY); } catch (e) {}
+    if (savedMode === 'list' || savedMode === 'cards') setMode(savedMode);
+
+    // ---- Pay window ---- //
+    function isoDay(offset) {
+        var d = new Date(); d.setDate(d.getDate() + offset);
+        return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    }
     var modal = document.getElementById('markPaidModal');
     if (modal) {
+        var fullAmount = '';
         modal.addEventListener('show.bs.modal', function (event) {
             var btn = event.relatedTarget;
             if (!btn) return;
+            fullAmount = btn.getAttribute('data-amount') || '';
             modal.querySelector('form').action = btn.getAttribute('data-action');
             document.getElementById('markPaidTeacher').textContent = btn.getAttribute('data-teacher') || '';
-            document.getElementById('markPaidAmount').textContent = btn.getAttribute('data-amount') || '';
-            var amountInput = document.getElementById('markPaidAmountInput');
-            amountInput.value = btn.getAttribute('data-amount') || '';
+            document.getElementById('markPaidAmount').textContent = Number(fullAmount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('markPaidAmountInput').value = fullAmount;
+            document.getElementById('pm_cash').checked = true;
+            document.getElementById('markPaidDate').value = isoDay(0);
+        });
+        document.getElementById('markPaidFull').addEventListener('click', function () {
+            document.getElementById('markPaidAmountInput').value = fullAmount;
+        });
+        modal.querySelectorAll('[data-quick-date]').forEach(function (b) {
+            b.addEventListener('click', function () {
+                document.getElementById('markPaidDate').value = isoDay(parseInt(b.getAttribute('data-quick-date'), 10));
+            });
         });
     }
 
-    // Void a salary payment: ask for the mandatory reason, post the latest payment.
-    document.querySelectorAll('.void-salary-btn').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var reason = window.prompt('Reason for voiding this salary payment (required):', '');
-            if (reason === null || !reason.trim()) return;
-            var ids = (btn.getAttribute('data-payments') || '').split(',').filter(Boolean);
-            if (!ids.length) return;
+    // ---- Void window: reason in a proper box, then post the latest payment ---- //
+    var voidModalEl = document.getElementById('voidSalaryModal');
+    if (voidModalEl) {
+        var reasonInput = document.getElementById('voidSalaryReason');
+        var errorLine = voidModalEl.querySelector('[data-void-error]');
+        var summary = voidModalEl.querySelector('[data-void-summary]');
+        var paymentId = null;
+        document.querySelectorAll('.void-salary-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var ids = (btn.getAttribute('data-payments') || '').split(',').filter(Boolean);
+                if (!ids.length) return;
+                paymentId = ids[ids.length - 1];
+                summary.textContent = btn.getAttribute('data-teacher') || '';
+                reasonInput.value = '';
+                errorLine.classList.add('d-none');
+                bootstrap.Modal.getOrCreateInstance(voidModalEl).show();
+            });
+        });
+        voidModalEl.querySelectorAll('[data-reason]').forEach(function (b) {
+            b.addEventListener('click', function () {
+                reasonInput.value = b.getAttribute('data-reason');
+                errorLine.classList.add('d-none');
+            });
+        });
+        voidModalEl.addEventListener('shown.bs.modal', function () { reasonInput.focus(); });
+        voidModalEl.querySelector('[data-void-confirm]').addEventListener('click', function () {
+            var reason = reasonInput.value.trim();
+            if (!reason || !paymentId) { errorLine.classList.remove('d-none'); reasonInput.focus(); return; }
             var form = document.createElement('form');
             form.method = 'POST';
-            form.action = '/payroll/payment/' + ids[ids.length - 1] + '/void';
+            form.action = '/payroll/payment/' + paymentId + '/void';
             var input = document.createElement('input');
             input.type = 'hidden';
             input.name = 'void_reason';
-            input.value = reason.trim();
+            input.value = reason;
             form.appendChild(input);
             document.body.appendChild(form);
             form.submit();
         });
-    });
+    }
 });
 </script>
 

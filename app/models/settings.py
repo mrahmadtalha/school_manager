@@ -26,6 +26,13 @@ class SchoolSettings(db.Model):
     school_start_time = db.Column(db.String(10), default='08:30')
     school_end_time   = db.Column(db.String(10), default='15:00')
     attendance_grace_minutes = db.Column(db.Integer, default=0)
+    # Attendance policy (per school).
+    # True  -> a check-in after the cutoff is shown as Late (default)
+    # False -> it stays Present (the arrival time is still saved)
+    late_after_cutoff = db.Column(db.Boolean, default=True)
+    # True  -> attendance % counts Present + Late as attended (default)
+    # False -> only Present counts
+    late_counts_as_present = db.Column(db.Boolean, default=True)
     weekend_off = db.Column(db.Boolean, default=True)
     saturday_off = db.Column(db.Boolean, default=True)
     sunday_off = db.Column(db.Boolean, default=True)

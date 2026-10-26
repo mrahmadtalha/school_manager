@@ -10,8 +10,9 @@ ROLE_TEACHER = 'teacher'
 ROLE_PARENT = 'parent'
 ROLE_OWNER = 'owner'
 ROLE_ACCOUNTANT = 'accountant'
+ROLE_GUARD = 'guard'
 
-ROLES = (ROLE_ADMIN, ROLE_TEACHER, ROLE_PARENT, ROLE_OWNER, ROLE_ACCOUNTANT)
+ROLES = (ROLE_ADMIN, ROLE_TEACHER, ROLE_PARENT, ROLE_OWNER, ROLE_ACCOUNTANT, ROLE_GUARD)
 
 ROLE_LABELS = {
     ROLE_ADMIN: 'Administrator',
@@ -19,6 +20,7 @@ ROLE_LABELS = {
     ROLE_PARENT: 'Parent / Guardian',
     ROLE_OWNER: 'Principal / Owner',
     ROLE_ACCOUNTANT: 'Accountant',
+    ROLE_GUARD: 'Gate Guard',
 }
 
 

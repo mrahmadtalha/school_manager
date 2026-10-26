@@ -3,16 +3,169 @@
 {% from "_photo_macro.html" import photo_field, avatar, photo_script %}
 {% block content %}
 <style>
-    .teacher-name-link { color: inherit; text-decoration: none; }
-    .teacher-name-link:hover { color: #1d4ed8; text-decoration: underline; }
+    /* ------------------------------------------------------------------
+       Teacher directory — "staff room" look.
+       Same family as the student page (.sd-), but each teacher is a card
+       with a colour edge for their role and a live dot for today's
+       attendance.  Colours follow the school's brand (--bs-primary-rgb).
+       Scoped under .tm- so nothing leaks.
+       ------------------------------------------------------------------ */
+    .tm-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0.25rem 0 1.1rem; }
+    .tm-head h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; margin: 0; line-height: 1.1; }
+    .tm-head p { margin: 0.35rem 0 0; color: #64748b; font-size: 0.92rem; }
+    .tm-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .tm-tools .btn { box-shadow: none; }
+    .tm-tools .btn-outline-secondary { background: #fff; }
+    .tm-tools .dropdown-menu { border-radius: 14px; border-color: #e2e8f0; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12); padding: 0.4rem; }
+    .tm-tools .dropdown-item { border-radius: 9px; font-size: 0.9rem; padding: 0.45rem 0.7rem; }
+
+    /* role colours: one hue per group, used by the card edge, the mix bar and chips */
+    .tm-g-lead   { --tm-c: #7c3aed; --tm-soft: #f3edff; }
+    .tm-g-senior { --tm-c: #0d9488; --tm-soft: #e6f7f5; }
+    .tm-g-teach  { --tm-c: rgb(var(--bs-primary-rgb)); --tm-soft: rgba(var(--bs-primary-rgb), 0.09); }
+    .tm-g-admin  { --tm-c: #d97706; --tm-soft: #fff4de; }
+    .tm-g-other  { --tm-c: #94a3b8; --tm-soft: #f1f5f9; }
+
+    /* summary band */
+    .tm-band { display: grid; grid-template-columns: minmax(7rem, 0.55fr) minmax(14rem, 1.4fr) minmax(13rem, 1.2fr) minmax(12rem, 1fr); background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .tm-stat { padding: 0.85rem 1.2rem; display: flex; flex-direction: column; justify-content: center; gap: 0.2rem; min-width: 0; color: inherit; text-decoration: none; }
+    .tm-stat + .tm-stat { border-left: 1px solid #eef2f7; }
+    .tm-num { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .tm-num small { font-size: 0.95rem; font-weight: 700; color: #94a3b8; letter-spacing: 0; }
+    .tm-lab { font-size: 0.78rem; color: #64748b; }
+    .tm-bar { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: #eef2f7; margin: 0.35rem 0 0.3rem; gap: 2px; }
+    .tm-bar i { display: block; height: 100%; min-width: 4px; background: var(--tm-c); transform-origin: left center; animation: tm-grow 0.7s cubic-bezier(.2, .7, .2, 1) both; }
+    .tm-bar i.tm-st-present { background: #16a34a; }
+    .tm-bar i.tm-st-late { background: #f59e0b; }
+    .tm-bar i.tm-st-leave { background: #3b82f6; }
+    .tm-bar i.tm-st-absent { background: #ef4444; }
+    .tm-bar i.tm-st-none { background: #cbd5e1; }
+    .tm-legend { display: flex; flex-wrap: wrap; gap: 0.2rem 0.85rem; font-size: 0.8rem; color: #475569; font-variant-numeric: tabular-nums; }
+    .tm-legend b { color: #0f172a; }
+    .tm-legend .dot { display: inline-block; width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; margin-right: 0.3rem; vertical-align: middle; box-shadow: none; background: var(--tm-c); }
+    .tm-legend .dot.tm-st-present { background: #16a34a; }
+    .tm-legend .dot.tm-st-late { background: #f59e0b; }
+    .tm-legend .dot.tm-st-leave { background: #3b82f6; }
+    .tm-legend .dot.tm-st-absent { background: #ef4444; }
+    .tm-legend .dot.tm-st-none { background: #cbd5e1; }
+    .tm-gap { border-left: 4px solid #f59e0b !important; background: #fffbf3; }
+    .tm-gap .tm-num { color: #92400e; }
+    .tm-gap .tm-lab b { color: #92400e; }
+    a.tm-stat:hover { background: #f8fafc; color: inherit; }
+    a.tm-stat.tm-gap:hover { background: #fff4de; }
+    @keyframes tm-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+    /* filters */
+    .tm-filters { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.7rem; margin-bottom: 0.9rem; }
+    .tm-filters form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
+    .tm-search { position: relative; flex: 1 1 18rem; min-width: 14rem; }
+    .tm-search i { position: absolute; left: 0.95rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+    .tm-search input { padding-left: 2.5rem; height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background: #f8fafc; }
+    .tm-search input:focus { background: #fff; }
+    .tm-filters .form-select { height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background-color: #f8fafc; width: auto; min-width: 9.5rem; max-width: 14rem; }
+    .tm-seg { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; }
+    .tm-seg input { position: absolute; opacity: 0; pointer-events: none; }
+    .tm-seg label, .tm-seg button { margin: 0; padding: 0.4rem 0.8rem; border: 0; background: transparent; border-radius: 9px; font-size: 0.85rem; font-weight: 600; color: #475569; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; }
+    .tm-seg input:checked + label, .tm-seg button[aria-pressed="true"] { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+    .tm-seg input:focus-visible + label, .tm-seg button:focus-visible { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 1px; }
+    .tm-filters .btn { box-shadow: none; height: 2.7rem; padding-top: 0; padding-bottom: 0; display: inline-flex; align-items: center; }
+
+    /* count line shared by both views */
+    .tm-count { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; padding: 0.1rem 0.1rem 0.7rem; font-size: 0.86rem; color: #64748b; }
+    .tm-count strong { color: #0f172a; }
+
+    /* ---- cards ---- */
+    .tm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); gap: 0.9rem; }
+    .tm-card { position: relative; display: flex; flex-direction: column; gap: 0.7rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 1rem 1rem 0.8rem 1.25rem; overflow: hidden; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+    .tm-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--tm-c); }
+    .tm-card[hidden] { display: none; }
+    .tm-card:hover, .tm-card:focus-within { border-color: var(--tm-c); box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08); }
+    .tm-card.is-archived { background: #f8fafc; }
+    .tm-card.is-archived .tm-who, .tm-card.is-archived .tm-qual, .tm-card.is-archived .tm-chips { opacity: 0.6; }
+    .tm-top { display: flex; align-items: center; gap: 0.8rem; min-width: 0; }
+    .tm-photo { position: relative; flex: 0 0 auto; line-height: 0; }
+    .tm-dot { position: absolute; right: -2px; bottom: -2px; width: 15px; height: 15px; border-radius: 50%; border: 3px solid #fff; background: #cbd5e1; }
+    .tm-dot.tm-st-present { background: #16a34a; }
+    .tm-dot.tm-st-late { background: #f59e0b; }
+    .tm-dot.tm-st-leave { background: #3b82f6; }
+    .tm-dot.tm-st-absent { background: #ef4444; }
+    .tm-who { min-width: 0; }
+    .tm-name { display: block; font-weight: 800; font-size: 1.02rem; letter-spacing: -0.01em; color: #0f172a; text-decoration: none; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tm-name::after { content: ""; position: absolute; inset: 0; z-index: 1; }   /* the whole card opens the profile */
+    .tm-name:hover, .tm-name:focus-visible { color: var(--tm-c); }
+    .tm-name:focus-visible { outline: none; }
+    .tm-card:has(.tm-name:focus-visible) { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 2px; }
+    .tm-role { display: flex; align-items: center; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.3rem; }
+    .tm-pill { display: inline-block; padding: 0.08rem 0.55rem; border-radius: 99px; background: var(--tm-soft); color: #334155; font-size: 0.74rem; font-weight: 700; white-space: nowrap; }
+    .tm-id { font-size: 0.76rem; font-weight: 700; color: #64748b; font-variant-numeric: tabular-nums; }
+    .tm-qual { margin: 0; font-size: 0.86rem; color: #475569; line-height: 1.35; }
+    .tm-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; min-height: 1.5rem; }
+    .tm-chip { display: inline-block; padding: 0.12rem 0.6rem; border-radius: 99px; background: #f1f5f9; border: 1px solid #e2e8f0; color: #334155; font-size: 0.76rem; font-weight: 600; white-space: nowrap; }
+    .tm-chip-sub { background: #fff; color: #64748b; font-weight: 500; }
+    .tm-none { font-size: 0.8rem; color: #94a3b8; }
+    .tm-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding-top: 0.65rem; margin-top: auto; border-top: 1px dashed #e2e8f0; }
+    .tm-pay { font-weight: 800; font-size: 0.95rem; color: #0f172a; font-variant-numeric: tabular-nums; }
+    .tm-pay small { font-weight: 600; color: #94a3b8; }
+    .tm-meta { display: block; font-size: 0.74rem; color: #64748b; margin-top: 0.1rem; }
+    .tm-acts { position: relative; z-index: 2; display: inline-flex; gap: 0.3rem; }   /* above the stretched name link */
+
+    /* ---- table ---- */
+    .tm-panel { border: 1px solid #e2e8f0 !important; box-shadow: none !important; }
+    .tm-panel:hover { transform: none; }
+    .tm-panel.table-panel .table thead th { background: #f8fafc; color: #64748b; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.01em; text-transform: none; border-bottom: 1px solid #e2e8f0; }
+    .tm-panel.table-panel .table > :not(caption) > * > * { padding: 0.6rem 0.75rem; border-bottom-color: #f1f5f9; }
+    .tm-panel .teacher-row { cursor: pointer; }
+    .tm-panel .teacher-row:hover > td:first-child { box-shadow: inset 3px 0 0 rgb(var(--bs-primary-rgb)), inset 0 0 0 9999px var(--bs-table-bg-state, transparent); }
+    .tm-panel .teacher-row:hover > * { --bs-table-bg-state: rgba(var(--bs-primary-rgb), 0.045); }
+    /* DataTables keeps an invisible copy of the header inside the scroll body; keep it flat */
+    .tm-panel .dataTables_scrollBody thead th { padding-top: 0 !important; padding-bottom: 0 !important; border-bottom-width: 0 !important; line-height: 0; }
+    .tm-panel .dataTables_filter { display: none; }   /* the search box above drives the table */
+    .tm-idtag { display: inline-block; min-width: 2.6rem; text-align: center; padding: 0.12rem 0.5rem; border-radius: 8px; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); font-weight: 800; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+    .tm-name-link { color: #0f172a; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem; }
+    .tm-name-link::after { content: "\203A"; font-size: 1.2rem; line-height: 1; opacity: 0; transform: translateX(-4px); transition: opacity 0.15s ease, transform 0.15s ease; color: rgb(var(--bs-primary-rgb)); }
+    .teacher-row:hover .tm-name-link, .tm-name-link:focus-visible { color: rgb(var(--bs-primary-rgb)); }
+    .teacher-row:hover .tm-name-link::after, .tm-name-link:focus-visible::after { opacity: 1; transform: none; }
+    html[lang="ur"] .tm-name-link::after { content: "\2039"; }
+    .tm-act { width: 2.1rem; height: 2.1rem; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid #e2e8f0; background: #fff; color: #475569; font-size: 0.85rem; text-decoration: none; cursor: pointer; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+    .tm-act:hover { background: rgb(var(--bs-primary-rgb)); border-color: rgb(var(--bs-primary-rgb)); color: #fff; }
+    .tm-act.tm-act-archive:hover { background: #b45309; border-color: #b45309; }
+    .tm-act.tm-act-restore:hover { background: #15803d; border-color: #15803d; }
+    .tm-act:focus-visible { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 2px; }
+
+    /* ---- one view at a time; the saved choice is applied before first paint ---- */
+    .tm-mode-cards .tm-tablewrap { display: none; }
+    .tm-mode-table .tm-cardswrap { display: none; }
+
+    .tm-empty { text-align: center; padding: 3.5rem 1rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; }
+    .tm-empty .tm-empty-icon { width: 76px; height: 76px; border-radius: 24px; margin: 0 auto 1rem; display: flex; align-items: center; justify-content: center; font-size: 1.9rem; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); }
+    .tm-empty p { font-weight: 700; color: #334155; margin-bottom: 1rem; }
+
+    @media (max-width: 991.98px) {
+        .tm-band { grid-template-columns: 1fr 1fr; }
+        .tm-stat:nth-child(3) { border-left: 0; border-top: 1px solid #eef2f7; }
+        .tm-stat:nth-child(4) { border-top: 1px solid #eef2f7; }
+    }
+    @media (max-width: 575.98px) {
+        .tm-band { grid-template-columns: 1fr; }
+        .tm-stat + .tm-stat { border-left: 0; border-top: 1px solid #eef2f7; }
+        .tm-stat.tm-gap { border-left: 4px solid #f59e0b !important; }
+        .tm-search { flex-basis: 100%; }
+        .tm-seg { width: 100%; }
+        .tm-seg label, .tm-seg button { flex: 1; text-align: center; }
+        .tm-grid { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .tm-bar i { animation: none; }
+        .tm-card, .tm-name-link::after, .tm-act, .tm-seg label, .tm-seg button { transition: none; }
+    }
 </style>
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+
+<div class="tm-head">
     <div>
-        <p class="eyebrow mb-2">Faculty records</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-chalkboard-teacher text-primary me-2"></i>Teacher Management</h1>
-        <p class="text-muted small mb-0">Manage teaching staff, assignments, and salary information in one place.</p>
+        <h1>Teacher Management</h1>
+        <p>Manage teaching staff, assignments, and salary information in one place.</p>
     </div>
-    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
+    <div class="tm-tools btn-toolbar">
         {% set export_urls = {
             'pdf': {'view': url_for('main.export_teachers_pdf'),
                     'all': url_for('main.export_teachers_pdf', cols='all')},
@@ -25,7 +178,7 @@
             <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
                 <i class="fas fa-download me-1"></i> Export
             </button>
-            <ul class="dropdown-menu">
+            <ul class="dropdown-menu dropdown-menu-end">
                 <li><h6 class="dropdown-header">Current view columns</h6></li>
                 <li><a class="dropdown-item" data-export-view="pdf" href="{{ export_urls['pdf']['view'] }}"><i class="fas fa-file-pdf text-danger me-2"></i>PDF — columns on screen</a></li>
                 <li><a class="dropdown-item" data-export-view="excel" href="{{ export_urls['excel']['view'] }}"><i class="fas fa-file-excel text-success me-2"></i>Excel — columns on screen</a></li>
@@ -40,175 +193,308 @@
         {% with table_id = 'teacherTable', export_urls = export_urls %}
         {% include '_column_picker.html' %}
         {% endwith %}
-        {% if has_feature('data_import') %}
-        <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#importModal">
-            <i class="fas fa-file-upload me-1"></i> Import Excel
-        </button>
-        {% endif %}
-        <a href="{{ url_for('main.archived_teachers_list') }}" class="btn btn-outline-warning btn-sm">
-            <i class="fas fa-archive me-1"></i> Archive Bin
-        </a>
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                <i class="fas fa-sliders me-1"></i> Manage
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                {% if has_feature('data_import') %}
+                <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#importModal"><i class="fas fa-file-upload text-success me-2"></i>Import Excel</button></li>
+                {% endif %}
+                <li><a class="dropdown-item" href="{{ url_for('main.archived_teachers_list') }}"><i class="fas fa-archive text-warning me-2"></i>Archive Bin</a></li>
+            </ul>
+        </div>
         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTeacherModal">
             <i class="fas fa-plus me-1"></i> Add Teacher
         </button>
     </div>
 </div>
 
-<!-- Search bar -->
-<div class="card border-0 analytics-panel shadow-sm mb-4">
-    <div class="card-body py-2">
-        <form method="GET" action="{{ url_for('main.teachers_list') }}" class="row g-2 align-items-center">
-            <div class="col-md-4">
-                <div class="input-group">
-                    <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
-                    <input type="text" class="form-control" name="search" id="searchInput"
-                           value="{{ search }}" placeholder="Name, ID, qualification, class…" autocomplete="off">
-                    {% if search %}
-                    <a href="{{ url_for('main.teachers_list') }}" class="btn btn-outline-secondary">
-                        <i class="fas fa-times"></i>
-                    </a>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="col-6 col-md-2">
-                <select class="form-select" name="designation" title="Filter by designation">
-                    <option value="">All Designations</option>
-                    {% for d in designation_options %}
-                    <option value="{{ d }}" {% if filters.designation == d %}selected{% endif %}>{{ d }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-6 col-md-2">
-                <select class="form-select" name="gender" title="Filter by gender">
-                    <option value="">All Genders</option>
-                    {% for g in ['Male', 'Female', 'Other'] %}
-                    <option value="{{ g }}" {% if filters.gender == g %}selected{% endif %}>{{ g }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-6 col-md-2">
-                <select class="form-select" name="class_name" title="Filter by class">
-                    <option value="">All Classes</option>
-                    {% for c in classes %}
-                    <option value="{{ c.name }}" {% if filters.class_name == c.name %}selected{% endif %}>{{ c.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-6 col-md-2">
-                <select class="form-select" name="status" title="Filter by status">
-                    <option value="active" {% if filters.status == 'active' %}selected{% endif %}>Active</option>
-                    <option value="archived" {% if filters.status == 'archived' %}selected{% endif %}>Archived</option>
-                    <option value="all" {% if filters.status == 'all' %}selected{% endif %}>All</option>
-                </select>
-            </div>
-            <div class="col-auto">
-                <button type="submit" class="btn btn-dark btn-sm px-3">
-                    <i class="fas fa-filter me-1"></i> Filter
-                </button>
-                {% if filters.designation or filters.gender or filters.class_name or search or filters.status != 'active' %}
-                <a href="{{ url_for('main.teachers_list') }}" class="btn btn-outline-secondary btn-sm">Reset</a>
-                {% endif %}
-            </div>
-            <div class="col-auto ms-auto text-muted small">
-                Showing <strong id="visibleCount">{{ teachers | length }}</strong> teacher(s)
-                {% if search %} for "<strong>{{ search }}</strong>"{% endif %}
-            </div>
-        </form>
+{# Colour / wording lookups shared by the cards and the summary band. #}
+{% set st_class = {'Present': 'tm-st-present', 'Late': 'tm-st-late', 'Leave': 'tm-st-leave', 'Absent': 'tm-st-absent'} %}
+{% set st_text = {'Present': 'Present today', 'Late': 'Late today', 'Leave': 'On leave today', 'Absent': 'Absent today'} %}
+{% set n_total = teachers | length %}
+{% set today = overview.today %}
+{% set cover = overview.coverage %}
+
+{% if n_total %}
+<section class="tm-band no-print" aria-label="Summary">
+    <div class="tm-stat">
+        <span class="tm-num">{{ n_total }}</span>
+        <span class="tm-lab">On this list</span>
+    </div>
+    <div class="tm-stat">
+        <div class="tm-bar" role="img" aria-label="Staff by role">
+            {% for g in overview.mix %}<i class="tm-g-{{ g.key }}" style="width: {{ (g.count * 100 / n_total) | round(1) }}%"></i>{% endfor %}
+        </div>
+        <div class="tm-legend">
+            {% for g in overview.mix %}<span><span class="dot tm-g-{{ g.key }}"></span>{{ g.label }} <b>{{ g.count }}</b></span>{% endfor %}
+        </div>
+    </div>
+    {% if today.expected and today.marked %}
+    <a class="tm-stat" href="{{ url_for('main.teacher_attendance') }}" title="Open staff attendance">
+        <span class="tm-num">{{ today.here }}<small>/{{ today.expected }}</small></span>
+        <span class="tm-lab">In school today</span>
+        <div class="tm-bar" role="img" aria-label="Staff attendance today">
+            {% for state in ('Present', 'Late', 'Leave', 'Absent') %}{% if today[state] %}<i class="{{ st_class[state] }}" style="width: {{ (today[state] * 100 / today.expected) | round(1) }}%"></i>{% endif %}{% endfor %}
+            {% if today.not_marked %}<i class="tm-st-none" style="width: {{ (today.not_marked * 100 / today.expected) | round(1) }}%"></i>{% endif %}
+        </div>
+        <div class="tm-legend">
+            {% if today.Late %}<span><span class="dot tm-st-late"></span>Late <b>{{ today.Late }}</b></span>{% endif %}
+            {% if today.Leave %}<span><span class="dot tm-st-leave"></span>Leave <b>{{ today.Leave }}</b></span>{% endif %}
+            {% if today.Absent %}<span><span class="dot tm-st-absent"></span>Absent <b>{{ today.Absent }}</b></span>{% endif %}
+            {% if today.not_marked %}<span><span class="dot tm-st-none"></span>Not marked <b>{{ today.not_marked }}</b></span>{% endif %}
+        </div>
+    </a>
+    {% else %}
+    <a class="tm-stat" href="{{ url_for('main.teacher_attendance') }}" title="Open staff attendance">
+        <span class="tm-num">&mdash;</span>
+        <span class="tm-lab">Staff attendance is not marked yet today</span>
+    </a>
+    {% endif %}
+    <div class="tm-stat{% if cover.missing %} tm-gap{% endif %}">
+        {% if cover.total %}
+        <span class="tm-num">{{ cover.covered }}<small>/{{ cover.total }}</small></span>
+        <span class="tm-lab">Classes with a teacher</span>
+        {% if cover.missing %}
+        <span class="tm-lab">No teacher yet: <b>{{ cover.missing[:3] | join(', ') }}{% if cover.missing | length > 3 %} +{{ cover.missing | length - 3 }}{% endif %}</b></span>
+        {% endif %}
+        {% else %}
+        <span class="tm-num">&mdash;</span>
+        <span class="tm-lab">No classes created yet</span>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+
+<!-- Search & Filter Bar -->
+<div class="tm-filters no-print">
+    <form method="GET" action="{{ url_for('main.teachers_list') }}" id="filterForm">
+        <div class="tm-search">
+            <i class="fas fa-search"></i>
+            <input type="text" class="form-control" name="search" id="searchInput"
+                   value="{{ search }}" aria-label="Search"
+                   placeholder="Name, ID, qualification, class…" autocomplete="off">
+        </div>
+
+        <select class="form-select" name="designation" title="Filter by designation" onchange="this.form.submit()">
+            <option value="">All Designations</option>
+            {% for d in designation_options %}
+            <option value="{{ d }}" {% if filters.designation == d %}selected{% endif %}>{{ d }}</option>
+            {% endfor %}
+        </select>
+
+        <select class="form-select" name="gender" title="Filter by gender" onchange="this.form.submit()">
+            <option value="">All Genders</option>
+            {% for g in ['Male', 'Female', 'Other'] %}
+            <option value="{{ g }}" {% if filters.gender == g %}selected{% endif %}>{{ g }}</option>
+            {% endfor %}
+        </select>
+
+        <select class="form-select" name="class_name" title="Filter by class" onchange="this.form.submit()">
+            <option value="">All Classes</option>
+            {% for c in classes %}
+            <option value="{{ c.name }}" {% if filters.class_name == c.name %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
+
+        <div class="tm-seg" role="group" aria-label="Status">
+            {% for val, label in (('active', 'Active'), ('archived', 'Archived'), ('all', 'All')) %}
+            <input type="radio" name="status" id="statusOpt{{ loop.index }}" value="{{ val }}"
+                   {% if filters.status == val %}checked{% endif %} onchange="this.form.submit()">
+            <label for="statusOpt{{ loop.index }}">{{ label }}</label>
+            {% endfor %}
+        </div>
+
+        <button type="submit" class="btn btn-dark">
+            <i class="fas fa-filter me-1"></i> Filter
+        </button>
+        {% if filters.designation or filters.gender or filters.class_name or search or filters.status != 'active' %}
+        <a href="{{ url_for('main.teachers_list') }}" class="btn btn-outline-secondary" title="Clear filters" aria-label="Clear filters">
+            <i class="fas fa-times"></i>
+        </a>
+        {% endif %}
+
+    </form>
+</div>
+
+{% if teachers %}
+<div class="tm-count">
+    <span>
+        Showing <strong id="visibleCount">{{ teachers | length }}</strong> teacher(s)
+        {% if search %} for "<strong>{{ search }}</strong>"{% endif %}
+    </span>
+    <div class="tm-seg tm-view" role="group" aria-label="View">
+        <button type="button" data-tm-view="cards" aria-pressed="true"><i class="fas fa-table-cells-large me-1"></i>Cards</button>
+        <button type="button" data-tm-view="table" aria-pressed="false"><i class="fas fa-table-list me-1"></i>Table</button>
     </div>
 </div>
 
-<!-- Teachers Table -->
-<div class="card shadow-sm border-0 table-panel">
-    <div class="card-body p-0">
-        {% if teachers %}
-        <table class="table table-hover align-middle mb-0 datatable" id="teacherTable"
-               data-scroll-x="true" data-page-length="25">
-            <thead class="table-light">
-                <tr>
-                    {% for spec in teacher_field_specs %}
-                    <th class="py-3 {{ column_classes(spec) }}{% if spec.key in ('photo', 'teacher_id_str') %} ps-3{% endif %}"
-                        data-col="{{ spec.key }}"{% if spec.required %} title="Required field"{% endif %}>{{ spec.label }}{% if spec.required %} <span class="text-danger">*</span>{% endif %}</th>
-                    {% endfor %}
-                    <th class="text-end py-3 pe-3 {{ actions_col_class }}" data-col="actions">Actions</th>
-                </tr>
-            </thead>
-            <tbody id="teacherTableBody">
-                {% for teacher in teachers %}
-                <tr class="teacher-row"
-                    data-name="{{ teacher.teacher_name | lower }}"
-                    data-id="{{ teacher.teacher_id_str | lower }}"
-                    data-qual="{{ teacher.qualification | lower }}"
-                    data-class="{{ (teacher.assigned_class or '') | lower }}">
-                    <td class="ps-3" data-col="photo">{{ avatar('teacher', teacher, 36) }}</td>
-                    <td class="font-monospace fw-bold text-primary" data-col="teacher_id_str">{{ teacher.teacher_id_str }}</td>
-                    <td class="fw-bold text-dark" data-col="teacher_name">
-                        <a href="{{ url_for('main.teacher_profile', id=teacher.id) }}" class="teacher-name-link">{{ teacher.teacher_name }}</a>
-                        {% if not teacher.is_active %}<span class="badge bg-secondary ms-1">Archived</span>{% endif %}
-                    </td>
-                    <td class="text-muted" data-col="qualification">{{ teacher.qualification }}</td>
-                    {# Remaining fields render from the same spec list as the header. #}
-                    {% for spec in teacher_field_specs %}
-                    {% if spec.key not in ('photo', 'teacher_id_str', 'teacher_name', 'qualification') %}
-                    {% set cell_text = teacher_display_map.get(teacher.id, {}).get(spec.key, '—') %}
-                    <td data-col="{{ spec.key }}" class="{{ column_classes(spec) }}"
-                        {% if spec.truncate %}title="{{ cell_text }}"{% endif %}>
-                        {% if spec.key == 'monthly_salary' %}
-                            <span class="fw-bold text-success">
-                            {% if teacher.salary_type == 'hourly' %}
-                            Rs. {{ "{:,.0f}".format(teacher.hourly_rate or 0) }}<span class="text-muted fw-normal">/hr</span>
-                            {% else %}
-                            Rs. {{ "{:,.0f}".format(teacher.monthly_salary or teacher.salary or 0) }}
-                            {% endif %}
-                            </span>
-                        {% elif spec.key == 'assigned_classes' %}
-                            {% set tv = assignment_map.get(teacher.id) %}
-                            {% if tv and tv.classes %}
-                            <span class="badge bg-info text-dark">{{ tv.classes | length }} class{{ 'es' if tv.classes | length != 1 else '' }}</span>
-                            {% else %}<span class="text-muted small">&mdash;</span>{% endif %}
-                        {% elif spec.key == 'assigned_subjects' %}
-                            {% set tv = assignment_map.get(teacher.id) %}
-                            {% if tv and tv.subjects %}
-                            <span class="badge bg-light text-dark border">{{ tv.subjects | length }} subject{{ 's' if tv.subjects | length != 1 else '' }}</span>
-                            {% else %}<span class="text-muted small">&mdash;</span>{% endif %}
-                        {% elif spec.key == 'is_active' %}
-                            {% if teacher.is_active %}
-                            <span class="badge bg-success-subtle text-success-emphasis border">Active</span>
-                            {% else %}
-                            <span class="badge bg-secondary">Archived</span>
-                            {% endif %}
-                        {% elif spec.key == 'joining_date' %}
-                            <span class="text-muted small">{{ teacher.joining_date.strftime('%d %b %Y') if teacher.joining_date else '—' }}</span>
-                        {% else %}
-                            <span class="{{ 'col-inner' if spec.truncate else '' }}">{{ cell_text }}</span>
-                        {% endif %}
-                    </td>
-                    {% endif %}
-                    {% endfor %}
-                    <td class="text-end pe-3 {{ actions_col_class }}" data-col="actions">
+<div id="tmBody" class="tm-mode-cards">
+
+    <!-- Cards view -->
+    <div class="tm-cardswrap">
+        <div class="tm-grid" id="tmGrid">
+            {% for teacher in teachers %}
+            {% set view = assignment_map.get(teacher.id) or {'classes': [], 'subjects': []} %}
+            {% set grp = overview.group_of.get(teacher.id, 'other') %}
+            {% set st = overview.today_of.get(teacher.id) %}
+            {% set hourly = teacher.salary_type == 'hourly' %}
+            {% set blob = [teacher.teacher_name, teacher.teacher_id_str, teacher.qualification, teacher.designation, teacher.assigned_class, view.classes | join(' '), view.subjects | join(' '), teacher.contact_number, teacher.cnic] | select | join(' ') | lower %}
+            <article class="tm-card tm-g-{{ grp }}{% if not teacher.is_active %} is-archived{% endif %}"
+                     data-name="{{ teacher.teacher_name | lower }}" data-search="{{ blob }}">
+                <div class="tm-top">
+                    <div class="tm-photo">
+                        {{ avatar('teacher', teacher, 52) }}
                         {% if teacher.is_active %}
-                        <a class="btn btn-sm btn-outline-secondary me-1" href="{{ url_for('main.export_teacher_id_cards', teacher_id=teacher.id) }}" title="Download ID card">
-                            <i class="fas fa-id-card"></i>
-                        </a>
+                        {% set dot_text = st_text.get(st, 'Attendance not marked today') %}
+                        <span class="tm-dot {{ st_class.get(st, '') }}" role="img" title="{{ dot_text }}" aria-label="{{ dot_text }}"></span>
                         {% endif %}
-                        <button class="btn btn-sm btn-outline-primary me-1"
-                                data-bs-toggle="modal" data-bs-target="#editTeacher{{ teacher.id }}" title="Edit" aria-label="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
+                    </div>
+                    <div class="tm-who">
+                        <a class="tm-name" href="{{ url_for('main.teacher_profile', id=teacher.id) }}" title="{{ teacher.teacher_name }}">{{ teacher.teacher_name }}</a>
+                        <div class="tm-role">
+                            <span class="tm-pill">{{ teacher.designation or 'Not set' }}</span>
+                            <span class="tm-id">{{ teacher.teacher_id_str }}</span>
+                            {% if not teacher.is_active %}<span class="badge bg-secondary">Archived</span>{% endif %}
+                        </div>
+                    </div>
+                </div>
+                <p class="tm-qual">{{ teacher.qualification }}</p>
+                <div class="tm-chips">
+                    {% for c in view.classes[:3] %}<span class="tm-chip">{{ c }}</span>{% endfor %}
+                    {% if view.classes | length > 3 %}<span class="tm-chip" title="{{ view.classes[3:] | join(', ') }}">+{{ view.classes | length - 3 }}</span>{% endif %}
+                    {% for s in view.subjects[:2] %}<span class="tm-chip tm-chip-sub">{{ s }}</span>{% endfor %}
+                    {% if view.subjects | length > 2 %}<span class="tm-chip tm-chip-sub" title="{{ view.subjects[2:] | join(', ') }}">+{{ view.subjects | length - 2 }}</span>{% endif %}
+                    {% if not view.classes and not view.subjects %}<span class="tm-none">No classes assigned yet</span>{% endif %}
+                </div>
+                <div class="tm-foot">
+                    <div>
+                        <span class="tm-pay">
+                            {% if hourly %}Rs. {{ "{:,.0f}".format(teacher.hourly_rate or 0) }}<small>/hr</small>
+                            {% else %}Rs. {{ "{:,.0f}".format(teacher.monthly_salary or teacher.salary or 0) }}{% endif %}
+                        </span>
+                        {% if teacher.joining_date %}<span class="tm-meta">Since {{ teacher.joining_date.year }}</span>{% endif %}
+                    </div>
+                    <span class="tm-acts">
+                        {% if teacher.contact_number %}
+                        <a class="tm-act" href="tel:{{ teacher.contact_number }}" title="Call {{ teacher.contact_number }}" aria-label="Call {{ teacher.contact_number }}"><i class="fas fa-phone"></i></a>
+                        {% endif %}
                         {% if teacher.is_active %}
-                        <button class="btn btn-sm btn-outline-danger"
-                                data-bs-toggle="modal" data-bs-target="#deleteTeacher{{ teacher.id }}" title="Archive" aria-label="Archive">
-                            <i class="fas fa-trash"></i>
-                        </button>
+                        <a class="tm-act" href="{{ url_for('main.export_teacher_id_cards', teacher_id=teacher.id) }}" title="Download ID card" aria-label="Download ID card"><i class="fas fa-id-card"></i></a>
+                        {% endif %}
+                        <button type="button" class="tm-act" data-bs-toggle="modal" data-bs-target="#editTeacher{{ teacher.id }}" title="Edit" aria-label="Edit"><i class="fas fa-pen"></i></button>
+                        {% if teacher.is_active %}
+                        <button type="button" class="tm-act tm-act-archive" data-bs-toggle="modal" data-bs-target="#deleteTeacher{{ teacher.id }}" title="Archive" aria-label="Archive"><i class="fas fa-box-archive"></i></button>
                         {% else %}
                         <form action="{{ url_for('main.restore_teacher', id=teacher.id) }}" method="POST" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-outline-success" title="Restore">
-                                <i class="fas fa-undo me-1"></i> Restore
-                            </button>
+                            <button type="submit" class="tm-act tm-act-restore" title="Restore" aria-label="Restore"><i class="fas fa-rotate-left"></i></button>
                         </form>
                         {% endif %}
-                    </td>
-                </tr>
+                    </span>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+    </div>
 
+    <!-- Table view (every field, column picker, exports) -->
+    <div class="tm-tablewrap">
+    <div class="card border-0 table-panel tm-panel">
+        <div class="card-body p-0">
+            <table class="table table-hover align-middle mb-0 datatable" id="teacherTable"
+                   data-scroll-x="true" data-page-length="25" data-order="[]">
+                <thead>
+                    <tr>
+                        {% for spec in teacher_field_specs %}
+                        <th class="py-3 {{ column_classes(spec) }}{% if spec.key in ('photo', 'teacher_id_str') %} ps-3{% endif %}"
+                            data-col="{{ spec.key }}"{% if spec.required %} title="Required field"{% endif %}>{{ spec.label }}{% if spec.required %} <span class="text-danger">*</span>{% endif %}</th>
+                        {% endfor %}
+                        <th class="text-end py-3 pe-3 {{ actions_col_class }}" data-col="actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="teacherTableBody">
+                    {% for teacher in teachers %}{% filter collapse_ws %}
+                    {% set view = assignment_map.get(teacher.id) or {'classes': [], 'subjects': []} %}
+                    {% set blob = [teacher.teacher_name, teacher.teacher_id_str, teacher.qualification, teacher.designation, teacher.assigned_class, view.classes | join(' '), view.subjects | join(' '), teacher.contact_number, teacher.cnic] | select | join(' ') | lower %}
+                    <tr class="teacher-row"
+                        data-href="{{ url_for('main.teacher_profile', id=teacher.id) }}"
+                        data-name="{{ teacher.teacher_name | lower }}"
+                        data-id="{{ teacher.teacher_id_str | lower }}"
+                        data-qual="{{ teacher.qualification | lower }}"
+                        data-class="{{ (teacher.assigned_class or '') | lower }}"
+                        data-search="{{ blob }}">
+                        <td class="ps-3" data-col="photo">{{ avatar('teacher', teacher, 36) }}</td>
+                        <td data-col="teacher_id_str"><span class="tm-idtag">{{ teacher.teacher_id_str }}</span></td>
+                        <td data-col="teacher_name">
+                            <a href="{{ url_for('main.teacher_profile', id=teacher.id) }}" class="tm-name-link">{{ teacher.teacher_name }}</a>
+                            {% if not teacher.is_active %}<span class="badge bg-secondary ms-1">Archived</span>{% endif %}
+                        </td>
+                        <td class="text-muted" data-col="qualification">{{ teacher.qualification }}</td>
+                        {# Remaining fields render from the same spec list as the header. #}
+                        {% for spec in teacher_field_specs %}
+                        {% if spec.key not in ('photo', 'teacher_id_str', 'teacher_name', 'qualification') %}
+                        {% set cell_text = teacher_display_map.get(teacher.id, {}).get(spec.key, '—') %}
+                        <td data-col="{{ spec.key }}" class="{{ column_classes(spec) }}"
+                            {% if spec.truncate %}title="{{ cell_text }}"{% endif %}>
+                            {% if spec.key == 'monthly_salary' %}
+                                <span class="fw-bold text-success">
+                                {% if teacher.salary_type == 'hourly' %}
+                                Rs. {{ "{:,.0f}".format(teacher.hourly_rate or 0) }}<span class="text-muted fw-normal">/hr</span>
+                                {% else %}
+                                Rs. {{ "{:,.0f}".format(teacher.monthly_salary or teacher.salary or 0) }}
+                                {% endif %}
+                                </span>
+                            {% elif spec.key == 'assigned_classes' %}
+                                {% set tv = assignment_map.get(teacher.id) %}
+                                {% if tv and tv.classes %}
+                                <span class="badge bg-info text-dark">{{ tv.classes | length }} class{{ 'es' if tv.classes | length != 1 else '' }}</span>
+                                {% else %}<span class="text-muted small">&mdash;</span>{% endif %}
+                            {% elif spec.key == 'assigned_subjects' %}
+                                {% set tv = assignment_map.get(teacher.id) %}
+                                {% if tv and tv.subjects %}
+                                <span class="badge bg-light text-dark border">{{ tv.subjects | length }} subject{{ 's' if tv.subjects | length != 1 else '' }}</span>
+                                {% else %}<span class="text-muted small">&mdash;</span>{% endif %}
+                            {% elif spec.key == 'is_active' %}
+                                {% if teacher.is_active %}
+                                <span class="badge bg-success-subtle text-success-emphasis border">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Archived</span>
+                                {% endif %}
+                            {% elif spec.key == 'joining_date' %}
+                                <span class="text-muted small">{{ teacher.joining_date.strftime('%d %b %Y') if teacher.joining_date else '—' }}</span>
+                            {% else %}
+                                <span class="{{ 'col-inner' if spec.truncate else '' }}">{{ cell_text }}</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                        {% endfor %}
+                        <td class="text-end pe-3 {{ actions_col_class }}" data-col="actions">
+                            <span class="tm-acts">
+                                {% if teacher.is_active %}
+                                <a class="tm-act" href="{{ url_for('main.export_teacher_id_cards', teacher_id=teacher.id) }}" title="Download ID card" aria-label="Download ID card"><i class="fas fa-id-card"></i></a>
+                                {% endif %}
+                                <button type="button" class="tm-act" data-bs-toggle="modal" data-bs-target="#editTeacher{{ teacher.id }}" title="Edit" aria-label="Edit"><i class="fas fa-pen"></i></button>
+                                {% if teacher.is_active %}
+                                <button type="button" class="tm-act tm-act-archive" data-bs-toggle="modal" data-bs-target="#deleteTeacher{{ teacher.id }}" title="Archive" aria-label="Archive"><i class="fas fa-box-archive"></i></button>
+                                {% else %}
+                                <form action="{{ url_for('main.restore_teacher', id=teacher.id) }}" method="POST" class="d-inline">
+                                    <button type="submit" class="tm-act tm-act-restore" title="Restore" aria-label="Restore"><i class="fas fa-rotate-left"></i></button>
+                                </form>
+                                {% endif %}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfilter %}{% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    </div>
+</div>
+
+{# Edit / archive dialogs live outside the table so both views share them. #}
+{% for teacher in teachers %}
                 <!-- Edit Modal -->
                 <div class="modal fade" id="editTeacher{{ teacher.id }}" tabindex="-1" aria-hidden="true">
                     <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -369,20 +655,18 @@
                         </div>
                     </div>
                 </div>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <div class="text-center py-5">
-            <i class="fas fa-search fa-3x text-muted mb-3"></i>
-            <p class="text-muted fw-bold">No teachers found{% if search %} for "{{ search }}"{% endif %}.</p>
-            {% if search %}
-            <a href="{{ url_for('main.teachers_list') }}" class="btn btn-outline-secondary btn-sm">Clear Search</a>
-            {% endif %}
-        </div>
-        {% endif %}
-    </div>
+{% endfor %}
+{% else %}
+<div class="tm-empty">
+    <div class="tm-empty-icon"><i class="fas fa-chalkboard-user"></i></div>
+    <p>No teachers found{% if search %} for "{{ search }}"{% endif %}.</p>
+    {% if search or filters.designation or filters.gender or filters.class_name or filters.status != 'active' %}
+    <a href="{{ url_for('main.teachers_list') }}" class="btn btn-outline-secondary btn-sm">Clear Filters</a>
+    {% else %}
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTeacherModal"><i class="fas fa-plus me-1"></i> Add Teacher</button>
+    {% endif %}
 </div>
+{% endif %}
 
 <!-- Add Teacher Modal -->
 <div class="modal fade" id="addTeacherModal" tabindex="-1" aria-hidden="true">
@@ -566,26 +850,72 @@
 </div>
 
 <script>
-// Instant client-side search
-var searchInput = document.getElementById('searchInput');
-if (searchInput) {
-    searchInput.addEventListener('input', function () {
-        var term = this.value.toLowerCase().trim();
-        var rows = document.querySelectorAll('.teacher-row');
-        var visible = 0;
-        rows.forEach(function (row) {
-            var match = !term ||
-                row.dataset.name.includes(term) ||
-                row.dataset.id.includes(term) ||
-                row.dataset.qual.includes(term) ||
-                row.dataset.class.includes(term);
-            row.style.display = match ? '' : 'none';
-            if (match) visible++;
+(function () {
+    var body = document.getElementById('tmBody');
+    var input = document.getElementById('searchInput');
+    var KEY = 'tm-teachers-view';
+    var term = '';
+
+    function saved() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
+    function remember(mode) { try { localStorage.setItem(KEY, mode); } catch (e) {} }
+    function table() {
+        return (window.jQuery && jQuery.fn.dataTable && jQuery.fn.dataTable.isDataTable('#teacherTable'))
+            ? jQuery('#teacherTable').DataTable() : null;
+    }
+    function matches(blob) { return !term || (blob || '').indexOf(term) !== -1; }
+
+    // Cards or table. The choice is applied now, before the table is built,
+    // and remembered in this browser.
+    function setView(mode, persist) {
+        if (!body) return;
+        body.classList.toggle('tm-mode-table', mode === 'table');
+        body.classList.toggle('tm-mode-cards', mode !== 'table');
+        document.querySelectorAll('[data-tm-view]').forEach(function (button) {
+            button.setAttribute('aria-pressed', button.getAttribute('data-tm-view') === mode ? 'true' : 'false');
         });
-        var counter = document.getElementById('visibleCount');
-        if (counter) counter.textContent = visible;
+        if (persist) remember(mode);
+        var dt = table();
+        if (mode === 'table' && dt) dt.columns.adjust();   // it was hidden while it was built
+    }
+    setView(saved() === 'table' ? 'table' : 'cards', false);
+    document.querySelectorAll('[data-tm-view]').forEach(function (button) {
+        button.addEventListener('click', function () { setView(button.getAttribute('data-tm-view'), true); });
     });
-}
+
+    // Instant search: one rule for the cards and for the table rows.
+    document.addEventListener('DOMContentLoaded', function () {
+        if (window.jQuery && jQuery.fn.dataTable) {
+            jQuery.fn.dataTable.ext.search.push(function (settings, data, index) {
+                if (!settings.nTable || settings.nTable.id !== 'teacherTable') return true;
+                var row = settings.aoData[index] && settings.aoData[index].nTr;
+                return matches(row ? row.getAttribute('data-search') : '');
+            });
+        }
+    });
+    if (input) {
+        input.addEventListener('input', function () {
+            term = this.value.toLowerCase().trim();
+            var visible = 0;
+            document.querySelectorAll('.tm-card').forEach(function (card) {
+                var show = matches(card.getAttribute('data-search'));
+                card.hidden = !show;
+                if (show) visible++;
+            });
+            var counter = document.getElementById('visibleCount');
+            if (counter) counter.textContent = visible;
+            var dt = table();
+            if (dt) dt.draw();
+        });
+    }
+
+    // A whole table row opens the profile; buttons and links keep their own job.
+    document.addEventListener('click', function (event) {
+        var row = event.target.closest('tr.teacher-row[data-href]');
+        if (!row || event.target.closest('a, button, form, input, select, label, .dropdown-menu')) return;
+        if (window.getSelection && String(window.getSelection())) return;
+        window.location.href = row.getAttribute('data-href');
+    });
+})();
 </script>
 {{ photo_script() }}
 {% endblock %}

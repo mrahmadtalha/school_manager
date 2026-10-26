@@ -68,9 +68,12 @@ def _attendance_line(student_id, enrollment):
     records = query.all()
     if not records:
         return None
-    present = sum(1 for r in records if r.status in ('Present', 'Late'))
+    from app.services.attendance_service import attended_statuses
+    statuses = attended_statuses()
+    present = sum(1 for r in records if r.status in statuses)
     pct = round(present / len(records) * 100, 1)
-    return 'Attendance: %d/%d days present (incl. late) — %.1f%%' % (present, len(records), pct)
+    note = ' (incl. late)' if 'Late' in statuses else ''
+    return 'Attendance: %d/%d days present%s — %.1f%%' % (present, len(records), note, pct)
 
 
 def _logo_flowable(path, max_size):

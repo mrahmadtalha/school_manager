@@ -51,7 +51,7 @@ import sys
 import threading
 import time as _time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 
@@ -81,8 +81,21 @@ READ_ONLY_STATES = {EXPIRED, UNLICENSED, INVALID}
 
 #: Limits a key may carry (a missing limit means "unlimited").
 LIMIT_WA_DAILY = 'wa_daily'
+
+# Features added after the first release; keys that pre-date them keep them switched on.
+FEATURES_ADDED_LATER = ('data_export', 'language_switch', 'audit_log_view')
 LIMIT_WA_MONTHLY = 'wa_monthly'
 LIMIT_NAMES = (LIMIT_WA_DAILY, LIMIT_WA_MONTHLY)
+
+#: Days-before-expiry at which the administrator gets a reminder pop-up.
+REMINDER_MILESTONES = (30, 14, 7, 3, 1)
+NOTICE_MAX_LENGTH = 300
+
+# Inspection keys: short, view-only keys the vendor sends for support / audits.
+INSPECTION_PREFIX = 'SMI1'            # different prefix: an older build refuses it as "not a license key"
+INSPECTION_SIGN_CONTEXT = b'school-manager-inspection-v1\n'   # never reused for licenses or recovery
+INSPECTION_MAX_HOURS = 168            # a week at most, whatever the vendor types
+INSPECTION_START_TOLERANCE = timedelta(days=1)    # school clock slightly behind the vendor's
 
 
 class LicenseError(Exception):
@@ -232,6 +245,18 @@ def verify_license_text(text, public_key_b64):
     else:
         raise LicenseError('malformed', 'License field "features" is not valid.')
 
+    if payload['_features'] is not None and int(payload.get('fv', 1) or 1) < 2:
+        # key issued before these features existed: they stay on
+        payload['_features'] = tuple(sorted(set(payload['_features']) | set(FEATURES_ADDED_LATER)))
+
+    roles = payload.get('roles')
+    if roles is None:
+        payload['_roles'] = None               # legacy key: every role on
+    elif isinstance(roles, list):
+        payload['_roles'] = tuple(sorted({str(item) for item in roles} | {'admin'}))
+    else:
+        raise LicenseError('malformed', 'License field "roles" is not valid.')
+
     limits = payload.get('limits')
     clean_limits = {}
     if limits is not None:
@@ -251,7 +276,76 @@ def verify_license_text(text, public_key_b64):
     except (TypeError, ValueError):
         payload['_rev'] = 0
     payload['_plan'] = str(payload.get('plan') or '')[:40]
+    payload['_notice'] = ' '.join(str(payload.get('notice') or '').split())[:NOTICE_MAX_LENGTH]
     return payload
+
+
+def reminder_stage(days_left):
+    """The reminder milestone (30, 14, 7, 3 or 1) a license is in, or None.
+
+    A license with 20 days left is in stage 30 (past the 30-day mark, not yet at 14);
+    with 5 days left it is in stage 7; on the last day it is in stage 1.
+    """
+    if days_left is None or days_left < 0 or days_left > REMINDER_MILESTONES[0]:
+        return None
+    for stage in sorted(REMINDER_MILESTONES):
+        if days_left <= stage:
+            return stage
+    return None
+
+
+# -- inspection keys -------------------------------------------------------
+#
+# A short, VIEW-ONLY key on top of the real license: while it is valid every
+# module and the audit log are visible, but nothing can be changed, and a banner
+# says so.  It never replaces license.key.  Keys carry their own prefix and
+# signature context, so an inspection key can never be installed as a license.
+
+def verify_inspection_text(text, public_key_b64):
+    """Verify an inspection key's signature and structure; return its fields."""
+    cleaned = ''.join((text or '').split())
+    parts = cleaned.split('.')
+    if len(parts) != 3 or parts[0] != INSPECTION_PREFIX:
+        raise LicenseError('malformed', 'This does not look like an inspection key.')
+    public_key = _load_public_key(public_key_b64)
+    try:
+        body = b64u_decode(parts[1])
+        signature = b64u_decode(parts[2])
+    except Exception:
+        raise LicenseError('malformed',
+                           'The inspection key is damaged (it may have been cut short when copied).')
+    try:
+        public_key.verify(signature, INSPECTION_SIGN_CONTEXT + body)
+    except InvalidSignature:
+        raise LicenseError('bad_signature', 'The inspection key is not genuine or has been altered.')
+    try:
+        data = json.loads(body.decode('utf-8'))
+        if data.get('product') != PRODUCT or data.get('kind') != 'inspection':
+            raise ValueError('wrong kind')
+        issued_ts, expires_ts = int(data['issued_ts']), int(data['expires_ts'])
+        result = {'inspection_id': str(data['inspection_id']),
+                  'license_id': str(data.get('license_id') or ''),
+                  'licensee': str(data.get('licensee') or ''),
+                  'machine_id': str(data['machine_id']),
+                  'issued_ts': issued_ts, 'expires_ts': expires_ts}
+    except Exception:
+        raise LicenseError('malformed', 'The inspection key contents could not be read.')
+    if not 0 < expires_ts - issued_ts <= INSPECTION_MAX_HOURS * 3600:
+        raise LicenseError('malformed', 'The inspection key has an invalid duration.')
+    return result
+
+
+def sign_inspection(private_key, *, inspection_id, license_id, licensee, machine_code,
+                    issued_ts, hours):
+    """Vendor side: sign a view-only inspection key valid for ``hours`` hours."""
+    hours = max(1, min(INSPECTION_MAX_HOURS, int(hours)))
+    body = _compact_json({'v': PAYLOAD_VERSION, 'product': PRODUCT, 'kind': 'inspection',
+                          'inspection_id': inspection_id, 'license_id': license_id or '',
+                          'licensee': (licensee or '').strip(),
+                          'machine_id': format_machine_code(machine_code),
+                          'issued_ts': int(issued_ts), 'expires_ts': int(issued_ts) + hours * 3600})
+    signature = private_key.sign(INSPECTION_SIGN_CONTEXT + body)
+    return f'{INSPECTION_PREFIX}.{b64u_encode(body)}.{b64u_encode(signature)}'
 
 
 # -- recovery codes (forgotten username / password) -----------------------
@@ -368,15 +462,27 @@ class LicenseStatus:
     expiring_soon: bool = False
     clock_rollback: bool = False
     features: tuple = None        # None = legacy key / not applicable: everything on
+    roles: tuple = None           # None = legacy key: every role on; 'admin' is always on
     limits: dict = None           # {'wa_daily': n, 'wa_monthly': n}; missing = unlimited
     rev: int = 0
     plan: str = ''
+    notice: str = ''              # vendor's message carried by the key (e.g. "renewal due")
+    reminder_stage: int = None    # 30 / 14 / 7 / 3 / 1 while an active license is near its end
+    inspection: bool = False      # a view-only inspection key is in effect
+    inspection_until: datetime = None    # UTC, naive
+    inspection_id: str = ''
 
     def feature_enabled(self, key):
         """True when this license includes ``key`` (legacy keys include all)."""
         if not self.enforced or self.features is None:
             return True
         return key in self.features
+
+    def role_enabled(self, role):
+        """True when users of ``role`` may sign in (admin always may)."""
+        if not self.enforced or self.roles is None or role == 'admin':
+            return True
+        return role in self.roles
 
     def limit(self, name):
         """The numeric limit called ``name``, or None when unlimited."""
@@ -385,7 +491,7 @@ class LicenseStatus:
     @property
     def needs_attention(self):
         return (self.state in (GRACE, EXPIRED, UNLICENSED, INVALID)
-                or self.expiring_soon or self.clock_rollback)
+                or self.expiring_soon or self.clock_rollback or self.inspection)
 
 
 # -- manager -------------------------------------------------------------
@@ -401,6 +507,8 @@ class LicenseManager:
                  machine_code=None, now_fn=None, cache_seconds=30):
         self.license_path = Path(license_path)
         self.state_path = Path(state_path)
+        self.inspection_path = self.license_path.with_name('inspection.key')
+        self.inspection_state_path = self.license_path.with_name('inspection.state')
         self.public_key_b64 = public_key_b64 or ''
         self.enforced = bool(enforced)
         self._machine_code = machine_code
@@ -416,7 +524,12 @@ class LicenseManager:
             return self._machine_code()
         return self._machine_code or get_machine_code()
 
-    def status(self, force=False):
+    def status(self, force=False, inspection=True):
+        """Current status.  ``inspection=False`` gives the underlying license, ignoring
+        any inspection key (the License page shows both)."""
+        if not inspection:
+            with self._lock:
+                return self._evaluate_license()
         with self._lock:
             fresh = (self._cache is not None and not force
                      and (_time.monotonic() - self._cache_at) < self._cache_seconds)
@@ -425,6 +538,110 @@ class LicenseManager:
             self._cache = self._evaluate()
             self._cache_at = _time.monotonic()
             return self._cache
+
+    # -- inspection keys -----------------------------------------------
+    def _now_ts(self):
+        return int(self._now().replace(tzinfo=timezone.utc).timestamp())
+
+    def activate_inspection(self, text):
+        """Install a view-only inspection key for this computer."""
+        with self._lock:
+            data = verify_inspection_text(text, self.public_key_b64)
+            expected = normalize_machine_code(data['machine_id'])
+            if not hmac.compare_digest(expected.encode(),
+                                       normalize_machine_code(self.machine_code()).encode()):
+                raise LicenseError(
+                    'wrong_machine', 'This inspection key was issued for a different computer.')
+            base = self._evaluate_license()
+            if data['license_id'] and base.license_id and data['license_id'] != base.license_id:
+                raise LicenseError(
+                    'wrong_license', 'This inspection key belongs to a different license.')
+            now_ts = self._now_ts()
+            if now_ts > data['expires_ts']:
+                raise LicenseError('expired', 'This inspection key has already expired.')
+            if now_ts < data['issued_ts'] - int(INSPECTION_START_TOLERANCE.total_seconds()):
+                raise LicenseError(
+                    'not_yet_valid',
+                    "This computer's date and time look wrong (earlier than the key's issue time). "
+                    'Please correct the Windows date and time and try again.')
+            self._atomic_write(self.inspection_path, ''.join(text.split()) + '\n')
+            self._write_inspection_state(data['inspection_id'], max(now_ts, data['issued_ts']))
+            self._cache = None
+            return self.status(force=True)
+
+    def end_inspection(self):
+        """Remove the inspection key (the school or the vendor is done)."""
+        with self._lock:
+            for path in (self.inspection_path, self.inspection_state_path):
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+            self._cache = None
+            return self.status(force=True)
+
+    def _inspection_payload(self):
+        """The installed inspection key's fields while it is valid right now, else None."""
+        try:
+            text = self.inspection_path.read_text(encoding='utf-8-sig').strip()
+        except OSError:
+            return None
+        if not text:
+            return None
+        try:
+            data = verify_inspection_text(text, self.public_key_b64)
+        except LicenseError:
+            return None
+        expected = normalize_machine_code(data['machine_id'])
+        if not hmac.compare_digest(expected.encode(),
+                                   normalize_machine_code(self.machine_code()).encode()):
+            return None
+        stored = self._read_inspection_state(data['inspection_id'])
+        system_ts = self._now_ts()
+        effective = max(system_ts, stored)            # the clock cannot be rolled back
+        if effective - stored >= 60 or not stored:
+            self._write_inspection_state(data['inspection_id'], effective)
+        if effective > data['expires_ts']:
+            return None
+        if effective < data['issued_ts'] - int(INSPECTION_START_TOLERANCE.total_seconds()):
+            return None
+        return data
+
+    def _overlay_inspection(self, base):
+        data = self._inspection_payload()
+        if data is None:
+            return base
+        if data['license_id'] and base.license_id and data['license_id'] != base.license_id:
+            return base                                # a key for some other license: ignored
+        until = datetime.fromtimestamp(data['expires_ts'], timezone.utc).replace(tzinfo=None)
+        return replace(
+            base, read_only=True, level='info', features=None, roles=None,
+            inspection=True, inspection_until=until, inspection_id=data['inspection_id'],
+            title='Inspection mode',
+            message=('A view-only inspection key is active until '
+                     f'{until:%d %b %Y %H:%M} UTC. Everything can be viewed; nothing can be changed.'))
+
+    def _inspection_signature(self, inspection_id, hwm):
+        return hmac.new(self._state_key(), f'insp|{inspection_id}|{hwm}'.encode(),
+                        hashlib.sha256).hexdigest()
+
+    def _read_inspection_state(self, inspection_id):
+        try:
+            data = json.loads(self.inspection_state_path.read_text(encoding='utf-8'))
+            if (data['id'] == inspection_id and hmac.compare_digest(
+                    self._inspection_signature(inspection_id, int(data['hwm'])), data.get('sig', ''))):
+                return int(data['hwm'])
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        return 0
+
+    def _write_inspection_state(self, inspection_id, hwm):
+        body = {'id': inspection_id, 'hwm': int(hwm),
+                'sig': self._inspection_signature(inspection_id, int(hwm))}
+        try:
+            self._atomic_write(self.inspection_state_path, json.dumps(body))
+        except OSError:
+            pass
 
     def activate(self, text):
         """Verify ``text`` and, if it is valid for this machine, install it."""
@@ -485,6 +702,12 @@ class LicenseManager:
         return LicenseStatus(machine_code=self.machine_code(), enforced=self.enforced, **kwargs)
 
     def _evaluate(self):
+        base = self._evaluate_license()
+        if base.state == DISABLED:
+            return base
+        return self._overlay_inspection(base)
+
+    def _evaluate_license(self):
         if not self.enforced:
             return self._base_status(
                 state=DISABLED, read_only=False, level='secondary',
@@ -514,14 +737,16 @@ class LicenseManager:
         common = dict(licensee=payload['licensee'], license_id=payload['license_id'],
                       issued=payload['_issued'], expires=expires, grace_ends=grace_end,
                       days_left=days_left, clock_rollback=rollback,
-                      features=payload['_features'], limits=dict(payload['_limits']),
-                      rev=payload['_rev'], plan=payload['_plan'])
+                      features=payload['_features'], roles=payload['_roles'], limits=dict(payload['_limits']),
+                      rev=payload['_rev'], plan=payload['_plan'],
+                      notice=payload['_notice'])
 
         if today <= expires:
             soon = days_left <= EXPIRING_SOON_DAYS
             when = 'today' if days_left == 0 else f'in {days_left} day{"s" if days_left != 1 else ""}'
             return self._base_status(
                 state=ACTIVE, read_only=False, expiring_soon=soon,
+                reminder_stage=reminder_stage(days_left),
                 level='warning' if soon else 'success',
                 title='License expiring soon' if soon else 'License active',
                 message=(f'Your license expires {when} ({expires:%d %b %Y}). Please arrange a renewal.'

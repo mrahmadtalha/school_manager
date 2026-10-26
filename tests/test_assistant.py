@@ -1,5 +1,6 @@
 """The offline admin assistant: access rules, answers from real data, read-only."""
-from datetime import date
+import json
+from datetime import date, timedelta
 
 import pytest
 
@@ -10,8 +11,11 @@ from app.services import assistant as assistant_service
 from app.services.fee_ledger import ensure_charge, record_payment
 
 
-def ask(client, question):
-    response = client.get('/assistant/ask', query_string={'q': question})
+def ask(client, question, context=None):
+    params = {'q': question}
+    if context is not None:
+        params['c'] = json.dumps(context)
+    response = client.get('/assistant/ask', query_string=params)
     assert response.status_code == 200
     data = response.get_json()
     assert data['ok'] is True
@@ -315,3 +319,257 @@ def test_assistant_never_changes_data(admin_client, app, seed):
 
 def test_post_is_not_accepted(admin_client):
     assert admin_client.post('/assistant/ask', data={'q': 'help'}).status_code == 405
+
+
+# --------------------------------------------------------------------------- #
+# Follow-up memory ("aur kal?", "uska phone number?", a bare name after
+# "which student?")
+# --------------------------------------------------------------------------- #
+
+def test_every_answer_carries_a_small_json_memory(admin_client, seed):
+    data = ask(admin_client, 'aaj class 1 ki attendance')
+    assert data['context']['intent'] == 'attendance'
+    assert data['context']['class_id'] == seed['class_id']
+    json.dumps(data['context'])      # must survive the round trip to the browser
+
+
+def test_follow_up_keeps_the_topic_and_class(admin_client, app, seed):
+    yesterday = date.today() - timedelta(days=1)
+    with app.app_context():
+        db.session.add(AttendanceModel(date=yesterday, target_type='student',
+                                       target_id=seed['student_id'],
+                                       status='Absent', class_id=seed['class_id']))
+        db.session.commit()
+    first = ask(admin_client, 'aaj class 1 ki attendance')
+    second = ask(admin_client, 'aur kal?', first['context'])
+    assert second['intent'] == 'attendance'
+    assert '1 ghair hazir' in second['answer'] and 'Class 1' in second['answer']
+    # without the memory the same short question is not understood
+    assert ask(admin_client, 'aur kal?')['intent'] == 'unknown'
+
+
+def test_follow_up_with_previous_month(admin_client, seed):
+    first = ask(admin_client, 'is mahine kitni fees collect hui?')
+    second = ask(admin_client, 'pichle mahine?', first['context'])
+    assert second['intent'] == 'fees_collected'
+    previous = date.today().replace(day=1) - timedelta(days=1)
+    assert previous.strftime('%B %Y') in second['answer']
+
+
+def test_explicit_question_is_never_hijacked_by_the_memory(admin_client, seed):
+    first = ask(admin_client, 'aaj class 1 ki attendance')
+    assert ask(admin_client, 'is mahine ka kharcha',
+               first['context'])['intent'] == 'expenses'
+
+
+def test_pronoun_follow_up_refers_to_the_last_student(admin_client, app, seed):
+    with app.app_context():
+        _charge_both(seed)
+    first = ask(admin_client, 'Ali Khan ka phone number')
+    assert first['context']['student_id'] == seed['student_id']
+    second = ask(admin_client, 'uska baqaya?', first['context'])
+    assert second['intent'] == 'fees_due'
+    assert 'Ali Khan' in second['answer'] and 'Rs 2,500' in second['answer']
+
+
+def test_bare_name_answers_the_pending_which_student_question(admin_client, app, seed):
+    with app.app_context():
+        _charge_both(seed)
+    asked = ask(admin_client, 'ali ka baqaya')
+    assert asked['context']['awaiting'] == 'fees_due'
+    answered = ask(admin_client, 'Ali Khan', asked['context'])
+    assert answered['intent'] == 'fees_due' and 'Rs 2,500' in answered['answer']
+    # the same bare name with nothing pending still shows the details
+    assert ask(admin_client, 'Ali Khan')['intent'] == 'student_info'
+
+
+def test_memory_from_the_browser_is_never_trusted(admin_client, seed):
+    for bad in ({'intent': 'evil', 'class_id': 'x', 'month': '2026-13',
+                 'day': 'garbage', 'status': 'Hax'},
+                {'intent': 'attendance', 'class_id': 987654, 'student_id': 987654},
+                ['not', 'a', 'dict'], 'text', 123):
+        data = ask(admin_client, 'aur kal?', bad)
+        assert data['ok'] is True
+    for raw in ('{not json', '{"intent": "' + 'a' * 2000 + '"}'):
+        response = admin_client.get('/assistant/ask',
+                                    query_string={'q': 'help', 'c': raw})
+        assert response.status_code == 200
+        assert response.get_json()['intent'] == 'help'
+
+
+# --------------------------------------------------------------------------- #
+# New questions
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize('question, intent', [
+    ('aaj kya kaam baqi hain?', 'attention'),
+    ('what needs attention?', 'attention'),
+    ('aaj kis ki birthday hai?', 'birthdays'),
+    ('kam attendance wale students', 'low_attendance'),
+    ('class wise fees baqaya', 'class_fees'),
+    ('is mahine ka pichle mahine se muqabla', 'compare'),
+    ('is mahine kitne naye admissions hue?', 'new_admissions'),
+    ('aaj kis kis ne fees di?', 'fees_payments'),
+    ('who paid fees today', 'fees_payments'),
+])
+def test_new_questions_reach_the_right_intent(admin_client, seed, question, intent):
+    assert ask(admin_client, question)['intent'] == intent
+
+
+def test_old_questions_were_not_taken_over(admin_client, seed):
+    for question, intent in (('class wise students', 'class_strength'),
+                             ('defaulters kaun hain?', 'fees_due'),
+                             ('aaj ki fee wasooli', 'fees_collected'),
+                             ('student kaise add karte hain?', 'howto_add_student')):
+        assert ask(admin_client, question)['intent'] == intent
+
+
+def test_absent_list_shows_guardian_phone(admin_client, app, seed):
+    with app.app_context():
+        db.session.add(AttendanceModel(date=date.today(), target_type='student',
+                                       target_id=seed['student_id'],
+                                       status='Absent', class_id=seed['class_id']))
+        db.session.commit()
+    data = ask(admin_client, 'aaj kitne students absent hain?')
+    assert data['table']['columns'][2] in ('Phone',)
+    assert data['table']['rows'][0][0] == 'Ali Khan'
+    assert data['table']['rows'][0][2] == '03001234567'
+
+
+def test_who_paid_today_lists_payments(admin_client, app, seed):
+    with app.app_context():
+        _charge_both(seed)
+        student = db.session.get(StudentModel, seed['student_id'])
+        record_payment(student, _today_label(), 1000, method='cash',
+                       payment_date=date.today())
+        db.session.commit()
+    data = ask(admin_client, 'aaj kis kis ne fees di?')
+    assert data['intent'] == 'fees_payments'
+    assert '1 payments' in data['answer'] and 'Rs 1,000' in data['answer']
+    assert data['table']['rows'][0][:3] == ['Ali Khan', 'Class 1', 'Rs 1,000']
+    nobody = ask(admin_client, 'kal kis kis ne fees di?')
+    assert 'nahi hui' in nobody['answer'] and not nobody['table']
+
+
+def test_class_wise_fees(admin_client, app, seed):
+    with app.app_context():
+        _charge_both(seed)
+    data = ask(admin_client, 'class wise fees baqaya')
+    assert data['intent'] == 'class_fees'
+    assert data['table']['rows'][0] == ['Class 1', 2, 'Rs 4,500']
+    assert 'Rs 4,500' in data['answer']
+
+
+def test_compare_with_last_month(admin_client, app, seed):
+    with app.app_context():
+        _charge_both(seed)
+        student = db.session.get(StudentModel, seed['student_id'])
+        record_payment(student, _today_label(), 1000, payment_date=date.today())
+        db.session.commit()
+    data = ask(admin_client, 'is mahine ka pichle mahine se muqabla')
+    assert data['intent'] == 'compare'
+    labels = [row[0] for row in data['table']['rows']]
+    assert labels == ['Fees wasooli', 'Kharcha', 'Bachat (aamdani - kharcha)']
+    assert data['table']['rows'][0][1] == 'Rs 1,000'     # this month
+    assert data['table']['rows'][0][2] == 'Rs 0'         # last month
+    assert 'Rs 1,000' in data['answer']
+    # "pichle" must not shift the base month: the table starts with THIS month
+    assert data['table']['columns'][1] == date.today().strftime('%B %Y')
+
+
+def test_new_admissions_this_month(admin_client, app, seed):
+    with app.app_context():
+        db.session.get(StudentModel, seed['student_id']).admission_date = date.today()
+        db.session.get(StudentModel, seed['other_student_id']).admission_date = date(2020, 1, 1)
+        db.session.commit()
+    data = ask(admin_client, 'is mahine kitne naye admissions hue?')
+    assert data['intent'] == 'new_admissions'
+    assert [row[0] for row in data['table']['rows']] == ['Ali Khan']
+    assert ask(admin_client, 'new admissions pichle mahine')['table'] is None
+
+
+def test_birthdays_today(admin_client, app, seed):
+    with app.app_context():
+        db.session.get(StudentModel, seed['student_id']).date_of_birth = \
+            date(2016, date.today().month, date.today().day)
+        db.session.commit()
+    data = ask(admin_client, 'aaj kis ki birthday hai?')
+    assert data['intent'] == 'birthdays' and 'Ali Khan' in data['answer']
+
+
+def test_birthdays_without_any_date_of_birth(admin_client, seed):
+    data = ask(admin_client, 'upcoming birthdays')
+    assert data['intent'] == 'birthdays' and 'date of birth' in data['answer']
+
+
+def test_low_attendance_students_are_listed(admin_client, app, seed):
+    first_of_month = date.today().replace(day=1)
+    last_month_end = first_of_month - timedelta(days=1)
+    days = [last_month_end - timedelta(days=n) for n in range(last_month_end.day)]
+    with app.app_context():
+        for day in days:
+            db.session.add_all([
+                AttendanceModel(date=day, target_type='student',
+                                target_id=seed['student_id'], status='Absent',
+                                class_id=seed['class_id']),
+                AttendanceModel(date=day, target_type='student',
+                                target_id=seed['other_student_id'],
+                                status='Present', class_id=seed['class_id']),
+            ])
+        db.session.commit()
+    data = ask(admin_client, 'kam attendance wale students pichle mahine')
+    assert data['intent'] == 'low_attendance'
+    assert [row[0] for row in data['table']['rows']] == ['Ali Khan']
+    assert data['table']['rows'][0][4] == '03001234567'
+
+
+def test_low_attendance_when_nothing_is_marked(admin_client, seed):
+    data = ask(admin_client, 'low attendance students pichle mahine')
+    assert data['intent'] == 'low_attendance' and not data['table']
+
+
+def test_attention_list_mentions_outstanding_fees(admin_client, app, seed):
+    with app.app_context():
+        _charge_both(seed)
+    data = ask(admin_client, 'aaj kya kaam baqi hain?')
+    assert data['intent'] == 'attention'
+    assert 'remaining' in data['answer']
+    assert data['links']
+
+
+def test_teacher_details_by_name(admin_client, app, seed):
+    with app.app_context():
+        db.session.add(TeacherModel(teacher_id_str='T001', teacher_name='Mr Zafar',
+                                    qualification='MSc', salary=30000,
+                                    monthly_salary=30000,
+                                    contact_number='03111234567'))
+        db.session.commit()
+    first = ask(admin_client, 'Zafar ka phone number')
+    assert first['intent'] == 'teacher_info'
+    assert '03111234567' in first['answer'] and 'Mr Zafar' in first['answer']
+    second = ask(admin_client, 'uski salary?', first['context'])
+    assert second['intent'] == 'teacher_info' and 'Rs 30,000' in second['answer']
+    # a plain salary question is still the whole-school payroll
+    assert ask(admin_client, 'salary pending kitni hai?',
+               first['context'])['intent'] == 'salary'
+
+
+def test_teacher_phone_without_a_name_asks_which_teacher(admin_client, seed):
+    data = ask(admin_client, 'teacher phone number')
+    assert 'teacher' in data['answer'].lower()
+
+
+def test_new_questions_never_change_data(admin_client, app, seed):
+    with app.app_context():
+        _charge_both(seed)
+        before = (FeeTransaction.query.count(), StudentModel.query.count(),
+                  AttendanceModel.query.count(), Expense.query.count())
+    for question in ('aaj kya kaam baqi hain?', 'class wise fees baqaya',
+                     'aaj kis kis ne fees di?', 'kam attendance wale students',
+                     'is mahine ka pichle mahine se muqabla', 'naye admissions',
+                     'aaj kis ki birthday hai?'):
+        ask(admin_client, question)
+    with app.app_context():
+        after = (FeeTransaction.query.count(), StudentModel.query.count(),
+                 AttendanceModel.query.count(), Expense.query.count())
+    assert before == after

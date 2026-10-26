@@ -126,6 +126,11 @@
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.student_history', id=student.id) }}">
                 <i class="fas fa-clock-rotate-left me-1"></i> History
             </a>
+            {% if admission_link %}
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.admission_student', student_id=student.id) }}">
+                <i class="fas fa-door-open me-1"></i> Admission fee
+            </a>
+            {% endif %}
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.students_list') }}">
                 <i class="fas fa-arrow-left me-1"></i> Back
             </a>

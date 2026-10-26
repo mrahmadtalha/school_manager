@@ -1,0 +1,604 @@
+{# QR tab of the attendance page (included by student_attendance.html).
+   Same "register book" family as the Students page. The .sa- styles come from the
+   parent page; everything new here is scoped under .qa- #}
+{% from "_photo_macro.html" import avatar %}
+{% set is_admin = current_user.role == 'admin' %}
+{% set phones_ready = lan_access and guard_count > 0 %}
+{% set counts = report.counts %}
+{% set total = counts.total %}
+<style>
+    .qa-intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem; }
+    .qa-intro > div { flex: 1 1 24rem; }
+    .qa-intro .btn { box-shadow: none; border-radius: 12px; font-weight: 600; background: #fff; white-space: nowrap; }
+
+    /* guard phone set-up */
+    .qa-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .qa-card > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 0.8rem; padding: 0.85rem 1.1rem; }
+    .qa-card > summary::-webkit-details-marker { display: none; }
+    .qa-card > summary:hover { background: #f8fafc; }
+    .qa-ico { width: 2.6rem; height: 2.6rem; border-radius: 13px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); }
+    .qa-ico.ok { background: #dcfce7; color: #166534; }
+    .qa-ico.todo { background: #fef3c7; color: #92400e; }
+    .qa-sum-text { flex: 1 1 auto; min-width: 0; }
+    .qa-sum-title { font-weight: 800; color: #0f172a; line-height: 1.2; }
+    .qa-sum-sub { font-size: 0.82rem; color: #64748b; margin-top: 0.1rem; }
+    .qa-chev { color: #94a3b8; transition: transform 0.15s ease; }
+    .qa-card[open] > summary .qa-chev { transform: rotate(180deg); }
+    .qa-card.is-todo { border-left: 4px solid #f59e0b; }
+    .qa-card.is-ok { border-left: 4px solid #16a34a; }
+    .qa-body { border-top: 1px solid #eef2f7; padding: 0.4rem 1.1rem 1.1rem; }
+
+    .qa-step { display: flex; gap: 0.85rem; padding: 0.95rem 0; border-bottom: 1px dashed #e2e8f0; }
+    .qa-step:last-of-type { border-bottom: 0; }
+    .qa-num { width: 2rem; height: 2rem; flex: 0 0 auto; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; background: #e2e8f0; color: #475569; }
+    .qa-step.done .qa-num { background: #16a34a; color: #fff; }
+    .qa-step-main { flex: 1 1 auto; min-width: 0; }
+    .qa-step-title { font-weight: 700; color: #0f172a; margin-bottom: 0.15rem; }
+    .qa-step-text { font-size: 0.85rem; color: #64748b; margin-bottom: 0.55rem; }
+    .qa-step .btn { box-shadow: none; border-radius: 12px; font-weight: 600; }
+    .qa-switch { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+    .qa-switch .form-check { margin: 0; min-height: 0; display: flex; align-items: center; gap: 0.6rem; padding: 0; }
+    .qa-switch .form-check-input { width: 3rem; height: 1.6rem; margin: 0; float: none; cursor: pointer; }
+    .qa-switch label { font-weight: 600; color: #0f172a; cursor: pointer; }
+    .qa-code-box { border: 1px solid #e2e8f0; border-radius: 14px; background: #f8fafc; }
+    .qa-code-box > summary { list-style: none; cursor: pointer; padding: 0.7rem 1rem; font-weight: 700; color: rgb(var(--bs-primary-rgb)); display: flex; align-items: center; gap: 0.5rem; }
+    .qa-code-box > summary::-webkit-details-marker { display: none; }
+    .qa-code-box[open] > summary { border-bottom: 1px solid #e2e8f0; }
+    .qa-code-inner { padding: 1rem; display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: center; }
+    .qa-code-inner ol { margin: 0 0 0.7rem; padding-left: 1.2rem; color: #334155; }
+    .qa-code-inner li { margin-bottom: 0.3rem; }
+    .qa-qr { padding: 0.6rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; width: 264px; min-height: 264px; }
+    .qa-more { font-size: 0.85rem; color: #475569; }
+    .qa-more > summary { cursor: pointer; font-weight: 600; color: #64748b; padding: 0.4rem 0; }
+    .qa-more code { font-size: 0.95rem; }
+
+    /* waiting-for-approval card */
+    .qa-ask { background: #fffbf3; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b; border-radius: 18px; padding: 1rem 1.2rem; margin-bottom: 0.9rem; }
+    .qa-ask.applied { background: #f3fbf6; border-color: #bbf7d0; border-left-color: #16a34a; }
+    .qa-ask.rejected { background: #f8fafc; border-color: #e2e8f0; border-left-color: #94a3b8; }
+    .qa-ask-title { font-weight: 800; color: #0f172a; font-size: 1.02rem; }
+    .qa-ask-text { font-size: 0.88rem; color: #475569; margin-top: 0.3rem; }
+    .qa-ask-names { font-size: 0.84rem; color: #78350f; margin-top: 0.4rem; }
+    .qa-ask .btn { border-radius: 12px; font-weight: 700; box-shadow: none; padding: 0.6rem 1.2rem; }
+
+    /* live line */
+    .qa-live { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin-left: auto; font-size: 0.82rem; color: #64748b; }
+    .qa-live .form-check { margin: 0; min-height: 0; display: flex; align-items: center; gap: 0.45rem; padding: 0; }
+    .qa-live .form-check-input { margin: 0; float: none; cursor: pointer; }
+    .qa-live label { cursor: pointer; font-weight: 600; }
+    .qa-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #16a34a; margin-right: 0.35rem; animation: qaPulse 2s infinite; }
+    .qa-live.is-off .qa-dot { background: #94a3b8; animation: none; }
+    @keyframes qaPulse { 0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.5); } 70% { box-shadow: 0 0 0 7px rgba(22, 163, 74, 0); } 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); } }
+    .qa-live .btn { height: 2.7rem; border-radius: 12px; box-shadow: none; font-weight: 600; background: #fff; display: inline-flex; align-items: center; }
+    .qa-rate-num { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; color: #0f172a; }
+
+    /* filter chips */
+    .qa-chips { display: flex; flex-wrap: wrap; gap: 0.45rem; padding: 0.7rem 1.1rem; border-bottom: 1px solid #eef2f7; }
+    .qa-chip { border: 1px solid #e2e8f0; background: #fff; color: #475569; border-radius: 99px; padding: 0.42rem 0.9rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.45rem; transition: background 0.12s ease, color 0.12s ease; }
+    .qa-chip:hover { background: #f1f5f9; color: #0f172a; }
+    .qa-chip b { font-variant-numeric: tabular-nums; font-size: 0.78rem; padding: 0.02rem 0.45rem; border-radius: 99px; background: #f1f5f9; color: #334155; }
+    .qa-chip.is-on { background: rgb(var(--bs-primary-rgb)); border-color: rgb(var(--bs-primary-rgb)); color: #fff; }
+    .qa-chip.is-on b { background: rgba(255, 255, 255, 0.25); color: #fff; }
+    .qa-chip.c-absent:not(.is-on) b { background: #fee2e2; color: #991b1b; }
+    .qa-chip.c-late:not(.is-on) b { background: #fef3c7; color: #92400e; }
+    .qa-chip.c-present:not(.is-on) b { background: #dcfce7; color: #166534; }
+
+    /* the list: one row per student */
+    .qa-head, .qa-row { display: grid; grid-template-columns: 3.4rem minmax(0, 2.4fr) minmax(0, 1fr) 10.5rem minmax(0, 1.1fr); gap: 0.6rem; align-items: center; padding: 0.55rem 1.1rem; }
+    .qa-head { background: #f8fafc; color: #64748b; font-size: 0.74rem; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding-top: 0.65rem; padding-bottom: 0.65rem; }
+    .qa-row { border-bottom: 1px solid #f1f5f9; transition: background 0.15s ease; }
+    .qa-row[data-group="absent"] { background: #fff5f5; box-shadow: inset 4px 0 0 #dc2626; }
+    .qa-row[data-group="late"] { background: #fffbf0; box-shadow: inset 4px 0 0 #f59e0b; }
+    .qa-row[data-group="leave"] { background: #f6f7f9; box-shadow: inset 4px 0 0 #94a3b8; }
+    .qa-row[hidden] { display: none; }
+    .qa-sub { font-size: 0.8rem; color: #64748b; }
+    .qa-when { font-size: 0.88rem; color: #334155; font-variant-numeric: tabular-nums; }
+    .qa-when small { display: block; color: #92400e; font-size: 0.76rem; }
+    .qa-more-note { padding: 0.9rem 1.1rem; font-size: 0.85rem; color: #64748b; text-align: center; }
+
+    /* auto-absent settings */
+    .qa-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.25rem; }
+    .qa-field label.qa-q { display: block; font-weight: 700; color: #0f172a; margin-bottom: 0.15rem; font-size: 0.92rem; }
+    .qa-field .qa-help { font-size: 0.8rem; color: #64748b; margin-bottom: 0.4rem; }
+    .qa-field .form-control, .qa-field .form-select { height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background-color: #f8fafc; max-width: 16rem; }
+    .qa-field.wide { grid-column: 1 / -1; }
+    .qa-note-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.7rem 0.9rem; font-size: 0.82rem; color: #64748b; }
+
+    html[dir="rtl"] .qa-card.is-todo, html[dir="rtl"] .qa-card.is-ok, html[dir="rtl"] .qa-ask { border-left-width: 1px; border-right-width: 4px; }
+    html[dir="rtl"] .qa-card.is-todo { border-right-color: #f59e0b; }
+    html[dir="rtl"] .qa-card.is-ok { border-right-color: #16a34a; }
+    html[dir="rtl"] .qa-row[data-group] { box-shadow: none; }
+    html[dir="rtl"] .qa-live { margin-left: 0; margin-right: auto; }
+
+    @media (max-width: 991.98px) {
+        .qa-head, .qa-row { grid-template-columns: 3.2rem minmax(0, 2fr) 9.5rem minmax(0, 1fr); }
+        .qa-head .qa-c-class, .qa-row .qa-c-class { display: none; }
+    }
+    @media (max-width: 767.98px) {
+        .qa-form { grid-template-columns: 1fr; }
+        .qa-field .form-control, .qa-field .form-select { max-width: none; }
+        .qa-live { margin-left: 0; flex: 1 1 100%; }
+        .qa-live .btn { flex: 1 1 auto; justify-content: center; }
+        .qa-head { display: none; }
+        .qa-row { grid-template-columns: auto 1fr; gap: 0.35rem 0.7rem; padding: 0.8rem 0.9rem; }
+        .qa-row .qa-c-who { grid-column: 2; grid-row: 1; }
+        .qa-row .qa-c-roll { grid-column: 1; grid-row: 1; align-self: center; }
+        .qa-row .qa-c-class { display: block; grid-column: 2; }
+        .qa-row .qa-c-status { grid-column: 1 / 2; }
+        .qa-row .qa-c-when { grid-column: 2; align-self: center; }
+        .qa-chips { padding: 0.6rem 0.8rem; }
+        .qa-card > summary { padding: 0.75rem 0.8rem; }
+        .qa-body { padding: 0.3rem 0.8rem 0.9rem; }
+        .qa-qr { width: 100%; max-width: 264px; }
+        .qa-ask .btn { width: 100%; margin-bottom: 0.4rem; }
+        .qa-intro .btn { width: 100%; }
+    }
+    @media (prefers-reduced-motion: reduce) { .qa-dot { animation: none; } .qa-chev, .qa-row, .qa-chip { transition: none; } }
+</style>
+
+{# ---------------------------------------------------------------- how it works #}
+<div class="sa-hint qa-intro">
+    <div>
+        <b>What to do now:</b>
+        {% if not phones_ready and is_admin %}
+        Connect the guard&rsquo;s phone first (3 easy steps below). After that you only watch this page.
+        {% elif qr_is_today %}
+        Nothing to do. The guard scans each student&rsquo;s card at the gate and the name appears below by itself.
+        {% else %}
+        This is the record of the scans on this day. To see another day, use the arrows above.
+        {% endif %}
+        <span class="sa-sub">Scans are saved in the normal attendance records, so the Attendance Sheet and every report include them.</span>
+    </div>
+    <a href="{{ url_for('main.export_student_id_cards') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-id-card me-1"></i> Print QR ID cards
+    </a>
+</div>
+
+{# ---------------------------------------------------------------- auto-absent decision #}
+{% if absent_run %}
+<div class="qa-ask {% if absent_run.status == 'applied' %}applied{% elif absent_run.status != 'pending' %}rejected{% endif %}">
+    <div class="qa-ask-title">
+        <i class="fas fa-user-clock me-1"></i>
+        {% if absent_run.status == 'pending' %}Auto-absent is waiting for approval
+        {% elif absent_run.status == 'applied' %}Auto-absent done: {{ absent_run.marked_count }} student(s) marked absent{% if absent_run.decided_by %} ({{ absent_run.decided_by }}){% endif %}
+        {% else %}Auto-absent was rejected &mdash; nobody was marked absent{% endif %}
+    </div>
+    <div class="qa-ask-text">{{ absent_run.attended_count }} of {{ absent_run.total_students }} students had arrived at the cutoff time.
+        {% if absent_run.reason %}<br><strong>{{ absent_run.reason }}</strong>{% endif %}</div>
+    {% if absent_run.status == 'pending' and is_admin %}
+    <div class="qa-ask-text">{{ absent_preview.students|length if absent_preview else 0 }} student(s) have not been scanned and would be marked <strong>Absent</strong>.</div>
+    {% if absent_preview and absent_preview.students %}
+    <div class="qa-ask-names">{% for s in absent_preview.students[:8] %}{{ s.student_name }}{% if not loop.last %}, {% endif %}{% endfor %}{% if absent_preview.students|length > 8 %} &hellip; and {{ absent_preview.students|length - 8 }} more{% endif %}</div>
+    {% endif %}
+    <div class="d-flex flex-wrap gap-2 mt-3">
+        <form method="POST" action="{{ url_for('main.qr_auto_absent_decide', run_id=absent_run.id, action='approve') }}">
+            <button class="btn btn-danger" type="submit"><i class="fas fa-check me-1"></i> Approve &amp; mark absent</button>
+        </form>
+        <form method="POST" action="{{ url_for('main.qr_auto_absent_decide', run_id=absent_run.id, action='reject') }}">
+            <button class="btn btn-outline-secondary bg-white" type="submit"><i class="fas fa-xmark me-1"></i> No, do not mark anyone</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{# ---------------------------------------------------------------- guard phone #}
+{% if is_admin %}
+<details class="qa-card {{ 'is-ok' if phones_ready else 'is-todo' }}" id="qaSetup" {% if not phones_ready %}open{% endif %}>
+    <summary>
+        <span class="qa-ico {{ 'ok' if phones_ready else 'todo' }}"><i class="fas {{ 'fa-mobile-screen-button' if phones_ready else 'fa-triangle-exclamation' }}"></i></span>
+        <span class="qa-sum-text">
+            <span class="qa-sum-title d-block">
+                {% if phones_ready %}Guard phone is ready{% else %}Connect the guard&rsquo;s phone{% endif %}
+            </span>
+            <span class="qa-sum-sub d-block">
+                {% if phones_ready %}Phones are allowed and {{ guard_count }} guard account{{ '' if guard_count == 1 else 's' }} exist. Open this to connect another phone.
+                {% else %}Just 3 easy steps. Nothing to type on the phone.{% endif %}
+            </span>
+        </span>
+        <i class="fas fa-chevron-down qa-chev"></i>
+    </summary>
+    <div class="qa-body">
+        <div class="qa-step {% if lan_access %}done{% endif %}">
+            <span class="qa-num">{% if lan_access %}<i class="fas fa-check"></i>{% else %}1{% endif %}</span>
+            <div class="qa-step-main">
+                <div class="qa-step-title">Allow guard phones to reach this computer</div>
+                <div class="qa-step-text">Switch it on, press Save, then close and reopen School Manager once. Phones can only open the guard app &mdash; the rest of School Manager stays on this computer.</div>
+                <form method="POST" action="{{ url_for('main.qr_attendance_settings') }}" class="qa-switch">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="lan_access" id="lanAccess" {% if lan_access %}checked{% endif %}>
+                        <label for="lanAccess">Guard phones are allowed</label>
+                    </div>
+                    <button class="btn btn-sm btn-primary" type="submit"><i class="fas fa-floppy-disk me-1"></i> Save</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="qa-step {% if guards %}done{% endif %}">
+            <span class="qa-num">{% if guards %}<i class="fas fa-check"></i>{% else %}2{% endif %}</span>
+            <div class="qa-step-main">
+                <div class="qa-step-title">Guard account</div>
+                {% if guards %}
+                <div class="qa-step-text">The phone signs in with this account. You can leave it as it is.</div>
+                <select id="pairGuard" class="form-select form-select-sm w-auto" style="border-radius:12px;min-height:2.5rem;">
+                    {% for guard in guards %}<option value="{{ guard.id }}">{{ guard.username }}{% if guard.full_name and guard.full_name != guard.username %} ({{ guard.full_name }}){% endif %}</option>{% endfor %}
+                </select>
+                {% else %}
+                <div class="qa-step-text">One click makes an account for the guard. No password to remember.</div>
+                <form method="POST" action="{{ url_for('main.qr_create_guard') }}">
+                    <button class="btn btn-primary" type="submit"><i class="fas fa-user-shield me-1"></i> Create guard account</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="qa-step">
+            <span class="qa-num">3</span>
+            <div class="qa-step-main">
+                <div class="qa-step-title">Connect the phone with a code</div>
+                <div class="qa-step-text">The phone and this computer must be on the <b>same Wi-Fi</b>.</div>
+                <details id="pairBox" class="qa-code-box">
+                    <summary><i class="fas fa-qrcode"></i> Show the connection code</summary>
+                    {% if not lan_access %}
+                    <div class="qa-code-inner"><div class="sa-warn w-100 mb-0">Do step 1 first (and reopen School Manager). The code appears here after that.</div></div>
+                    {% elif not guards %}
+                    <div class="qa-code-inner"><div class="sa-warn w-100 mb-0">Do step 2 first. The code appears here after that.</div></div>
+                    {% elif not pair %}
+                    <div class="qa-code-inner"><div class="sa-warn w-100 mb-0">This computer has no Wi-Fi / network address right now. Connect it to the school Wi-Fi or turn on a hotspot.</div></div>
+                    {% else %}
+                    <div class="qa-code-inner">
+                        <div id="pairQr" class="qa-qr"></div>
+                        <div style="flex:1 1 16rem;min-width:0;">
+                            <ol>
+                                <li>Open the <b>School Guard</b> app on the guard&rsquo;s phone.</li>
+                                <li>Tap <b>Scan QR to connect</b>.</li>
+                                <li>Point the phone at this code. Done.</li>
+                            </ol>
+                            <button type="button" id="pairRefresh" class="btn btn-sm btn-outline-primary" style="border-radius:12px;"><i class="fas fa-rotate me-1"></i> New code</button>
+                            <div class="qa-sub mt-2" id="pairNote">The code works for {{ pair.expires_in // 60 }} minutes. Show it only to the guard&rsquo;s phone.</div>
+                            <div class="qa-sub">If the computer&rsquo;s address changes later, the app finds it again by itself.</div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </details>
+            </div>
+        </div>
+
+        <details class="qa-more mt-2">
+            <summary>The phone cannot connect? Type the address instead</summary>
+            {% if addresses %}
+            <p class="mb-1 mt-2">Type one of these addresses into the guard app:</p>
+            <ul class="mb-2">
+                {% for address in addresses %}<li><code>{{ address }}</code></li>{% endfor %}
+            </ul>
+            {% else %}
+            <div class="sa-warn mt-2">This computer has no Wi-Fi / network address right now. Connect it to the school Wi-Fi or turn on a hotspot.</div>
+            {% endif %}
+            <p class="qa-sub mb-1">Guard accounts: <strong>{{ guard_count }}</strong>. Another way to make one: Users &rarr; Add user &rarr; role &ldquo;Gate Guard&rdquo;.</p>
+            <p class="qa-sub mb-0">Still not working? Run <code>tools\allow_guard_phone_firewall.bat</code> once as administrator.</p>
+        </details>
+    </div>
+</details>
+{% elif not lan_access %}
+<div class="sa-hint"><i class="fas fa-mobile-screen-button me-1"></i> The guard&rsquo;s phone is not connected yet. Ask the administrator to set it up on this page.</div>
+{% endif %}
+
+{% if not report.is_school_day %}
+<div class="sa-warn"><div><i class="fas fa-calendar-xmark me-1"></i> <b>School is closed on this day</b> (weekend or holiday), so scans are refused.</div></div>
+{% endif %}
+
+{# ---------------------------------------------------------------- day / class bar #}
+<div class="sa-filters">
+    <form method="GET" action="{{ url_for('main.student_attendance') }}">
+        <input type="hidden" name="tab" value="qr">
+        <select name="class_id" class="form-select" onchange="this.form.submit()" aria-label="Class">
+            <option value="">All classes</option>
+            {% for c in classes %}
+            <option value="{{ c.id }}" {% if qr_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
+        <span class="sa-daybox">
+            <a class="sa-daybtn" href="{{ url_for('main.student_attendance', tab='qr', class_id=qr_class_id, date=prev_date) }}" title="Previous day" aria-label="Previous day"><i class="fas fa-chevron-left"></i></a>
+            <input type="date" name="date" value="{{ qr_day }}" class="form-control" onchange="this.form.submit()" aria-label="Date">
+            <a class="sa-daybtn" href="{{ url_for('main.student_attendance', tab='qr', class_id=qr_class_id, date=next_date) }}" title="Next day" aria-label="Next day"><i class="fas fa-chevron-right"></i></a>
+        </span>
+        <a class="sa-today {% if is_today %}is-on{% endif %}" href="{{ url_for('main.student_attendance', tab='qr', class_id=qr_class_id, date=today_date) }}">Today</a>
+        <span class="qa-live {% if not qr_is_today %}d-none{% endif %}" id="qaLiveBox">
+            <span><span class="qa-dot"></span><span id="qaUpdated">Live</span></span>
+            <span class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                <label for="autoRefresh">Update by itself</label>
+            </span>
+            <button class="btn" type="button" id="qaNow"><i class="fas fa-rotate me-1"></i> Update now</button>
+        </span>
+    </form>
+</div>
+
+{# ---------------------------------------------------------------- live numbers #}
+<div id="qaTop">
+{% set pct_p = (counts.present * 100.0 / total) if total else 0 %}
+{% set pct_l = (counts.late * 100.0 / total) if total else 0 %}
+{% set pct_a = (counts.absent * 100.0 / total) if total else 0 %}
+{% set pct_v = (counts.leave * 100.0 / total) if total else 0 %}
+<div class="sa-ribbon">
+    <div class="sa-stat">
+        <span class="sa-num">{{ total }}</span>
+        <span class="sa-lab">{{ 'Students in this class' if qr_class_id else 'Students in the school' }}</span>
+    </div>
+    <div class="sa-stat">
+        <div class="sa-bar" role="img" aria-label="Present {{ counts.present }}, late {{ counts.late }}, not arrived {{ counts.absent }}, on leave {{ counts.leave }}">
+            <i class="p" style="width:{{ pct_p }}%"></i><i class="l" style="width:{{ pct_l }}%"></i><i class="a" style="width:{{ pct_a }}%"></i><i class="v" style="width:{{ pct_v }}%"></i>
+        </div>
+        <div class="sa-legend">
+            <span><span class="dot" style="background:#16a34a"></span><b>{{ counts.present }}</b> Arrived</span>
+            <span><span class="dot" style="background:#f59e0b"></span><b>{{ counts.late }}</b> Late</span>
+            <span><span class="dot" style="background:#dc2626"></span><b>{{ counts.absent }}</b> Not arrived</span>
+            {% if counts.leave %}<span><span class="dot" style="background:#94a3b8"></span><b>{{ counts.leave }}</b> On leave</span>{% endif %}
+        </div>
+    </div>
+    <div class="sa-stat">
+        <span class="qa-rate-num">{{ report.percentage }}%</span>
+        <span class="sa-lab">came to school ({{ 'on time + late' if report.late_counts_as_present else 'on time only' }})</span>
+    </div>
+</div>
+</div>
+
+{# ---------------------------------------------------------------- search + list #}
+<div class="sa-toolbar">
+    <div class="sa-search">
+        <i class="fas fa-magnifying-glass"></i>
+        <input type="search" id="qaSearch" class="form-control" placeholder="Find a student by name, roll no or father&rsquo;s name…" autocomplete="off" aria-label="Find a student">
+    </div>
+</div>
+
+<div class="card sa-panel mb-4" id="qaList">
+    {% set rows = [] %}
+    {% for row in report.absent %}{% set _ = rows.append(('absent', row)) %}{% endfor %}
+    {% for row in report.late %}{% set _ = rows.append(('late', row)) %}{% endfor %}
+    {% for row in report.present %}{% set _ = rows.append(('present', row)) %}{% endfor %}
+    {% for row in report.leave %}{% set _ = rows.append(('leave', row)) %}{% endfor %}
+    {% if total == 0 %}
+    <div class="sa-empty" style="border:0;">
+        <div class="sa-empty-icon"><i class="fas fa-user-graduate"></i></div>
+        <p>There are no students in this class yet.</p>
+    </div>
+    {% else %}
+    <div class="qa-chips" role="group" aria-label="Show">
+        <button type="button" class="qa-chip is-on" data-qa-filter="all">Everyone <b>{{ total }}</b></button>
+        <button type="button" class="qa-chip c-absent" data-qa-filter="absent">Not arrived <b>{{ counts.absent }}</b></button>
+        <button type="button" class="qa-chip c-late" data-qa-filter="late">Late <b>{{ counts.late }}</b></button>
+        <button type="button" class="qa-chip c-present" data-qa-filter="present">Arrived on time <b>{{ counts.present }}</b></button>
+        {% if counts.leave %}<button type="button" class="qa-chip" data-qa-filter="leave">On leave <b>{{ counts.leave }}</b></button>{% endif %}
+    </div>
+    <div class="sa-count"><span id="qaCount">Showing <strong id="qaVisible">{{ total }}</strong> of <strong>{{ total }}</strong> students</span></div>
+    <div class="qa-head">
+        <span>Roll</span><span>Student</span><span class="qa-c-class">Class</span><span>Status</span><span>Scanned at</span>
+    </div>
+    {% for group, row in rows %}
+    {% set student = row.student %}
+    <div class="qa-row" data-group="{{ group }}" data-search="{{ (student.student_name ~ ' ' ~ (student.roll_number or '') ~ ' ' ~ (student.father_name or ''))|lower }}">
+        <span class="qa-c-roll"><span class="sa-roll">{{ student.roll_number or '–' }}</span></span>
+        <span class="qa-c-who sa-who">
+            {{ avatar('student', student, 40) }}
+            <span class="sa-who-text">
+                <span class="sa-who-name d-block">{{ student.student_name }}</span>
+                {% if student.father_name %}<span class="sa-who-sub d-block">{{ student.father_name }}</span>{% endif %}
+            </span>
+        </span>
+        <span class="qa-c-class qa-sub">{{ row.class_name }}</span>
+        <span class="qa-c-status">
+            {% if group == 'present' %}<span class="sa-pill p"><i class="fas fa-check me-1"></i>Arrived</span>
+            {% elif group == 'late' %}<span class="sa-pill l"><i class="fas fa-clock me-1"></i>Late</span>
+            {% elif group == 'leave' %}<span class="sa-pill v">On leave</span>
+            {% elif row.label == 'Absent' %}<span class="sa-pill a">Marked absent</span>
+            {% else %}<span class="sa-pill n">{{ 'Not arrived yet' if qr_is_today else 'Not scanned' }}</span>{% endif %}
+        </span>
+        <span class="qa-c-when qa-when">
+            {% if row.qr_time or row.time %}{{ row.qr_time or row.time }}{% if group == 'late' and row.late_minutes %}<small>{{ row.late_minutes }} min late</small>{% endif %}
+            {% else %}<span class="sa-dash">—</span>{% endif %}
+        </span>
+    </div>
+    {% endfor %}
+    <div class="qa-more-note" id="qaNone" hidden><i class="fas fa-magnifying-glass me-1"></i> No student matches. Try another name or choose <b>Everyone</b>.</div>
+    {% endif %}
+</div>
+
+{# ---------------------------------------------------------------- auto-absent settings #}
+{% if is_admin %}
+<details class="qa-card mb-5" id="qaAuto">
+    <summary>
+        <span class="qa-ico"><i class="fas fa-user-clock"></i></span>
+        <span class="qa-sum-text">
+            <span class="qa-sum-title d-block">Mark absent by itself</span>
+            <span class="qa-sum-sub d-block">
+                {% if qr_cfg.auto_absent_enabled %}On &mdash; at {{ qr_cfg.absent_cutoff_time }}, students who were not scanned become Absent{% if qr_cfg.absent_mode != 'auto' %} (after you approve){% endif %}.
+                {% else %}Off &mdash; students who were not scanned stay &ldquo;Not arrived&rdquo; until you mark them.{% endif %}
+            </span>
+        </span>
+        <span class="sa-pill {{ 'p' if qr_cfg.auto_absent_enabled else 'n' }}">{{ 'On' if qr_cfg.auto_absent_enabled else 'Off' }}</span>
+        <i class="fas fa-chevron-down qa-chev"></i>
+    </summary>
+    <div class="qa-body pt-3">
+        <form method="POST" action="{{ url_for('main.qr_auto_absent_settings') }}" class="qa-form">
+            <div class="qa-field wide">
+                <div class="qa-switch">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="auto_absent_enabled" id="autoAbsentOn" {% if qr_cfg.auto_absent_enabled %}checked{% endif %}>
+                        <label for="autoAbsentOn">Turn on &ldquo;mark absent by itself&rdquo;</label>
+                    </div>
+                </div>
+                <div class="qa-help mt-1">At the time below, every student who has no attendance yet becomes <b>Absent</b>. Students who are present, late or on leave are never changed.</div>
+            </div>
+            <div class="qa-field">
+                <label class="qa-q" for="cutoff">At what time?</label>
+                <div class="qa-help">Students not scanned by this time are marked absent.</div>
+                <input type="time" class="form-control" id="cutoff" name="absent_cutoff_time" value="{{ qr_cfg.absent_cutoff_time }}" required>
+            </div>
+            <div class="qa-field">
+                <label class="qa-q" for="absentMode">Should it ask you first?</label>
+                <div class="qa-help">&ldquo;Ask me first&rdquo; shows you the list to approve.</div>
+                <select class="form-select" id="absentMode" name="absent_mode">
+                    <option value="approval" {% if qr_cfg.absent_mode != 'auto' %}selected{% endif %}>Ask me first (approval)</option>
+                    <option value="auto" {% if qr_cfg.absent_mode == 'auto' %}selected{% endif %}>No, do it automatically</option>
+                </select>
+            </div>
+            <div class="qa-field">
+                <label class="qa-q" for="minPercent">Safety check (%)</label>
+                <div class="qa-help">If fewer than this many students have arrived (for example the guard&rsquo;s phone was off), nobody is marked absent without your approval.</div>
+                <input type="number" min="0" max="100" class="form-control" id="minPercent" name="absent_min_scan_percent" value="{{ qr_cfg.absent_min_scan_percent }}">
+            </div>
+            <div class="qa-field">
+                <label class="qa-q" for="msgDelay">Wait before telling parents (minutes)</label>
+                <div class="qa-help">The absent message goes to the parent after this wait. If the student arrives first, the message is cancelled.</div>
+                <input type="number" min="0" max="720" class="form-control" id="msgDelay" name="absent_message_delay_minutes" value="{{ qr_cfg.absent_message_delay_minutes }}">
+            </div>
+            <div class="qa-field wide">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="late_correction_enabled" id="lateCorrection" {% if qr_cfg.late_correction_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="lateCorrection">If a student marked absent arrives later, send the parent a correction message (only when the absent message was already sent)</label>
+                </div>
+            </div>
+            <div class="qa-field wide">
+                <div class="qa-note-box">Absent messages follow your WhatsApp automation settings.</div>
+            </div>
+            <div class="qa-field wide"><button class="btn btn-primary" style="border-radius:12px;font-weight:700;" type="submit"><i class="fas fa-floppy-disk me-1"></i> Save these settings</button></div>
+        </form>
+    </div>
+</details>
+{% endif %}
+
+{% if is_admin and pair %}
+<script src="{{ url_for('static', filename='vendor/qrcodejs/qrcode.min.js') }}"></script>
+<script>
+(function () {
+    var box = document.getElementById('pairQr');
+    var details = document.getElementById('pairBox');
+    var select = document.getElementById('pairGuard');
+    var note = document.getElementById('pairNote');
+    if (!box || !details || typeof QRCode === 'undefined') { return; }
+    var codeUrl = {{ url_for('main.qr_pair_code')|tojson }};
+
+    function draw(text) {
+        box.innerHTML = '';
+        new QRCode(box, { text: text, width: 240, height: 240, correctLevel: QRCode.CorrectLevel.M });
+    }
+    function fresh() {
+        if (!select) { return; }
+        fetch(codeUrl + '?user_id=' + encodeURIComponent(select.value), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.ok) {
+                    draw(d.payload);
+                    note.textContent = 'New code for "' + d.username + '". It works for ' + Math.floor(d.expires_in / 60) + ' minutes. Show it only to the guard’s phone.';
+                } else {
+                    note.textContent = d.message || 'Could not make a code.';
+                }
+            })
+            .catch(function () { note.textContent = 'Could not make a code. Reload the page.'; });
+    }
+    function sync() {
+        window.__smPairingOpen = details.open;
+        if (details.open) { fresh(); }             // always a fresh code when the box is opened
+    }
+    details.addEventListener('toggle', sync);
+    if (select) { select.addEventListener('change', fresh); }
+    var again = document.getElementById('pairRefresh');
+    if (again) { again.addEventListener('click', fresh); }
+})();
+</script>
+{% endif %}
+
+<script>
+(function () {
+    var filter = 'all';
+    var search = document.getElementById('qaSearch');
+    var list = document.getElementById('qaList');
+    var pref = document.getElementById('autoRefresh');
+    var stamp = document.getElementById('qaUpdated');
+    var liveBox = document.getElementById('qaLiveBox');
+    var nowBtn = document.getElementById('qaNow');
+    var isToday = {{ 'true' if qr_is_today else 'false' }};
+    var busy = false;
+
+    function apply() {
+        if (!list) { return; }
+        var q = (search && search.value || '').trim().toLowerCase();
+        var shown = 0;
+        var rows = list.querySelectorAll('.qa-row');
+        rows.forEach(function (row) {
+            var ok = (filter === 'all' || row.getAttribute('data-group') === filter)
+                  && (!q || (row.getAttribute('data-search') || '').indexOf(q) !== -1);
+            row.hidden = !ok;
+            if (ok) { shown += 1; }
+        });
+        list.querySelectorAll('[data-qa-filter]').forEach(function (chip) {
+            chip.classList.toggle('is-on', chip.getAttribute('data-qa-filter') === filter);
+        });
+        var visible = document.getElementById('qaVisible');
+        if (visible) { visible.textContent = shown; }
+        var none = document.getElementById('qaNone');
+        if (none) { none.hidden = !(rows.length && shown === 0); }
+    }
+
+    if (list) {
+        list.addEventListener('click', function (event) {
+            var chip = event.target.closest('[data-qa-filter]');
+            if (!chip) { return; }
+            filter = chip.getAttribute('data-qa-filter');
+            apply();
+        });
+    }
+    if (search) { search.addEventListener('input', apply); }
+
+    function clock() {
+        var d = new Date();
+        return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2);
+    }
+    function mark() {
+        if (!stamp) { return; }
+        stamp.textContent = (pref && pref.checked) ? 'Live · updated ' + clock() : 'Paused · updated ' + clock();
+        if (liveBox) { liveBox.classList.toggle('is-off', !(pref && pref.checked)); }
+    }
+
+    // Swap only the numbers and the list, so a form the person is filling in is never lost.
+    function update() {
+        if (busy || !isToday) { return; }
+        busy = true;
+        if (nowBtn) { nowBtn.disabled = true; }
+        fetch(window.location.href, { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
+            .then(function (r) { if (!r.ok) { throw new Error('bad'); } return r.text(); })
+            .then(function (text) {
+                var doc = new DOMParser().parseFromString(text, 'text/html');
+                ['qaTop', 'qaList'].forEach(function (id) {
+                    var fresh = doc.getElementById(id);
+                    var old = document.getElementById(id);
+                    if (fresh && old) { old.innerHTML = fresh.innerHTML; }
+                });
+                list = document.getElementById('qaList');
+                apply();
+                mark();
+            })
+            .catch(function () { if (stamp) { stamp.textContent = 'Could not update. Will try again.'; } })
+            .then(function () { busy = false; if (nowBtn) { nowBtn.disabled = false; } });
+    }
+
+    try {
+        if (pref && window.localStorage.getItem('qaAutoRefresh') === 'off') { pref.checked = false; }
+    } catch (e) { /* storage may be blocked: the switch simply starts on */ }
+    if (pref) {
+        pref.addEventListener('change', function () {
+            try { window.localStorage.setItem('qaAutoRefresh', pref.checked ? 'on' : 'off'); } catch (e) { /* ignore */ }
+            mark();
+            if (pref.checked) { update(); }
+        });
+    }
+    if (nowBtn) { nowBtn.addEventListener('click', update); }
+    if (isToday) {
+        setInterval(function () {
+            if (pref && pref.checked && !document.hidden) { update(); }
+        }, 30000);
+    }
+    apply();
+    mark();
+})();
+</script>

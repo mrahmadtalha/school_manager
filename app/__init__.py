@@ -6,15 +6,18 @@ from flask_login import LoginManager, current_user
 from app.bootstrap import (
     backfill_financial_v2,
     migrate_admission_fee_schema,
+    migrate_inventory_schema,
     create_default_admin,
     ensure_school_settings,
     inject_school_settings,
+    install_auto_absent,
     install_auto_backup,
     link_subjects_to_library,
     migrate_admin_schema,
 
     migrate_attendance_schema,
     migrate_automation_schema,
+    migrate_qr_config_schema,
     migrate_class_integrity_schema,
     migrate_dashboard_schema,
     migrate_test_schema,
@@ -41,6 +44,7 @@ from app.config import get_config
 from app.database import db
 from app.license_guard import install_license_guard
 from app.security import PUBLIC_ENDPOINTS, install_role_guard
+from app.services import i18n
 from app.services.audit import format_local, install_audit_hooks
 from app.services.custom_fields import parse_custom_fields_json, parse_json_list
 from app.user_data import data_root, migrate_into_data_root
@@ -84,6 +88,7 @@ def create_app(config_override=None):
         db.create_all()
         # Admission-fee columns first, so no ORM query meets a missing column.
         migrate_admission_fee_schema(app)
+        migrate_inventory_schema(app)
         # Financial v2 rebuilds the money tables (paisa + cash dates) and must
         # run before any ORM query touches them.
         migrate_financial_v2_schema(app)
@@ -103,6 +108,7 @@ def create_app(config_override=None):
         migrate_student_roll_schema(app)
         migrate_guardian_links(app)
         migrate_automation_schema(app)
+        migrate_qr_config_schema(app)
         migrate_teacher_schema(app)
         migrate_school_settings_schema(app)
         migrate_student_fee_schema(app)
@@ -119,7 +125,10 @@ def create_app(config_override=None):
         register_blueprints(app)
         create_default_admin()
         ensure_school_settings()
+        from app.services.qr_attendance import ensure_qr_config
+        ensure_qr_config()
         inject_school_settings(app)
+        i18n.register(app)
         app.jinja_env.filters['localtime'] = format_local
         app.jinja_env.filters['fromjson'] = parse_custom_fields_json
         app.jinja_env.filters['fromjsonlist'] = parse_json_list
@@ -129,6 +138,7 @@ def create_app(config_override=None):
         app.jinja_env.globals['column_classes'] = _record_view.column_css
         app.jinja_env.globals['actions_col_class'] = _record_view.ACTIONS_COL_CLASS
         install_auto_backup(app)
+        install_auto_absent(app)
 
     @login_manager.user_loader
     def load_user(user_id):

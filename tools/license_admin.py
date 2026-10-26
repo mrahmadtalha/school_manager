@@ -84,7 +84,8 @@ def public_key_b64(private_key):
 
 
 def build_payload(*, license_id, licensee, machine_code, issued, expires, grace_days,
-                  rev=1, plan=None, features=None, wa_daily=None, wa_monthly=None):
+                  rev=1, plan=None, features=None, wa_daily=None, wa_monthly=None, roles=None,
+                  notice=None):
     """The signed license payload (shared by this CLI and the vendor dashboard).
 
     ``features=None`` leaves the field out (legacy key: everything on);
@@ -106,6 +107,9 @@ def build_payload(*, license_id, licensee, machine_code, issued, expires, grace_
         payload['plan'] = str(plan)[:40]
     if features is not None:
         payload['features'] = sorted({str(item) for item in features})
+        payload['fv'] = 2          # catalog version: the newer features are listed explicitly
+    if roles is not None:
+        payload['roles'] = sorted({str(item) for item in roles} | {'admin'})
     limits = {}
     if wa_daily is not None:
         limits[lic.LIMIT_WA_DAILY] = max(0, int(wa_daily))
@@ -113,7 +117,27 @@ def build_payload(*, license_id, licensee, machine_code, issued, expires, grace_
         limits[lic.LIMIT_WA_MONTHLY] = max(0, int(wa_monthly))
     if limits:
         payload['limits'] = limits
+    notice = ' '.join(str(notice or '').split())[:lic.NOTICE_MAX_LENGTH]
+    if notice:
+        payload['notice'] = notice      # the school sees it (e.g. "Renewal due"); older builds ignore it
     return payload
+
+
+def build_inspection_key(private_key, *, licensee, machine_code, hours, license_id='', now_ts=None):
+    """Sign a view-only inspection key (shared by this CLI and the vendor dashboard).
+
+    Returns ``(inspection_id, key_text, issued_ts, expires_ts)``.  The key never replaces a
+    license: the school pastes it on the License page and it ends by itself after ``hours``.
+    """
+    import secrets
+    import time as _time
+    hours = max(1, min(lic.INSPECTION_MAX_HOURS, int(hours)))
+    issued_ts = int(now_ts if now_ts is not None else _time.time())
+    inspection_id = f'INS-{datetime.fromtimestamp(issued_ts):%Y%m%d}-{secrets.token_hex(3).upper()}'
+    key_text = lic.sign_inspection(private_key, inspection_id=inspection_id, license_id=license_id,
+                                   licensee=licensee, machine_code=machine_code,
+                                   issued_ts=issued_ts, hours=hours)
+    return inspection_id, key_text, issued_ts, issued_ts + hours * 3600
 
 
 def sign_license(private_key, payload):
@@ -202,7 +226,7 @@ def cmd_issue(args):
         license_id=args.license_id or _next_license_id(), licensee=args.licensee,
         machine_code=machine_code, issued=issued, expires=expires,
         grace_days=args.grace_days, rev=args.rev, plan=args.plan, features=features,
-        wa_daily=args.wa_daily, wa_monthly=args.wa_monthly)
+        wa_daily=args.wa_daily, wa_monthly=args.wa_monthly, notice=args.notice)
     key_text = sign_license(private_key, payload)
 
     KEYS_DIR.mkdir(exist_ok=True)
@@ -226,8 +250,25 @@ def cmd_issue(args):
     print(f'Revision   : {payload["rev"]}   Plan: {payload.get("plan", "-")}')
     print(f'Features   : {", ".join(payload["features"]) if "features" in payload else "all (legacy key)"}')
     print(f'WhatsApp   : {payload.get("limits", "unlimited")}')
+    print(f'Notice     : {payload.get("notice", "-")}')
     print(f'Key file   : {out}')
     print('\nLicense key (send this to the school):\n')
+    print(key_text)
+
+
+def cmd_inspection_key(args):
+    private_key = load_private_key()
+    machine = lic.normalize_machine_code(args.machine)
+    if len(machine) != 16:
+        sys.exit('Machine code must look like 7F3A-91BC-0D42-E8A5 (16 letters/digits).')
+    inspection_id, key_text, issued_ts, expires_ts = build_inspection_key(
+        private_key, licensee=args.licensee, machine_code=machine, hours=args.hours,
+        license_id=args.license_id or '')
+    print(f'Inspection ID : {inspection_id}')
+    print(f'Licensee      : {args.licensee}')
+    print(f'Valid         : {datetime.fromtimestamp(issued_ts):%Y-%m-%d %H:%M} -> '
+          f'{datetime.fromtimestamp(expires_ts):%Y-%m-%d %H:%M} (this computer\'s local time)')
+    print('\nInspection key (view-only; paste it on the License page):\n')
     print(key_text)
 
 
@@ -237,6 +278,17 @@ def cmd_inspect(args):
         sys.exit('Give a key with --key or a file with --file.')
     match = re.search(r"PUBLIC_KEY_B64 = '(.*)'", PUBLIC_KEY_MODULE.read_text(encoding='utf-8'))
     pub = match.group(1) if match else ''
+    if ''.join(text.split()).startswith(lic.INSPECTION_PREFIX + '.'):
+        try:
+            data = lic.verify_inspection_text(text, pub)
+        except lic.LicenseError as err:
+            sys.exit(f'INVALID ({err.code}): {err.message}')
+        print('Signature OK (inspection key, view-only)')
+        for key in ('inspection_id', 'license_id', 'licensee', 'machine_id'):
+            print(f'  {key:<13}: {data.get(key)}')
+        for key in ('issued_ts', 'expires_ts'):
+            print(f'  {key:<13}: {datetime.fromtimestamp(data[key]):%Y-%m-%d %H:%M}')
+        return
     try:
         payload = lic.verify_license_text(text, pub)
     except lic.LicenseError as err:
@@ -248,6 +300,7 @@ def cmd_inspect(args):
     features = payload.get('_features')
     print(f'  {"features":<11}: {", ".join(features) if features is not None else "all (legacy key)"}')
     print(f'  {"limits":<11}: {payload.get("_limits") or "unlimited"}')
+    print(f'  {"notice":<11}: {payload.get("_notice") or "-"}')
 
 
 def cmd_machine_code(_args):
@@ -277,8 +330,16 @@ def main():
     p.add_argument('--features', help='comma-separated feature keys, or "all"; omit for a legacy everything-on key')
     p.add_argument('--wa-daily', type=int, help='WhatsApp messages allowed per day (omit = unlimited)')
     p.add_argument('--wa-monthly', type=int, help='WhatsApp messages allowed per month (omit = unlimited)')
+    p.add_argument('--notice', help='short message the school sees with the key (e.g. "Renewal due")')
     p.add_argument('--out', help='where to write the .key file')
     p.set_defaults(func=cmd_issue)
+
+    p = sub.add_parser('inspection-key', help='issue a short, view-only inspection key')
+    p.add_argument('--machine', required=True, help="the school computer's machine code")
+    p.add_argument('--licensee', required=True, help='school name')
+    p.add_argument('--hours', type=int, default=24, help='how long it stays valid (default 24)')
+    p.add_argument('--license-id', help="the school's license id (the key then only works with that license)")
+    p.set_defaults(func=cmd_inspection_key)
 
     p = sub.add_parser('inspect', help='verify and display a license key')
     p.add_argument('--key', help='the key text')

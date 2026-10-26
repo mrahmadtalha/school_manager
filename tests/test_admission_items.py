@@ -72,20 +72,36 @@ def test_form_is_filled_from_the_class_and_one_receipt_covers_everything(admin_c
     assert len(income) == 1 and income[0].amount_paisa == 600000   # ONE receipt
 
 
-def test_the_form_can_override_books_and_uniform(admin_client, seed):
-    _class_items(seed)
-    _add_student(admin_client, seed, 2002, 'Custom Kid', books_fee='2500', uniform_qty='1',
-                 uniform_price='1000', admission_fee='2000',
-                 admission_received_now='1', admission_received_amount='5500')
-    info = adm.summary(_student(2002))
-    assert info['total'] == 550000 and info['balance'] == 0 and info['status'] == 'paid'
+def test_prices_are_fixed_by_the_class_and_the_form_chooses_what_is_taken(admin_client, seed):
+    _class_items(seed)          # admission 2,000 + books 3,000 + uniform 1,500 per set (2 sets by default)
+    # one uniform set, books taken; prices typed on the form are ignored (the class sets them)
+    _add_student(admin_client, seed, 2002, 'Custom Kid', books_taken='1', uniform_qty='1',
+                 books_fee='1', uniform_price='1', admission_fee='2000',
+                 admission_received_now='1', admission_received_amount='6500')
+    student = _student(2002)
+    assert (student.books_fee_paisa, student.uniform_qty, student.uniform_unit_paisa) == (300000, 1, 150000)
+    info = adm.summary(student)
+    assert info['total'] == 650000 and info['balance'] == 0 and info['status'] == 'paid'
 
 
-def test_zero_books_means_no_books(admin_client, seed):
+def test_two_uniform_sets_and_one_books_per_student(admin_client, seed):
+    _class_items(seed, sets=1)
+    _add_student(admin_client, seed, 2012, 'Two Sets', uniform_qty='2')
+    _add_student(admin_client, seed, 2013, 'One Set')                  # default: 1 set + books
+    _add_student(admin_client, seed, 2014, 'Uniform Only', books_taken='0', uniform_qty='3')
+    assert adm.summary(_student(2012))['total'] == 200000 + 300000 + 2 * 150000
+    assert adm.summary(_student(2013))['total'] == 200000 + 300000 + 150000
+    only = _student(2014)
+    assert only.books_fee_paisa is None and adm.summary(only)['total'] == 200000 + 3 * 150000
+
+
+def test_not_taking_books_or_uniform(admin_client, seed):
     _class_items(seed)
-    _add_student(admin_client, seed, 2003, 'No Books', books_fee='0')
+    _add_student(admin_client, seed, 2003, 'No Books', books_taken='0')
     info = adm.summary(_student(2003))
     assert info['books'] == 0 and info['total'] == 500000      # 2,000 + 2 x 1,500
+    _add_student(admin_client, seed, 2015, 'No Uniform', uniform_qty='0')
+    assert adm.summary(_student(2015))['total'] == 500000      # 2,000 + 3,000 books
 
 
 def test_teacher_gets_the_whole_package_as_pending(teacher_client, seed):

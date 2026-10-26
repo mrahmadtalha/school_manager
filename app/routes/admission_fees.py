@@ -19,7 +19,7 @@ from app.models import (ClassModel, OtherIncome, ROLE_ACCOUNTANT, ROLE_ADMIN,
                         ROLE_OWNER, SchoolSettings, StudentModel)
 from app.routes import main
 from app.security import role_required
-from app.services import admission_fee
+from app.services import admission_fee, student_stock
 from app.services.audit import log_action
 from app.services.payroll_service import amount_in_words
 
@@ -175,8 +175,18 @@ def admission_export(fmt):
 @role_required(ROLE_ADMIN, ROLE_ACCOUNTANT, ROLE_OWNER)
 def admission_student(student_id):
     student = StudentModel.query.get_or_404(student_id)
+    from app.models import Sale
+    from app.services import inventory_service
+    stock_on = inventory_service.inventory_enabled()
     return render_template(
         'admission_student.html', student=student,
+        stock_on=stock_on,
+        stock_issues=student_stock.student_issues(student.id) if stock_on else [],
+        stock_sales=(Sale.query.filter_by(student_id=student.id, source='sale')
+                     .order_by(Sale.sale_date.desc(), Sale.id.desc()).all()
+                     if stock_on else []),
+        stock_pending=[r for r in student_stock.pending_rows(limit=5000)
+                       if r['student'].id == student.id] if stock_on else [],
         info=admission_fee.summary(student),
         payments=admission_fee.all_payments(student.id),
         status_labels=admission_fee.STATUS_LABELS,
@@ -226,8 +236,9 @@ def admission_terms(student_id):
         flash('Please enter the admission fee amount (0 removes it).', 'danger')
         return redirect(_student_url(student.id))
     items = {}
-    if 'books_fee' in request.form or 'uniform_qty' in request.form:
+    if 'books_fee' in request.form or 'uniform_qty' in request.form or 'books_qty' in request.form:
         items = {'books_rupees': (request.form.get('books_fee') or '0').replace(',', ''),
+                 'books_sets': request.form.get('books_qty') or None,
                  'uniform_qty': request.form.get('uniform_qty') or '0',
                  'uniform_unit_rupees': (request.form.get('uniform_price') or '0'
                                          ).replace(',', '')}
@@ -236,8 +247,13 @@ def admission_terms(student_id):
             student, standard, request.form.get('admission_discount_type'),
             request.form.get('admission_discount_value'),
             request.form.get('admission_note'), **items)
+        # Inventory (Phase 3): keep the issued books / uniform in step with the
+        # new terms (only for students whose stock is tracked).
+        stock_messages = student_stock.sync_student_stock(student, actor=current_user)
         db.session.commit()
         flash('Admission fee terms updated.', 'success')
+        for category, text in stock_messages:
+            flash(text, category)
     except ValueError as error:
         db.session.rollback()
         flash(str(error), 'danger')

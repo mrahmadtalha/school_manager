@@ -67,7 +67,7 @@
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
             <div class="text-muted small text-uppercase fw-bold">Cost of goods sold</div>
             <div class="h4 fw-bold mb-1" style="color:#fd7e14;">Rs {{ money(metrics.sales.cogs) }}</div>
-            <div class="text-muted small">cost of items actually sold</div>
+            <div class="text-muted small">cost of items that left the shelf{% if metrics.sales.package_cogs %} · Rs {{ money(metrics.sales.package_cogs) }} of it was given inside admission packages (already paid in the admission fee){% endif %}</div>
         </div></div>
     </div>
     <div class="col-md-3">

@@ -10,6 +10,13 @@ from tests.test_admission_fee import (  # noqa: F401  (fixtures are used by name
     accountant_client, admin_client, teacher_client, _add_student, _student)
 
 
+def _give(roll, number):
+    """Put a number on a student straight in the database (the forms never accept one)."""
+    row = _student(roll)
+    row.admission_number = number
+    db.session.commit()
+
+
 def _set_auto(client, on):
     data = {'action': 'save_general_info', 'school_name': 'Test School'}
     if on:
@@ -21,7 +28,7 @@ def _set_auto(client, on):
 def test_auto_admission_number_is_off_until_switched_on(admin_client, seed):
     assert admission_numbers.is_auto() is False
     _add_student(admin_client, seed, 3001, 'Manual One', admission_number='REG-77')
-    assert _student(3001).admission_number == 'REG-77'
+    assert _student(3001).admission_number is None             # typed numbers are ignored
     _add_student(admin_client, seed, 3002, 'Manual Two')
     assert _student(3002).admission_number is None
 
@@ -37,23 +44,24 @@ def test_switch_on_numbers_new_students_one_after_another(admin_client, seed):
     assert _student(3004).admission_number == 'ADM-0002'
     # the Add Student form shows the next number and the box is read-only
     html = admin_client.get('/students').get_data(as_text=True)
-    assert 'Auto: ADM-0003' in html
+    assert 'value="ADM-0003"' in html
 
 
 def test_numbers_already_on_record_are_never_changed_or_reused(admin_client, seed):
-    _add_student(admin_client, seed, 3005, 'Old Typed', admission_number='ADM-0010')
+    _add_student(admin_client, seed, 3005, 'Old Typed')
+    _give(3005, 'ADM-0010')
     _set_auto(admin_client, True)
     _add_student(admin_client, seed, 3006, 'New Auto')
     assert _student(3005).admission_number == 'ADM-0010'
     assert _student(3006).admission_number == 'ADM-0011'
 
 
-def test_switch_off_goes_back_to_typing_by_hand(admin_client, seed):
+def test_switch_off_stops_numbering_and_nothing_can_be_typed(admin_client, seed):
     _set_auto(admin_client, True)
     _set_auto(admin_client, False)
     assert admission_numbers.is_auto() is False
     _add_student(admin_client, seed, 3007, 'Typed Again', admission_number='X-1')
-    assert _student(3007).admission_number == 'X-1'
+    assert _student(3007).admission_number is None
 
 
 def test_admission_form_downloads_as_pdf_and_excel(admin_client, seed):
@@ -136,3 +144,138 @@ def test_fee_reminders_month_is_a_dropdown_not_typed(admin_client, seed):
     html = admin_client.get('/fees/reminders').get_data(as_text=True)
     assert '<select class="form-select form-select-sm" name="month_year"' in html
     assert 'placeholder="e.g. September 2026"' not in html
+
+
+# ---- Add Student form rules -------------------------------------------------
+
+def test_admission_no_box_is_read_only_when_automatic_and_a_typed_number_is_ignored(admin_client, seed):
+    html = admin_client.get('/students').get_data(as_text=True)
+    assert 'Auto: ADM-' not in html                       # switch is off: normal box
+    _set_auto(admin_client, True)
+    html = admin_client.get('/students').get_data(as_text=True)
+    assert 'value="ADM-0001"' in html                                   # Add form shows it
+    assert 'data-adm-auto="1"' in html and 'data-adm-next="ADM-0001"' in html   # Edit form (JS)
+    _add_student(admin_client, seed, 3201, 'Typed Try', admission_number='HACK-1')
+    assert _student(3201).admission_number == 'ADM-0001'
+
+
+def _edit(client, seed, roll, **extra):
+    student = _student(roll)
+    data = {'roll_number': str(roll), 'student_name': student.student_name,
+            'father_name': student.father_name, 'guardian_phone': student.guardian_phone,
+            'address': student.address, 'class_id': str(seed['class_id']),
+            'monthly_fee': '2000'}
+    data.update(extra)
+    return client.post('/students/edit/%d' % student.id, data=data, follow_redirects=False)
+
+
+def _settings(client, **extra):
+    data = {'action': 'save_general_info', 'school_name': 'Test School'}
+    data.update(extra)
+    resp = client.post('/settings', data=data)
+    assert resp.status_code == 302
+
+
+def test_editing_never_changes_an_automatic_admission_number(admin_client, seed):
+    _set_auto(admin_client, True)
+    _add_student(admin_client, seed, 3202, 'Edit Me')
+    assert _student(3202).admission_number == 'ADM-0001'
+    # the edit form posts a hand-typed number; the lock (on by default) ignores it
+    _edit(admin_client, seed, 3202, admission_number='HACK-9')
+    assert _student(3202).admission_number == 'ADM-0001'
+
+
+def test_a_given_number_cannot_be_edited_by_anyone(admin_client, seed):
+    _add_student(admin_client, seed, 3210, 'Has Number')
+    _give(3210, 'REG-1')
+    _edit(admin_client, seed, 3210, admission_number='REG-2')
+    assert _student(3210).admission_number == 'REG-1'
+    _set_auto(admin_client, True)
+    _edit(admin_client, seed, 3210, admission_number='')
+    assert _student(3210).admission_number == 'REG-1'
+
+
+def test_student_without_a_number_gets_one_on_save_only_when_auto_is_on(admin_client, seed):
+    _add_student(admin_client, seed, 3212, 'Blank')
+    _edit(admin_client, seed, 3212, admission_number='REG-5')          # typed: ignored
+    assert _student(3212).admission_number is None
+    _set_auto(admin_client, True)
+    _edit(admin_client, seed, 3212, admission_number='')
+    assert _student(3212).admission_number == 'ADM-0001'
+
+
+def test_add_form_box_is_read_only_and_shows_the_next_number(admin_client, seed):
+    import re
+    _settings(admin_client, auto_admission_number='on', admission_number_prefix='FAIZ-{YY}-',
+              admission_number_digits='4', admission_number_start='1')
+    next_no = admission_numbers.next_number()
+    html = admin_client.get('/students').get_data(as_text=True)
+    boxes = re.findall(r'<input[^>]*name="admission_number"[^>]*>', html)
+    assert len(boxes) == 2 and all(' readonly' in box for box in boxes)
+    assert any('value="%s"' % next_no in box for box in boxes)          # Add form shows it
+    assert any('data-adm-next="%s"' % next_no in box for box in boxes)  # Edit form (JS)
+    _settings(admin_client)                                             # auto OFF
+    html = admin_client.get('/students').get_data(as_text=True)
+    boxes = re.findall(r'<input[^>]*name="admission_number"[^>]*>', html)
+    assert all(' readonly' in box for box in boxes)
+    assert 'Automatic numbering is off' in html
+
+
+def test_prefix_with_year_looks_like_faiz_26_0001(admin_client, seed):
+    from datetime import date
+    _settings(admin_client, auto_admission_number='on', admission_number_prefix='FAIZ-{YY}-',
+              admission_number_digits='4', admission_number_start='1')
+    assert admission_numbers.next_number(date(2026, 10, 24)) == 'FAIZ-26-0001'
+    page = admin_client.get('/settings').get_data(as_text=True)
+    assert 'FAIZ-{YY}-' in page and 'admPreview' in page and 'admPreview' in page
+
+
+def test_one_click_gives_numbers_to_students_without_one(admin_client, seed):
+    from datetime import date
+    _settings(admin_client, admission_number_prefix='FAIZ-{YY}-', admission_number_digits='4',
+              admission_number_start='1')
+    _add_student(admin_client, seed, 3220, 'Has One')
+    _give(3220, 'FAIZ-%02d-0007' % (date.today().year % 100))
+    before = admission_numbers.count_missing()
+    assert before == 2                         # the two seeded students; 'Has One' already has a number
+    _add_student(admin_client, seed, 3221, 'Late', admission_date='2024-05-01')
+    _add_student(admin_client, seed, 3222, 'Early', admission_date='2023-05-01')
+    html = admin_client.get('/students').get_data(as_text=True)
+    assert 'students have no Admission No' in html
+    resp = admin_client.post('/settings/admission-numbers/assign', data={'return_to': 'students'})
+    assert resp.status_code == 302 and resp.headers['Location'].rstrip('/').endswith('/students')
+    assert admission_numbers.count_missing() == 0
+    yy = date.today().year % 100
+    assert _student(3220).admission_number == 'FAIZ-%02d-0007' % yy            # untouched
+    early, late = _student(3222).admission_number, _student(3221).admission_number
+    assert early < late                                                          # oldest first
+    numbers = [row.admission_number for row in db.session.query(
+        __import__('app.models', fromlist=['StudentModel']).StudentModel).all()]
+    assert len(numbers) == len(set(numbers))                                     # no duplicates
+    # nothing left: the second click says so and changes nothing
+    admin_client.post('/settings/admission-numbers/assign', data={})
+    assert admission_numbers.count_missing() == 0
+
+
+def test_one_click_assign_is_administrator_only(teacher_client, seed):
+    resp = teacher_client.post('/settings/admission-numbers/assign', data={})
+    assert resp.status_code in (302, 403)
+    assert admission_numbers.count_missing() >= 1
+
+
+def test_admission_no_column_is_visible_and_searchable(admin_client, seed):
+    _add_student(admin_client, seed, 3230, 'Find Me')
+    _give(3230, 'FAIZ-26-0042')
+    html = admin_client.get('/students').get_data(as_text=True)
+    assert 'FAIZ-26-0042' in html
+    found = admin_client.get('/students?search=0042').get_data(as_text=True)
+    assert 'Find Me' in found
+
+
+def test_custom_fields_heading_only_when_a_custom_field_exists(admin_client, seed):
+    html = admin_client.get('/students').get_data(as_text=True)
+    assert 'Custom Fields</h6>' not in html
+    admin_client.post('/settings/custom_fields/student', data={
+        'field_name[]': ['blood_group'], 'field_label[]': ['Blood Group'], 'field_type[]': ['text']})
+    html = admin_client.get('/students').get_data(as_text=True)
+    assert html.count('Custom Fields</h6>') == 2

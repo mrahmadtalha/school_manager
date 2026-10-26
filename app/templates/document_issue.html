@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block content %}
+{% set first_fee = info.first_fee %}
+{% set dup_fee = info.dup_fee %}
+<div class="dashboard-header d-flex justify-content-between align-items-center flex-wrap gap-3 pt-3 pb-3 mb-4">
+    <div>
+        <p class="eyebrow mb-2">ID Cards &amp; Certificates</p>
+        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-file-circle-check text-primary me-2"></i>Issue: {{ title }}</h1>
+        <p class="text-muted small mb-0">Check the fee below, then press the green button. The receipt is made automatically.</p>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.documents_hub') }}"><i class="fas fa-arrow-left me-1"></i>Back to Documents</a>
+</div>
+
+<div class="row justify-content-center">
+<div class="col-lg-7">
+    <div class="card shadow-sm border-0 mb-3">
+        <div class="card-body">
+            <div class="text-muted small text-uppercase fw-bold mb-1">Student</div>
+            <div class="h5 fw-bold mb-0">{{ student.student_name }}</div>
+            <div class="text-muted small">
+                Roll {{ student.roll_number }}
+                {% if student.class_info %}&middot; {{ student.class_info.name }}{% endif %}
+                {% if student.father_name %}&middot; Father: {{ student.father_name }}{% endif %}
+            </div>
+            {% if kind == 'certificate' %}
+            <div class="text-muted small mt-2">Session {{ session }} &middot; Issue date {{ issue_date.strftime('%d %b %Y') }}{% if remarks %} &middot; {{ remarks }}{% endif %}</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <form method="post" action="{{ url_for('main.document_issue') }}" id="issueForm">
+        <input type="hidden" name="kind" value="{{ kind }}">
+        <input type="hidden" name="student_id" value="{{ student.id }}">
+        {% if cert_type %}<input type="hidden" name="cert_type" value="{{ cert_type }}">{% endif %}
+        <input type="hidden" name="session" value="{{ session }}">
+        <input type="hidden" name="issue_date" value="{{ issue_date.strftime('%Y-%m-%d') }}">
+        <input type="hidden" name="remarks" value="{{ remarks }}">
+
+        <div class="card shadow-sm border-0 mb-3">
+            <div class="card-body">
+            {% if not info.is_duplicate %}
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="badge bg-success-subtle text-success">First time</span>
+                    <span class="fw-bold">This is the first {{ title|lower }} for this student.</span>
+                </div>
+                <div class="display-6 fw-bold {{ 'text-success' if first_fee else 'text-muted' }}">
+                    {% if first_fee %}{{ money(first_fee) }}{% else %}No fee{% endif %}
+                </div>
+            {% else %}
+                <div class="alert alert-warning py-2 small mb-3">
+                    <i class="fas fa-triangle-exclamation me-1"></i>
+                    <strong>Already issued before</strong> &mdash; this will be a <strong>duplicate</strong>.
+                    <ul class="mb-0 mt-1">
+                    {% for old in info.previous %}
+                        <li>{{ old.issue_date.strftime('%d %b %Y') }}{% if old.income %} &middot; receipt {{ old.income.receipt_no }} ({{ money(old.fee_paisa) }}){% else %} &middot; no fee{% endif %}{% if old.is_duplicate %} &middot; duplicate{% endif %}</li>
+                    {% endfor %}
+                    </ul>
+                </div>
+                {% if dup_fee %}
+                <div class="fw-bold mb-2">Duplicate fee</div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="radio" name="duplicate_choice" id="dupFee" value="fee" checked>
+                    <label class="form-check-label" for="dupFee">Charge the duplicate fee: <strong>{{ money(dup_fee) }}</strong></label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="duplicate_choice" id="dupFree" value="free">
+                    <label class="form-check-label" for="dupFree">Free (no fee, no receipt)</label>
+                </div>
+                {% else %}
+                <div class="display-6 fw-bold text-muted">No fee</div>
+                <div class="text-muted small">No duplicate fee is set, so a duplicate is free.</div>
+                {% endif %}
+            {% endif %}
+            </div>
+        </div>
+
+        {% if (not info.is_duplicate and first_fee) or (info.is_duplicate and dup_fee) %}
+        <div class="card shadow-sm border-0 mb-3" id="methodBox">
+            <div class="card-body">
+                <label class="form-label fw-bold" for="payment_method">Payment method</label>
+                <select class="form-select" name="payment_method" id="payment_method">
+                    {% for m in methods %}<option value="{{ m }}">{{ m|capitalize }}</option>{% endfor %}
+                </select>
+            </div>
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-success btn-lg w-100" id="issueBtn">
+            <i class="fas fa-receipt me-1"></i>
+            {% if not info.is_duplicate %}
+                {% if first_fee %}Collect {{ money(first_fee) }} &amp; issue{% else %}Issue (no fee){% endif %}
+            {% else %}
+                {% if dup_fee %}Issue duplicate{% else %}Issue duplicate (free){% endif %}
+            {% endif %}
+        </button>
+    </form>
+</div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var box = document.getElementById('methodBox');
+    var btn = document.getElementById('issueBtn');
+    var radios = document.querySelectorAll('input[name="duplicate_choice"]');
+    if (!radios.length) return;
+    var fee = {{ dup_fee|tojson }};
+    var feeText = {{ (money(dup_fee) if dup_fee else '')|tojson }};
+    function sync() {
+        var free = document.getElementById('dupFree').checked;
+        if (box) box.style.display = free ? 'none' : '';
+        btn.innerHTML = '<i class="fas fa-receipt me-1"></i> ' +
+            (free ? 'Issue duplicate (free)' : 'Collect ' + feeText + ' &amp; issue duplicate');
+    }
+    Array.prototype.forEach.call(radios, function (r) { r.addEventListener('change', sync); });
+    sync();
+});
+</script>
+{% endblock %}

@@ -112,7 +112,9 @@
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
             <div class="text-muted small text-uppercase fw-bold">Cost of Goods Sold</div>
             <div class="h4 fw-bold mb-1" style="color:#fd7e14;">Rs. {{ '{:,.2f}'.format(snapshot.sales_cogs) }}</div>
-            <div class="text-muted small">cost of the items actually sold (gross profit Rs. {{ '{:,.2f}'.format(snapshot.gross_profit) }}) — never an expense while stock sits on the shelf</div>
+            <div class="text-muted small">cost of the items that left the shelf — never an expense while stock sits on the shelf</div>
+            <div class="small mt-1"><span class="text-muted">Profit on items sold separately:</span> <strong class="{{ 'text-success' if snapshot.gross_profit >= 0 else 'text-danger' }}">Rs. {{ '{:,.2f}'.format(snapshot.gross_profit) }}</strong></div>
+            {% if snapshot.package_cogs %}<div class="small text-muted">Rs. {{ '{:,.2f}'.format(snapshot.package_cogs) }} of this cost is books/uniform given inside admission packages — already paid for in the admission fee, not a loss.</div>{% endif %}
         </div></div>
     </div>
     <div class="col-md-4">

@@ -3,7 +3,7 @@ import csv
 import json
 import re
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 from flask import (
     render_template, 
     request, 
@@ -25,6 +25,7 @@ from openpyxl.utils import get_column_letter
 from flask_login import current_user
 from app.database import db
 from app.models import TeacherModel, SubjectModel, ClassModel
+from app.models.attendance import AttendanceModel
 from app.routes import main
 from app.services.photos import photo_path, save_photo, delete_photo, PhotoError
 from app.models.settings import get_custom_fields
@@ -129,6 +130,67 @@ def _teacher_assignment_views(teachers):
     return views
 
 
+# Teacher page: designation -> colour group (drives the card edge colour and the mix bar).
+_DESIGNATION_GROUPS = (
+    ('lead', 'Leadership', ('Principal', 'Vice Principal')),
+    ('senior', 'Senior staff', ('Head Teacher', 'Senior Teacher')),
+    ('teach', 'Teachers', ('Teacher',)),
+    ('admin', 'Admin staff', ('Admin Staff',)),
+    ('other', 'Other / not set', ()),
+)
+_TODAY_STATES = ('Present', 'Late', 'Leave', 'Absent')
+
+
+def _designation_group(designation):
+    for key, _label, names in _DESIGNATION_GROUPS:
+        if designation in names:
+            return key
+    return 'other'
+
+
+def _staff_overview(teachers, classes):
+    """Numbers for the summary band and the per-teacher card state.
+
+    * group mix of the teachers on screen,
+    * today's staff attendance of the active teachers on screen,
+    * how many classes have at least one active teacher (school-wide, so the
+      figure does not change when the list is filtered).
+    """
+    group_of = {teacher.id: _designation_group(teacher.designation) for teacher in teachers}
+    mix = []
+    for key, label, _names in _DESIGNATION_GROUPS:
+        count = sum(1 for value in group_of.values() if value == key)
+        if count:
+            mix.append({'key': key, 'label': label, 'count': count})
+
+    active_ids = [teacher.id for teacher in teachers if teacher.is_active]
+    today_of = {}
+    if active_ids:
+        rows = (AttendanceModel.query
+                .filter(AttendanceModel.target_type == 'teacher',
+                        AttendanceModel.date == date.today(),
+                        AttendanceModel.target_id.in_(active_ids))
+                .all())
+        today_of = {row.target_id: row.status for row in rows if row.status in _TODAY_STATES}
+    today = {state: sum(1 for value in today_of.values() if value == state)
+             for state in _TODAY_STATES}
+    today['marked'] = sum(today.values())
+    today['expected'] = len(active_ids)
+    today['not_marked'] = max(0, len(active_ids) - today['marked'])
+    today['here'] = today['Present'] + today['Late']
+
+    everyone = TeacherModel.query.filter_by(is_active=True).all()
+    covered = set()
+    for view in _teacher_assignment_views(everyone).values():
+        covered.update(view['classes'])
+    class_names = [item.name for item in classes]
+    missing = [name for name in class_names if name not in covered]
+    coverage = {'total': len(class_names), 'covered': len(class_names) - len(missing),
+                'missing': missing}
+    return {'group_of': group_of, 'mix': mix, 'today': today, 'today_of': today_of,
+            'coverage': coverage}
+
+
 def next_teacher_id():
     """Next free sequential teacher ID (T001, T002, ...) — always editable."""
     max_num = 0
@@ -193,8 +255,9 @@ def teachers_list():
                      for spec in specs}
         for teacher in teachers
     }
+    overview = _staff_overview(teachers, classes)
     return render_template('teachers.html', teachers=teachers, classes=classes, search=search,
-                           subjects=subjects,
+                           subjects=subjects, overview=overview,
                            filters={'designation': f_designation, 'gender': f_gender,
                                     'class_name': f_class, 'status': f_status},
                            assignment_map=assignment_map,

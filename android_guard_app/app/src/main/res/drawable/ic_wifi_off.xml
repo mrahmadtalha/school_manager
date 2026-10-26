@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Wi-Fi arcs with a slash through them (drawn by hand, no icon library needed). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <path
+        android:pathData="M10,36 Q48,2 86,36"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="7" />
+    <path
+        android:pathData="M24,51 Q48,30 72,51"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="7" />
+    <path
+        android:pathData="M37,65 Q48,55 59,65"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="7" />
+    <path
+        android:pathData="M48,79 L48,79.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="9" />
+    <path
+        android:pathData="M16,86 L82,10"
+        android:strokeColor="#FF8A80"
+        android:strokeLineCap="round"
+        android:strokeWidth="8" />
+</vector>

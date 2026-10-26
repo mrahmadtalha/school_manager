@@ -25,11 +25,37 @@
 <div class="row row-cols-1 row-cols-md-2 g-1">
 {% for key, label, desc, group in catalog %}
 <div class="col">{% if group != ns.group %}{% set ns.group = group %}<div class="feat-group text-uppercase text-muted mt-2">{{ group }}</div>{% endif %}
-<div class="form-check"><input class="form-check-input feat" type="checkbox" name="features" value="{{ key }}" id="f_{{ key }}" {{ 'checked' if key in form.features }}><label class="form-check-label" for="f_{{ key }}" title="{{ desc }}">{{ label }}</label></div></div>
-{% endfor %}</div></div>
+<div class="form-check form-switch"><input class="form-check-input feat" type="checkbox" name="features" value="{{ key }}" id="f_{{ key }}" {{ 'checked' if key in form.features }}><label class="form-check-label" for="f_{{ key }}" title="{{ desc }}">{{ label }}</label></div></div>
+{% endfor %}</div>
+<div class="mt-2"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('.feat').forEach(function(c){c.checked=true})">All on</button>
+<button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('.feat').forEach(function(c){c.checked=false})">All off</button>
+<span class="small text-muted ms-2">Core pages (students, teachers, classes, fees, settings, backup, license) are always on. The Audit Log is always <b>recorded</b>; the switch only controls whether the school can open it.</span></div></div>
+<div class="col-12"><label class="form-label">User roles the school may use</label>
+<input type="hidden" name="roles_present" value="1">
+<div class="row row-cols-1 row-cols-md-3 g-1">
+{% for key, label, desc in role_catalog %}
+<div class="col"><div class="form-check form-switch"><input class="form-check-input role" type="checkbox" name="roles" value="{{ key }}" id="r_{{ key }}" {{ 'checked' if key in form.roles or key == 'admin' }} {{ 'disabled' if key == 'admin' }}><label class="form-check-label" for="r_{{ key }}" title="{{ desc }}">{{ label }}</label></div></div>
+{% endfor %}</div>
+<div class="small text-muted mt-1">A switched-off role cannot be created and existing users of that role are signed out with a message. Administrator is always on.</div></div>
+<div class="col-12"><label class="form-label">Notice for the school <span class="text-muted small">(optional, shown to their administrator, max 300 characters, e.g. "Renewal due on 25 Oct")</span></label><input class="form-control" name="notice" maxlength="300" placeholder="Leave empty for no notice"></div>
 <div class="col-12"><label class="form-label">Note (private)</label><input class="form-control" name="note"></div>
 <div class="col-12"><button class="btn btn-dark"><i class="fas fa-file-signature me-1"></i>Sign & issue key</button></div>
 </div></div></form>
+
+<form method="post" action="{{ url_for('school_inspection', school_id=school.id) }}" class="card border-0 shadow-sm mt-4">
+<div class="card-body">
+<input type="hidden" name="_csrf" value="{{ csrf_token }}">
+<h2 class="h5 mb-1"><i class="fas fa-magnifying-glass me-2"></i>Inspection key</h2>
+<p class="small text-muted mb-3">A short, <b>view-only</b> key that sits on top of the school's real license. While it is valid every module and the audit log can be opened, nothing can be changed, and the school sees an "Inspection mode" banner. It ends by itself.</p>
+<div class="row g-2 align-items-end">
+<div class="col-md-3"><label class="form-label">Valid for</label><select class="form-select" name="hours">{% for h in inspection_hours %}<option value="{{ h }}" {{ 'selected' if h == 24 }}>{{ h }} hours</option>{% endfor %}</select></div>
+<div class="col-md-4"><label class="form-label">Machine code</label><input class="form-control font-monospace" name="machine_code" value="{{ form.machine_code }}" placeholder="7F3A-91BC-0D42-E8A5"></div>
+<div class="col-md-3"><label class="form-label">Note (private)</label><input class="form-control" name="note"></div>
+<div class="col-md-2 d-grid"><button class="btn btn-outline-dark">Issue</button></div>
+</div>
+{% if inspections %}<table class="table table-sm align-middle mt-3 mb-0"><thead><tr><th>Issued</th><th>Until</th><th></th></tr></thead><tbody>
+{% for i in inspections %}<tr><td>{{ i.issued_at[:16].replace('T', ' ') }}</td><td>{{ i.expires_at[:16].replace('T', ' ') }}</td><td class="text-end"><a href="{{ url_for('inspection_view', row_id=i.id) }}">open</a></td></tr>{% endfor %}</tbody></table>{% endif %}
+</div></form>
 
 <div class="card border-0 shadow-sm mt-4"><div class="card-body"><h2 class="h5">Key history</h2>
 <table class="table table-sm align-middle mb-0"><thead><tr><th>Rev</th><th>Reason</th><th>Plan</th><th>Valid</th><th></th></tr></thead><tbody>

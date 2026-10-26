@@ -123,13 +123,13 @@
                                name="auto_admission_number" {% if auto_admission_number %}checked{% endif %}>
                         <label class="form-check-label fw-bold" for="autoAdmissionNumber">Automatic Admission No</label>
                         <div class="form-text">ON: every new student gets the next number of your pattern by itself.
-                            OFF: you type the Admission No by hand. Numbers already given are never changed.</div>
+                            OFF: new students get no Admission No. Numbers already given are never changed.</div>
                     </div>
                     <div class="row g-2 mb-1">
                         <div class="col-sm-6">
                             <label class="form-label small fw-bold text-muted mb-1">Prefix</label>
                             <input type="text" class="form-control" id="admPrefix" name="admission_number_prefix" maxlength="30"
-                                   value="{{ admission_number_config.prefix }}" placeholder="e.g. alberoni-{YY}-">
+                                   value="{{ admission_number_config.prefix }}" placeholder="e.g. FAIZ-{YY}-">
                         </div>
                         <div class="col-6 col-sm-3">
                             <label class="form-label small fw-bold text-muted mb-1">Digits</label>
@@ -142,15 +142,56 @@
                                    value="{{ admission_number_config.start }}">
                         </div>
                     </div>
-                    <div class="form-text mb-3">Example: prefix <code>alberoni-26-</code>, 4 digits, start 1 gives
-                        <b>alberoni-26-0001</b>, <b>alberoni-26-0002</b> ... Use <code>{YY}</code> or <code>{YYYY}</code> for the
+                    <div class="form-text mb-2">Example: prefix <code>FAIZ-{YY}-</code>, 4 digits, start 1 gives
+                        <b>FAIZ-26-0001</b>, <b>FAIZ-26-0002</b> ... Use <code>{YY}</code> (26) or <code>{YYYY}</code> (2026) for the
                         current year (it changes by itself every year). Next number now: <b id="admNext">{{ admission_number_next }}</b>
                         <span class="text-muted">(updates after you save)</span>.</div>
+                    <div class="mb-3 small">Preview with the values above:
+                        <span class="badge bg-primary-subtle text-primary-emphasis border fs-6" id="admPreview">&mdash;</span></div>
+
+                    <div class="alert alert-secondary py-2 small mb-3">
+                        <i class="fas fa-lock me-1"></i> The Admission No can never be typed or edited on the student forms &mdash;
+                        it only comes from this pattern and changes only here.</div>
 
                     <button type="submit" class="btn btn-success px-4">
                         <i class="fas fa-save me-1"></i> Save School Info
                     </button>
                 </form>
+
+                <hr class="my-4">
+                <h6 class="fw-bold mb-2"><i class="fas fa-hashtag me-1 text-primary"></i>Students without an Admission No</h6>
+                {% if missing_admission_count %}
+                <form method="post" action="{{ url_for('main.assign_missing_admission_numbers') }}"
+                      data-confirm="Give an Admission No to {{ missing_admission_count }} students who have none, using the saved pattern (oldest admission first)? Numbers already given are not changed.">
+                    <input type="hidden" name="return_to" value="settings">
+                    <p class="mb-2"><b>{{ missing_admission_count }}</b> students have no Admission No yet.
+                        <span class="text-muted small">Uses the saved pattern above &mdash; save it first if you just changed it.</span></p>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-wand-magic-sparkles me-1"></i> Give numbers to all {{ missing_admission_count }} students
+                    </button>
+                </form>
+                {% else %}
+                <p class="text-muted small mb-0"><i class="fas fa-circle-check text-success me-1"></i>Every student already has an Admission No.</p>
+                {% endif %}
+                <script>
+                (function () {
+                    var p = document.getElementById('admPrefix'), d = document.getElementById('admDigits'),
+                        s = document.getElementById('admStart'), out = document.getElementById('admPreview');
+                    if (!p || !d || !s || !out) return;
+                    function render() {
+                        var year = new Date().getFullYear();
+                        var prefix = (p.value || '').replace(/\{YYYY\}/g, String(year))
+                            .replace(/\{YY\}/g, String(year % 100).padStart(2, '0'));
+                        var digits = Math.min(8, Math.max(1, parseInt(d.value, 10) || 4));
+                        var start = Math.max(1, parseInt(s.value, 10) || 1);
+                        out.textContent = prefix + String(start).padStart(digits, '0');
+                    }
+                    ['input', 'change'].forEach(function (ev) {
+                        [p, d, s].forEach(function (el) { el.addEventListener(ev, render); });
+                    });
+                    render();
+                })();
+                </script>
             </div>
         </div>
     </div>
@@ -289,6 +330,22 @@
                             <span class="input-group-text">minutes</span>
                         </div>
                         <div class="form-text">Check-ins after school start plus this time are marked Late.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="late_display">Students who arrive after the cutoff</label>
+                        <select class="form-select" id="late_display" name="late_display">
+                            <option value="late" {% if settings.late_after_cutoff is not false %}selected{% endif %}>Show as Late</option>
+                            <option value="present" {% if settings.late_after_cutoff is false %}selected{% endif %}>Show only as Present</option>
+                        </select>
+                        <div class="form-text">The arrival time is saved either way. A teacher can still choose Late by hand.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" for="percent_basis">Attendance % counts</label>
+                        <select class="form-select" id="percent_basis" name="percent_basis">
+                            <option value="present_late" {% if settings.late_counts_as_present is not false %}selected{% endif %}>Present and Late both</option>
+                            <option value="present_only" {% if settings.late_counts_as_present is false %}selected{% endif %}>Present only</option>
+                        </select>
+                        <div class="form-text">Used in the attendance summary, reports, student profile and daily QR report.</div>
                     </div>
                     <div class="row g-3 mb-3">
                         <div class="col-sm-6">

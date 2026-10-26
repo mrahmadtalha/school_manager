@@ -13,7 +13,7 @@ from app.models import (OtherIncome, OtherIncomeCategory, ROLE_ACCOUNTANT,
                         ROLE_ADMIN, ROLE_OWNER)
 from app.routes import main
 from app.security import role_required
-from app.services import other_income_service, payroll_service
+from app.services import canteen_service, other_income_service, payroll_service
 from app.services.audit import log_action
 
 
@@ -33,6 +33,19 @@ def _selected_month():
         else payroll_service.current_month_key()
 
 
+def _source_of(row):
+    """``(label, url)`` of the page this money was recorded on, or ``None``."""
+    if row.student_id:
+        return ('Admission page', url_for('main.admission_student',
+                                          student_id=row.student_id))
+    if (row.receipt_no or '').startswith('DOC-'):
+        return ('Documents page', url_for('main.documents_hub'))
+    name = (row.category.name if row.category else '').strip().lower()
+    if name == 'canteen' and not canteen_service.is_open_for_other_income():
+        return ('Inventory > Canteen', url_for('main.inventory_page') + '#canteen')
+    return None
+
+
 @main.route('/other-income')
 @role_required(ROLE_ADMIN, ROLE_OWNER, ROLE_ACCOUNTANT)
 def other_income_page():
@@ -47,7 +60,9 @@ def other_income_page():
     return render_template(
         'other_income.html', rows=rows, total=total, month=month,
         month_label=payroll_service.month_label(month),
-        categories=other_income_service.active_categories(),
+        categories=other_income_service.manual_categories(),
+        sources={row.id: _source_of(row) for row in rows},
+        canteen_in_inventory=not canteen_service.is_open_for_other_income(),
         prev_month=payroll_service.shift_month(month, -1),
         next_month=payroll_service.shift_month(month, 1),
         today=date.today())
@@ -65,8 +80,21 @@ def other_income_add():
         amount = -1
     description = (request.form.get('description') or '').strip()
 
+    managed = other_income_service.managed_elsewhere(category) if category else None
     if category is None:
         flash('Please choose a category.', 'danger')
+    elif managed is not None:
+        message, endpoint, anchor = managed
+        flash('%s It is not typed here, so it is not counted twice.' % message,
+              'warning')
+        return redirect(url_for(endpoint) + anchor)
+    elif (canteen_service.is_canteen_income_category(category)
+          and not canteen_service.is_open_for_other_income()):
+        # The canteen is kept in Inventory now; typing it here too would count
+        # the same money twice.
+        flash('Canteen money is recorded in Inventory > Canteen, so it is not '
+              'counted twice.', 'warning')
+        return redirect(url_for('main.inventory_page') + '#canteen')
     elif income_date is None:
         flash('Please enter a valid date (YYYY-MM-DD).', 'danger')
     else:
