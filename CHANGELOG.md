@@ -49,6 +49,8 @@ release, rename `[Unreleased]` to the new version and date.
 ## [X.Y.Z] - YYYY-MM-DD
 
 ### Added
+- Student Attendance — **phone and tablet layout**: on a phone or a tablet every student is one **card** (roll no and name on top, the four big *Present / Absent / Late / Leave* buttons, then the check-in time with a bigger clock button). The header buttons (*WhatsApp*, *Export*, *Teacher Attendance*) sit in a neat grid, the *students: attendance not marked yet* box skips the long list of names on a small screen (the count and the *Show only these students* button stay), and the text boxes are big enough that an iPhone does not zoom in when you tap one. Nothing was removed: search, All Present, All Absent, Reset, All Students at Time, WhatsApp alerts, Export and Lock / Unlock work as before.
+- Tests — new `tests/test_student_attendance_mobile.py` covers the small-screen layout of the Student Attendance sheet (cards up to 1023 px, Save bar that can stay on screen, room for the assistant button, header buttons, 16 px boxes, the not-marked names) and that every old button, box and field is still there, also on a locked day.
 - Tests — new `tests/test_classes_pages_mobile.py` covers the phone layout of Classes & Subjects, Subject Library and Archived Subjects (shared phone styles, header buttons, one subject chip per line, a label on every card line) and that every view, button and dialog is still there.
 - Subject Library and Archived Subjects — on a phone every subject is shown as a **small card** (subject name as the heading, then *label — value* lines, with the star, rename, archive and restore buttons inside the card) instead of a wide table.
 - All pages — **shared phone helpers** in the style sheet (`m-head`, `m-actions`, `m-tap`, `m-cards`) so the remaining pages can get the same phone layout without repeating the styles.
@@ -109,6 +111,8 @@ release, rename `[Unreleased]` to the new version and date.
 - Module — behaviour change description
 
 ### Fixed
+- Student Attendance — on a **tablet or a narrow window (about 768 to 1000 px wide)** the *Check-in time* column and the *Leave* button were **cut off and could not be reached**. These screens now use the same easy cards as a phone.
+- Student Attendance — the **Save Attendance bar did not stay on screen** while you scrolled a long class (you had to scroll to the very end to find it). It now stays at the bottom of the screen, and it leaves room so the round assistant button no longer covers the Save button.
 - Administrator menu: **Users & Roles, School Settings and License** were hidden whenever the license did not include the "Audit log viewer" feature (they sat inside that feature's condition). They now always show for the administrator; only the Audit Log link follows its feature.
 - Vendor dashboard: the Premium plan is kept equal to "every feature", so features added after the plan was first saved (Audit log viewer, QR attendance, ...) are no longer left out of new Premium keys. A date typed in "Custom expiry" now always wins over the Validity dropdown (before it was silently ignored unless the dropdown said Custom, so a key could be issued with a different expiry from the one typed).
 

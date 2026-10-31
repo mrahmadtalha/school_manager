@@ -81,7 +81,7 @@
     .sa-note { font-size: 0.82rem; font-weight: 700; color: rgb(var(--bs-primary-rgb)); }
 
     /* register table */
-    .sa-panel { border: 1px solid #e2e8f0 !important; box-shadow: none !important; border-radius: 18px; overflow: hidden; }
+    .sa-panel { border: 1px solid #e2e8f0 !important; box-shadow: none !important; border-radius: 18px; overflow: hidden; overflow: clip; } /* clip (not hidden) so the Save bar can stick to the screen */
     .sa-panel:hover { transform: none; }
     .sa-count { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.7rem 1.1rem; border-bottom: 1px solid #eef2f7; font-size: 0.86rem; color: #64748b; flex-wrap: wrap; }
     .sa-count strong { color: #0f172a; }
@@ -128,7 +128,7 @@
     .sa-dash { color: #94a3b8; }
 
     /* save bar stays on screen while the list scrolls */
-    .sa-save { position: sticky; bottom: 0; z-index: 5; background: rgba(255, 255, 255, 0.97); border-top: 1px solid #e2e8f0; padding: 0.75rem 1.1rem; display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.06); }
+    .sa-save { position: sticky; bottom: 0; z-index: 5; background: rgba(255, 255, 255, 0.97); border-top: 1px solid #e2e8f0; padding: 0.75rem 5rem 0.75rem 1.1rem; display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.06); }
     .sa-save-sum { font-size: 0.9rem; color: #475569; }
     .sa-save-sum b { color: #0f172a; font-variant-numeric: tabular-nums; }
     .sa-save-sub { font-size: 0.78rem; color: #94a3b8; display: block; }
@@ -152,16 +152,18 @@
     html[dir="rtl"] .sa-state { border-left-color: #eef2f7 !important; border-right: 4px solid #16a34a !important; }
     html[dir="rtl"] .sa-state.is-locked { border-right-color: #dc2626 !important; }
     html[dir="rtl"] .sa-daybtn i { transform: scaleX(-1); }
+    html[dir="rtl"] .sa-save { padding: 0.75rem 1.1rem 0.75rem 5rem; }
 
     @media (max-width: 991.98px) {
         .sa-ribbon { grid-template-columns: 1fr 1fr; }
         .sa-ribbon .sa-stat:nth-child(3) { grid-column: 1 / -1; border-left: 4px solid #16a34a; border-top: 1px solid #eef2f7; }
         .sa-ribbon .sa-stat.is-locked:nth-child(3) { border-left-color: #dc2626; }
     }
-    /* phones: every student becomes one tappable card */
+    /* phones: page chrome (header, filters, summary) stacks in one column */
     @media (max-width: 767.98px) {
         .sa-ribbon { grid-template-columns: 1fr; }
         .sa-stat + .sa-stat { border-left: 0; border-top: 1px solid #eef2f7; }
+        .sa-ribbon .sa-stat:first-child { flex-direction: row; align-items: baseline; justify-content: flex-start; gap: 0.6rem; padding-top: 0.7rem; padding-bottom: 0.7rem; }
         .sa-filters .form-select, .sa-filters .form-control[type=date] { flex: 1 1 100%; max-width: none; }
         .sa-daybox { flex: 1 1 100%; }
         .sa-daybox .form-control { flex: 1; }
@@ -170,6 +172,23 @@
         .sa-timebox .form-control { flex: 1 1 auto; width: auto; }
         .sa-timebox .btn { flex: 1 1 100%; justify-content: center; }
         .sa-toolbar .btn { flex: 1 1 auto; justify-content: center; }
+        /* header buttons: a tidy two-column grid instead of ragged wrapping */
+        .sa-tools { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+        .sa-tools > .dropdown > .btn, .sa-tools > .btn { width: 100%; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .sa-tools > .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+        .sa-wa-menu { min-width: min(18rem, calc(100vw - 2rem)); }
+        /* 16px text in boxes: stops iPhones zooming the page when a box is tapped */
+        .sa-search input, .sa-filters .form-select, .sa-filters .form-control, .sa-timebox .form-control, .sa-time .form-control { font-size: 16px; }
+        .sa-time .form-control { height: 2.75rem; }
+        .sa-time .btn { width: 2.75rem; height: 2.75rem; }
+        /* long list of names is skipped on a small screen; the count and the filter button remain */
+        .sa-warn .sa-names { display: none; }
+        .sa-warn .btn { width: 100%; }
+        .sa-save { padding: 0.65rem 4.9rem 0.65rem 0.8rem; }
+        html[dir="rtl"] .sa-save { padding: 0.65rem 0.8rem 0.65rem 4.9rem; }
+    }
+    /* phones AND tablets: the register table needs ~820px, so below 1024px every student is one tappable card */
+    @media (max-width: 1023.98px) {
         .sa-table thead { display: none; }
         .sa-table, .sa-table tbody { display: block; }
         .sa-table .sa-row { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 0.6rem; padding: 0.8rem 0.9rem; border-bottom: 1px solid #f1f5f9; }
@@ -184,8 +203,7 @@
         .sa-table .sa-c-status .sa-seg label i { display: none; }
         .sa-table .sa-c-time { text-align: left !important; }
         .sa-time .form-control { flex: 1; width: auto; }
-        .sa-save { padding: 0.65rem 0.8rem; }
-        .sa-save .btn-success { width: 100%; }
+        .sa-save .btn-success { width: 100%; padding-left: 1rem; padding-right: 1rem; white-space: nowrap; }
     }
     @media (prefers-reduced-motion: reduce) {
         .sa-bar i, .sa-row > td, .sa-seg label, .sa-tabs a { transition: none; }
@@ -475,7 +493,7 @@ window.addEventListener('DOMContentLoaded', refreshAttendanceWaStatus);
     <div>
         <i class="fas fa-exclamation-triangle me-1"></i>
         <strong>{{ ns.names|length }} of {{ students|length }}</strong> students: attendance not marked yet
-        <span class="sa-sub">{% for s in ns.names[:10] %}{{ s.student_name }}{% if not loop.last %}, {% endif %}{% endfor %}{% if ns.names|length > 10 %} &hellip; and {{ ns.names|length - 10 }} more{% endif %}</span>
+        <span class="sa-sub sa-names">{% for s in ns.names[:10] %}{{ s.student_name }}{% if not loop.last %}, {% endif %}{% endfor %}{% if ns.names|length > 10 %} &hellip; and {{ ns.names|length - 10 }} more{% endif %}</span>
         {% if not is_locked %}<span class="sa-sub">Students you do not touch are saved as <strong>Present</strong> when you press Save.</span>{% endif %}
     </div>
     <button type="button" class="btn btn-sm btn-warning" id="toggleUnmarkedBtn" onclick="toggleUnmarkedOnly()">
