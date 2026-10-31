@@ -90,7 +90,7 @@ def test_exactly_one_link_is_highlighted_on_each_page(admin_client):
         '/teachers': 'Teachers',
         '/classes': 'Classes &amp; Subjects',
         '/attendance/students': 'Daily Attendance',
-        '/attendance/summary': 'Attendance Summary',
+        '/attendance/summary?class_id=all': 'Attendance Summary',   # without a class the page redirects to the first class
         '/tests': 'Testing &amp; Marks Hub',
         '/reports/hub': 'Analytics &amp; Exports',
         '/documents': 'ID Cards &amp; Certificates',
