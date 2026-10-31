@@ -191,13 +191,77 @@
         .pr-stat:nth-child(3) { border-left: 0; border-top: 1px solid #eef2f7; }
         .pr-stat:nth-child(4) { border-top: 1px solid #eef2f7; }
     }
+    /* the Cards / List switch only changes anything on a wide screen (1200 px and up) */
+    @media (max-width: 1199.98px) {
+        .pr-viewseg { display: none; }
+    }
+    /* phones: header buttons in a grid, month bar and filters stacked, big tap targets,
+       Save bar clear of the assistant button, Pay / Void windows that fit the screen */
+    @media (max-width: 767.98px) {
+        .pr-tools { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem !important; }
+        .pr-tools > .btn { width: 100%; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .pr-bar { padding: 0.7rem 0.75rem; }
+        .pr-bar-top { flex-direction: column; align-items: stretch; }
+        .pr-nav { width: 100%; }
+        .pr-nav form { order: -1; flex: 1 1 100%; }
+        .pr-nav .form-select { width: 100%; min-width: 0; height: 2.7rem; }
+        .pr-nav > .btn { flex: 1; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .pr-nav .pr-seg { flex: 1 1 100%; display: flex; }
+        .pr-nav .pr-seg a { flex: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 2.5rem; text-align: center; }
+        .pr-next { padding: 0.75rem 0.8rem; }
+        .pr-steps { flex-direction: column; gap: 0.35rem; margin-bottom: 0.65rem; }
+        .pr-steps li { padding: 0.35rem 0.6rem; }
+        .pr-say { padding: 0.6rem 0.75rem; font-size: 0.88rem; }
+        .pr-num { font-size: 1.35rem; overflow-wrap: anywhere; }
+        .pr-stat { padding: 0.7rem 0.85rem; }
+        .pr-prog { padding: 0.5rem 0.85rem 0.6rem; }
+        .pr-rules { padding: 0.8rem 0.85rem; }
+        .pr-rules .btn { width: 100%; min-height: 2.7rem; }
+        .pr-rules .form-check-input { width: 1.25rem; height: 1.25rem; margin-top: 0.1rem; }
+        .pr-find { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+        .pr-search { flex: 1 1 auto; min-width: 0; max-width: none; width: 100%; }
+        .pr-chip { min-height: 2.3rem; padding: 0.2rem 0.85rem; }
+        .pr-count { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+        .pr-tickall { min-height: 2.3rem; }
+        .pr-tickall .form-check-input { width: 1.25rem; height: 1.25rem; }
+        .pr-seg { display: flex; }
+        .pr-seg button { flex: 1; min-height: 2.5rem; }
+        /* one teacher card */
+        .pr-card { padding: 0.85rem 0.85rem 0.8rem 1.1rem; }
+        .pr-pick { min-height: 2.5rem; padding-left: 0.3rem; }
+        .pr-pick .form-check-input { width: 1.4rem; height: 1.4rem; }
+        .pr-fld .form-control { min-height: 2.75rem; }
+        .pr-sugg button { min-height: 2.2rem; padding: 0 0.35rem; }
+        .pr-noteline > a { display: inline-block; padding: 0.4rem 0; }
+        .pr-noteline .form-control { min-height: 2.6rem; }
+        .pr-foot { justify-content: stretch; }
+        .pr-foot .btn { flex: 1 1 calc(50% - 0.4rem); min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .pr-foot .btn-success { flex: 1 1 100%; order: -1; }
+        .pr-foot .pr-hint { flex: 1 1 100%; margin-right: 0; text-align: center; }
+        /* Save bar: stays in reach, and leaves room for the round assistant button on the right */
+        .pr-save { bottom: 0.5rem; flex-direction: column; align-items: stretch; gap: 0.5rem; padding: 0.6rem 0.8rem; padding-inline-end: 4.9rem; }
+        .pr-save > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; }
+        .pr-save .tot { font-size: 1.2rem; }
+        .pr-save > .d-flex { display: grid !important; grid-template-columns: 1fr 1fr; gap: 0.5rem !important; }
+        .pr-save .btn { width: 100%; min-height: 2.7rem; font-size: 0.88rem; display: inline-flex; align-items: center; justify-content: center; }
+        .pr-save .btn:only-child { grid-column: 1 / -1; }
+        .pr-fine { font-size: 0.78rem; }
+        /* Pay and Void windows */
+        .pr-page .modal .modal-header, .pr-page .modal .modal-body, .pr-page .modal .modal-footer { padding-left: 1rem; padding-right: 1rem; }
+        .pr-page .modal .modal-footer .btn { flex: 1 1 0; min-height: 2.7rem; }
+        .pr-form .pr-pay label { min-height: 2.8rem; display: flex; align-items: center; justify-content: center; }
+        .pr-form .pr-quick button { min-height: 2.3rem; padding: 0.3rem 0.9rem; }
+        .pr-form .form-control { min-height: 2.9rem; }
+    }
     @media (max-width: 575.98px) {
-        .pr-band { grid-template-columns: 1fr; }
-        .pr-stat + .pr-stat { border-left: 0; border-top: 1px solid #eef2f7; }
         .pr-list { grid-template-columns: 1fr; }
-        .pr-steps { flex-direction: column; }
+        /* salary on its own line, bonus and deductions side by side */
         .pr-flds { grid-template-columns: 1fr 1fr; }
-        .pr-save .btn { flex: 1; }
+        .pr-flds > .pr-fld:first-child { grid-column: 1 / -1; }
+        .pr-num { font-size: 1.2rem; }
+        .pr-lab { font-size: 0.72rem; }
+        /* 16px text in boxes: stops iPhones zooming the page when a box is tapped */
+        .pr-search input, .pr-nav .form-select, .pr-rules .form-control, .pr-fld .form-control, .pr-noteline .form-control, .pr-form .form-control { font-size: 16px; }
     }
 </style>
 
@@ -210,7 +274,7 @@
         <h1 class="h2 fw-bold text-dark mb-1">Staff Salaries</h1>
         <p class="text-muted small mb-0">Prepare and pay your teachers' monthly salaries.</p>
     </div>
-    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2 pr-tools">
         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#rulesBox"
                 aria-expanded="{{ 'true' if (per_late or leave_as_absent) else 'false' }}" aria-controls="rulesBox"
                 title="Optional: take money off for late days and approved leave">
@@ -384,7 +448,7 @@
         <b>Take-home = Salary + Bonus &minus; Deductions.</b>
         {% if pending_count or unsaved_count %}<label class="pr-tickall ms-2"><input class="form-check-input" type="checkbox" id="selectAllRows" checked>Tick all</label>{% endif %}
     </div>
-    <div class="pr-seg" role="group" aria-label="How to show the teachers">
+    <div class="pr-seg pr-viewseg" role="group" aria-label="How to show the teachers">
         <button type="button" data-mode="cards" aria-pressed="true"><i class="fas fa-table-cells-large me-1"></i>Cards</button>
         <button type="button" data-mode="list" aria-pressed="false"><i class="fas fa-list me-1"></i>List</button>
     </div>
