@@ -49,6 +49,9 @@ release, rename `[Unreleased]` to the new version and date.
 ## [X.Y.Z] - YYYY-MM-DD
 
 ### Added
+- Tests — new `tests/test_student_list_mobile.py` covers the phone layout of the Students page (a label on every card line, the sort box, full-screen Add / Edit forms, the phone styles, Urdu card labels, and that every desktop feature is still there).
+- Students — **phone layout**: on a phone every student is shown as a **card** (photo, name and roll number on top, then each chosen field as a *label — value* line, with **Edit / Admission fee / Archive** buttons at the bottom) instead of a wide table that had to be scrolled sideways. Tapping a card still opens the full report. *Columns* still decides which fields appear on the card.
+- Students — **Sort by** box on phones (field + up / down button), because the table header is not shown on a phone. It sorts exactly like clicking a column heading on a computer.
 - School Settings — **page redesigned for non-technical users** (same family as Students, Users & Roles and License): a plain header, a *What to do now* note and the same four tabs as a clean segmented bar. Every tab keeps the same forms and fields; what changed is the grouping and the wording.
 - School Settings — **General School Info** is split into small titled sections: *School Identity* (name, tagline, logo with the current one shown), *Brand Colors* (two big colour pickers and a "Go back to the standard colors" button), *Contact Details* and *Admission Numbers* (a big switch, the pattern boxes and a live preview). *Students without an Admission No* is its own card and the *Sidebar Preview* stays in view on the right while you scroll.
 - School Settings — **Academic Timings** is split into *School Day*, *Attendance Rules*, *Days Off & Holidays* (Saturday and Sunday as big switches, other days, holiday ranges) and *Timetable Periods*; *Grading Scale* explains what the minimum % means with an example.
@@ -85,6 +88,9 @@ release, rename `[Unreleased]` to the new version and date.
 - Tests — new `tests/test_qr_tab_page.py` covers the redesigned QR Scans tab (list order, chip counts, set-up steps open / folded, teacher view, approval card, closed day).
 
 ### Changed
+- Students — phone screens: the **Add Student** button is full width, **Export Data / Columns / Manage** share one row and their menus never go off the screen; search, class, section, gender, status and *Has dues* filters sit two per line with bigger tap targets; the quick filter, entries box and page buttons are easier to use; row buttons are bigger.
+- Students — **Add Student and Edit Student forms open full screen on a phone** with the Cancel / Save buttons always visible at the bottom, and form boxes no longer make the page zoom in when tapped. Computers and tablets are unchanged.
+- Urdu — small text shown beside a field on the Students phone cards is now translated too.
 - Users & Roles — Edit, New password and Children now open in **one shared window** for the whole page instead of three windows per user (the page loads faster for schools with many users). Switching a login off now asks "Are you sure?" first and explains that nothing is deleted; wording is plainer ("Switched off", "Can sign in?", "Never signed in").
 - Fee Reminders — the billing month is a dropdown of months that still have unpaid fees (plus the current month) instead of a typed box.
 - Module — behaviour change description

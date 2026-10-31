@@ -61,7 +61,7 @@ SESSION_KEY = 'ui_lang'
 _RAW_BLOCK = re.compile(r'(<(script|style|textarea|pre|code)\b[^>]*>.*?</\2>)',
                         re.IGNORECASE | re.DOTALL)
 _TEXT_NODE = re.compile(r'>([^<>]+)<')
-_ATTRIBUTE = re.compile(r'\b(placeholder|title|aria-label|data-bs-title|alt)="([^"]*)"')
+_ATTRIBUTE = re.compile(r'\b(placeholder|title|aria-label|data-bs-title|alt|data-label)="([^"]*)"')
 _HAS_LETTER = re.compile(r'[A-Za-z]')
 
 RTL_STYLE_TAG = '<link rel="stylesheet" href="/static/rtl.css">'

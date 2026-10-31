@@ -120,6 +120,91 @@
         .sd-seg { width: 100%; }
         .sd-seg label { flex: 1; text-align: center; }
     }
+    /* ------------------------------------------------------------------
+       Phones (<= 767px): header buttons, filters, one card per student,
+       full-screen forms.  Nothing is removed - the same columns, sorting,
+       search, paging and buttons work, only the layout changes.
+       ------------------------------------------------------------------ */
+    .sd-msort { display: none; }
+    @media (max-width: 767.98px) {
+        .sd-head { align-items: stretch; gap: 0.75rem; }
+        .sd-head > div:first-child { flex: 1 1 100%; }
+        .sd-tools { width: 100%; }
+        .sd-tools > .btn-primary { order: -1; flex: 1 1 100%; min-height: 2.75rem; font-size: 0.95rem; }
+        .sd-tools > .dropdown { flex: 1 1 0; min-width: 0; }
+        .sd-tools > .dropdown > .btn { width: 100%; min-height: 2.5rem; white-space: nowrap; }
+        .sd-tools .dropdown-menu { max-width: calc(100vw - 1.5rem); }
+        .sd-tools [data-column-picker] .dropdown-menu { min-width: 0 !important; width: min(22rem, calc(100vw - 1.5rem)); max-height: 60vh !important; }
+        .sd-tools .dropdown-item { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+        .sd-hint { font-size: 0.84rem; }
+
+        /* filters: two per line, search / gender / buttons full width */
+        .sd-filters { padding: 0.6rem; border-radius: 14px; }
+        .sd-search { flex: 1 1 100%; min-width: 0; }
+        .sd-filters .form-control, .sd-filters .form-select { font-size: 16px; }
+        .sd-filters .form-select { flex: 1 1 calc(50% - 0.3rem); min-width: 0; max-width: none; width: auto; }
+        .sd-seg { width: 100%; }
+        .sd-seg label { flex: 1; text-align: center; padding: 0.55rem 0.4rem; }
+        .sd-toggle { flex: 1 1 calc(50% - 0.3rem); justify-content: center; }
+        .sd-filters .btn { flex: 1 1 auto; justify-content: center; }
+        .sd-count { flex-wrap: wrap; padding: 0.6rem 0.85rem; }
+
+        /* sort control (the header row is hidden on phones) */
+        .sd-msort { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.85rem; border-bottom: 1px solid #eef2f7; background: #f8fafc; }
+        .sd-msort label { margin: 0; font-size: 0.8rem; font-weight: 700; color: #64748b; white-space: nowrap; }
+        .sd-msort .form-select { flex: 1; min-width: 0; font-size: 16px; height: 2.5rem; border-radius: 10px; }
+        .sd-msort .btn { width: 2.5rem; height: 2.5rem; padding: 0; flex: none; box-shadow: none; }
+
+        /* paging / quick filter from DataTables */
+        .sd-panel .dataTables_wrapper > .row { --bs-gutter-x: 0; row-gap: 0.4rem; }
+        .sd-panel .dataTables_wrapper .dataTables_length,
+        .sd-panel .dataTables_wrapper .dataTables_filter { text-align: left !important; }
+        .sd-panel .dataTables_wrapper .dataTables_filter label { display: flex; align-items: center; gap: 0.5rem; width: 100%; margin: 0; }
+        .sd-panel .dataTables_wrapper .dataTables_filter input { flex: 1; width: auto !important; margin-left: 0 !important; font-size: 16px; height: 2.5rem; }
+        .sd-panel .dataTables_wrapper .dataTables_length select { font-size: 16px; }
+        .sd-panel .dataTables_wrapper .dataTables_info { text-align: center; white-space: normal; padding-top: 0; }
+        .sd-panel .dataTables_wrapper .dataTables_paginate { margin-top: 0.2rem; }
+        .sd-panel .dataTables_wrapper .pagination { justify-content: center; flex-wrap: wrap; gap: 0.2rem 0; }
+        .sd-panel .dataTables_wrapper .page-link { min-width: 2.4rem; min-height: 2.4rem; display: inline-flex; align-items: center; justify-content: center; }
+
+        /* one card per student */
+        .sd-panel .dataTables_scrollHead { display: none; }
+        .sd-panel .dataTables_scrollBody { overflow: visible !important; height: auto !important; max-height: none !important; }
+        .sd-panel #studentTable { display: block; width: 100% !important; margin: 0 !important; }
+        .sd-panel #studentTable thead { display: none; }
+        .sd-panel #studentTable tbody { display: block; padding: 0.15rem 0.7rem 0.7rem; }
+        .sd-panel #studentTable tr.student-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.7rem; margin-top: 0.65rem; padding: 0.75rem 0.85rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; }
+        .sd-panel #studentTable tr.student-row:active { background: rgba(var(--bs-primary-rgb), 0.04); }
+        .sd-panel #studentTable tr.student-row > td { display: block; padding: 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; white-space: normal !important; max-width: none !important; width: auto !important; position: static !important; text-align: left; order: 5; }
+        .sd-panel #studentTable tr.student-row > td[data-col="photo"] { order: 1; flex: none; }
+        .sd-panel #studentTable tr.student-row > td[data-col="student_name"] { order: 2; flex: 1 1 8rem; min-width: 0; font-size: 1rem; overflow-wrap: anywhere; }
+        .sd-panel #studentTable tr.student-row > td[data-col="roll_number"] { order: 3; flex: none; }
+        .sd-panel #studentTable tr.student-row > td[data-col="actions"] { order: 99; flex: 1 0 100%; text-align: right; margin-top: 0.6rem; padding-top: 0.6rem !important; border-top: 1px solid #eef2f7 !important; }
+        /* every other field is a "label ... value" line */
+        .sd-panel #studentTable tr.student-row > td[data-label]:not([data-col="photo"]):not([data-col="student_name"]):not([data-col="roll_number"]):not([data-col="actions"]) { flex: 1 0 100%; display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; padding: 0.3rem 0 !important; border-top: 1px dashed #eef2f7 !important; text-align: right; }
+        .sd-panel #studentTable tr.student-row > td[data-label]:not([data-col="photo"]):not([data-col="student_name"]):not([data-col="roll_number"]):not([data-col="actions"])::before { content: attr(data-label); flex: none; max-width: 45%; text-align: left; font-size: 0.76rem; font-weight: 700; color: #64748b; }
+        .sd-panel #studentTable tr.student-row .col-inner { white-space: normal; overflow-wrap: anywhere; }
+        .sd-panel #studentTable tr.student-row td.dataTables_empty { flex: 1 0 100%; text-align: center; }
+        .sd-panel .student-row:hover > td:first-child { box-shadow: none; }
+        .sd-acts { gap: 0.5rem; }
+        .sd-act { width: 2.75rem; height: 2.75rem; border-radius: 12px; font-size: 0.95rem; }
+
+    }
+    @media (max-width: 575.98px) {
+        /* Add / Edit forms use the whole screen with a fixed Save bar */
+        #addStudentModal .modal-content, #editStudentModal .modal-content { height: 100%; }
+        #addStudentModal form, #editStudentModal form { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+        #addStudentModal .modal-body, #editStudentModal .modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 1rem !important; }
+        #addStudentModal .modal-header, #editStudentModal .modal-header,
+        #addStudentModal .modal-footer, #editStudentModal .modal-footer { flex: none; padding-left: 1rem !important; padding-right: 1rem !important; }
+        #addStudentModal .modal-footer, #editStudentModal .modal-footer { flex-wrap: nowrap; padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important; }
+        #addStudentModal .modal-footer .btn, #editStudentModal .modal-footer .btn { flex: 1; min-height: 2.75rem; }
+        #addStudentModal .form-control, #addStudentModal .form-select,
+        #editStudentModal .form-control, #editStudentModal .form-select,
+        #importModal .form-control, #archiveStudentModal .form-control, #archiveStudentModal .form-select { font-size: 16px; }
+        #addStudentModal .form-control[style*="max-width"], #addStudentModal input[style*="max-width"] { max-width: none !important; }
+        #importModal .form-control[style*="max-width"] { max-width: none !important; }
+    }
     @media (prefers-reduced-motion: reduce) {
         .sd-bar i { animation: none; }
         .sd-name-link::after, .sd-act, .sd-seg label, .sd-toggle { transition: none; }
@@ -310,6 +395,18 @@
     </div>
     <div class="card-body p-0">
         {% if students %}
+        <div class="sd-msort no-print">
+            <label for="sdSortCol">Sort by</label>
+            <select class="form-select form-select-sm" id="sdSortCol" aria-label="Sort by">
+                {% for spec in student_field_specs %}{% if spec.key != 'photo' %}
+                <option value="{{ loop.index0 }}"{% if spec.key == 'roll_number' %} selected{% endif %}>{{ spec.label }}</option>
+                {% endif %}{% endfor %}
+            </select>
+            <button type="button" class="btn btn-outline-secondary" id="sdSortDir" data-dir="asc"
+                    title="Sort direction" aria-label="Sort direction"><i class="fas fa-arrow-up-wide-short"></i></button>
+        </div>
+        {% endif %}
+        {% if students %}
         <table class="table table-hover align-middle mb-0 datatable" id="studentTable"
                data-scroll-x="true" data-page-length="25">
             <thead>
@@ -329,21 +426,21 @@
                     data-roll="{{ student.roll_number | lower }}"
                     data-father="{{ student.father_name | lower }}"
                     data-phone="{{ student.guardian_phone | lower }}">
-                    <td class="ps-3" data-col="photo">{{ avatar('student', student, 38) }}</td>
-                    <td data-col="roll_number"><span class="sd-roll">{{ student.roll_number }}</span></td>
-                    <td class="fw-bold" data-col="student_name">
+                    <td class="ps-3" data-col="photo" data-label="Photo">{{ avatar('student', student, 38) }}</td>
+                    <td data-col="roll_number" data-label="Roll No"><span class="sd-roll">{{ student.roll_number }}</span></td>
+                    <td class="fw-bold" data-col="student_name" data-label="Student Name">
                         <a href="{{ url_for('main.student_detailed_report', id=student.id) }}"
                            class="sd-name-link student-name-link" title="Open full report">{{ student.student_name }}</a>
                         {% if not student.is_active %}<span class="sd-chip sd-chip-muted">Archived</span>{% endif %}
                     </td>
-                    <td class="text-muted" data-col="father_name">{{ student.father_name }}</td>
-                    <td data-col="class"><span class="sd-chip">{{ student.class_info.name if student.class_info else 'N/A' }}</span></td>
+                    <td class="text-muted" data-col="father_name" data-label="Father Name">{{ student.father_name }}</td>
+                    <td data-col="class" data-label="Class"><span class="sd-chip">{{ student.class_info.name if student.class_info else 'N/A' }}</span></td>
                     {# Every remaining field is rendered from the same spec list as the
                        header, so column order always matches. #}
                     {% for spec in student_field_specs %}
                     {% if spec.key not in ('photo', 'roll_number', 'student_name', 'father_name', 'class') %}
                     {% set cell_text = display_map.get(student.id, {}).get(spec.key, '—') %}
-                    <td data-col="{{ spec.key }}" class="{{ column_classes(spec) }}{% if spec.key == 'is_active' %} text-center{% endif %}"
+                    <td data-col="{{ spec.key }}" data-label="{{ spec.label }}" class="{{ column_classes(spec) }}{% if spec.key == 'is_active' %} text-center{% endif %}"
                         {% if spec.truncate %}title="{{ cell_text }}"{% endif %}>
                         {% if spec.key == 'monthly_fee' %}
                             {% if student.monthly_fee %}
@@ -419,6 +516,25 @@ document.addEventListener('click', function (event) {
     if (picked) return;
     window.location.href = row.getAttribute('data-href');
 });
+
+// Phones hide the table header, so this box does the sorting instead.
+(function () {
+    var column = document.getElementById('sdSortCol');
+    var button = document.getElementById('sdSortDir');
+    if (!column || !button || !window.jQuery) return;
+    function apply() {
+        var table = document.getElementById('studentTable');
+        if (!table || !jQuery.fn.DataTable || !jQuery.fn.DataTable.isDataTable(table)) return;
+        jQuery(table).DataTable().order([parseInt(column.value, 10), button.getAttribute('data-dir')]).draw();
+    }
+    column.addEventListener('change', apply);
+    button.addEventListener('click', function () {
+        var next = button.getAttribute('data-dir') === 'asc' ? 'desc' : 'asc';
+        button.setAttribute('data-dir', next);
+        button.innerHTML = '<i class="fas fa-arrow-' + (next === 'asc' ? 'up' : 'down') + '-wide-short"></i>';
+        apply();
+    });
+})();
 </script>
 
 <!-- Add Student Modal -->
@@ -427,7 +543,7 @@ document.addEventListener('click', function (event) {
      button is clicked) instead of two modals per student - this is what keeps
      the page small and fast for schools with many students. #}
 <div class="modal fade" id="editStudentModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-fullscreen-sm-down">
         <div class="modal-content">
             <form action="" method="POST" enctype="multipart/form-data" id="editStudentForm"
                   data-student-sponsor-form
@@ -601,7 +717,7 @@ document.addEventListener('click', function (event) {
 <script type="application/json" id="studentEditData">{{ (edit_map or {}) | tojson }}</script>
 
 <div class="modal fade" id="addStudentModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-fullscreen-sm-down">
         <div class="modal-content border-0 shadow-lg overflow-hidden">
             <form action="{{ url_for('main.add_student') }}" method="POST" enctype="multipart/form-data" class="roll-assist-form" data-autofill="1" data-student-sponsor-form>
                 <div class="modal-header px-4 py-3 text-white" style="background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%); border: none;">
