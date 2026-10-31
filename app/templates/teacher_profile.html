@@ -28,6 +28,40 @@
     .profile-tabs .nav-link { font-weight: 700; color: #475569; border-radius: 999px; padding: 0.45rem 1.1rem; }
     .profile-tabs .nav-link.active { background: #0f172a; color: #fff; }
     .info-label { color: #64748b; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .profile-tabs { scrollbar-width: none; }
+    .profile-tabs::-webkit-scrollbar { display: none; }
+    .profile-hero h1, .profile-hero .badge { overflow-wrap: anywhere; white-space: normal; text-align: left; }
+    @media (max-width: 767.98px) {
+        .teacher-profile-shell { padding: 14px; border-radius: 16px; box-shadow: 0 8px 22px rgba(15, 23, 42, 0.07); }
+        .profile-hero { padding: 16px; border-radius: 16px; margin-bottom: 16px; }
+        .profile-hero h1 { font-size: 1.35rem; }
+        .profile-actions { width: 100%; display: grid !important; grid-template-columns: 1fr 1fr; gap: 0.5rem !important; }
+        .profile-actions .btn { width: 100%; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .profile-stat { border-radius: 14px; }
+        .profile-stat .value { font-size: 1.25rem; }
+
+        /* tabs stay on one line and slide sideways */
+        .profile-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-left: -4px; margin-right: -4px; padding: 2px 4px 6px; }
+        .profile-tabs .nav-item { flex: none; }
+        .profile-tabs .nav-link { padding: 0.6rem 1rem; white-space: nowrap; min-height: 2.6rem; }
+
+        .tab-content .d-flex.justify-content-between.border-bottom { gap: 0.75rem; }
+        .tab-content .d-flex.justify-content-between.border-bottom > span:last-child { text-align: right; overflow-wrap: anywhere; }
+        .tab-content .btn-group { width: 100%; }
+        .tab-content .btn-group .btn { flex: 1; min-height: 2.6rem; }
+
+        /* each table row becomes a small card: first value is the heading */
+        .pf-cards { display: block; width: 100%; }
+        .pf-cards thead { display: none; }
+        .pf-cards tbody { display: block; }
+        .pf-cards tbody tr { display: block; margin-top: 0.6rem; padding: 0.65rem 0.85rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; }
+        .pf-cards tbody td { display: block; padding: 0.15rem 0 !important; border: 0 !important; background: none !important; text-align: left !important; }
+        .pf-cards tbody td:first-child { font-weight: 700; padding-bottom: 0.35rem !important; }
+        .pf-cards tbody td[data-label] { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; text-align: right !important; border-top: 1px dashed #eef2f7 !important; padding: 0.35rem 0 !important; }
+        .pf-cards tbody td[data-label]::before { content: attr(data-label); flex: none; max-width: 45%; text-align: left; font-size: 0.74rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; }
+        .pf-cards tbody td[colspan] { text-align: center !important; }
+        .pf-cards tbody tr:has(> td[colspan]) { border: 0; padding: 0; background: none; }
+    }
     .profile-table thead th {
         background: #f1f5f9;
         font-size: 0.75rem;
@@ -54,7 +88,7 @@
             </div>
             </div>
         </div>
-        <div class="d-flex flex-wrap gap-2">
+        <div class="d-flex flex-wrap gap-2 profile-actions">
             {% if teacher.contact_number %}
             <a class="btn btn-light btn-sm" href="tel:{{ teacher.contact_number }}" title="Call"><i class="fas fa-phone me-1"></i> Call</a>
             {% endif %}
@@ -197,7 +231,7 @@
             </div>
             <p class="text-muted small mb-2">Working days: <b>{{ stats.working_days }}</b> &middot; Days marked: <b>{{ stats.marked_days }}</b></p>
             <div class="table-responsive">
-                <table class="table profile-table align-middle mb-0">
+                <table class="table profile-table align-middle mb-0 pf-cards">
                     <thead>
                         <tr><th>Date</th><th>Day</th><th>Status</th><th>Check-in / Late</th><th class="text-end">Locked</th></tr>
                     </thead>
@@ -205,19 +239,19 @@
                         {% for r in att_records %}
                         <tr>
                             <td class="fw-bold">{{ r.date.strftime('%d %b %Y') }}</td>
-                            <td class="text-muted">{{ r.date.strftime('%a') }}</td>
-                            <td>
+                            <td class="text-muted" data-label="Day">{{ r.date.strftime('%a') }}</td>
+                            <td data-label="Status">
                                 {% if r.status == 'Present' %}<span class="badge bg-success">Present</span>
                                 {% elif r.status == 'Absent' %}<span class="badge bg-danger">Absent</span>
                                 {% elif r.status == 'Late' %}<span class="badge bg-warning text-dark">Late</span>
                                 {% elif r.status == 'Leave' %}<span class="badge bg-secondary">Leave</span>
                                 {% else %}<span class="badge bg-light text-dark">{{ r.status }}</span>{% endif %}
                             </td>
-                            <td>
+                            <td data-label="Check-in / Late">
                                 {% if r.late_time %}<span class="badge bg-light text-dark border">{{ r.late_time }}</span>{% else %}&mdash;{% endif %}
                                 {% if r.status == 'Late' and r.late_minutes is not none %}<span class="badge bg-warning text-dark ms-1">Late by {{ r.late_minutes }} min</span>{% endif %}
                             </td>
-                            <td class="text-end">{% if r.is_locked %}<i class="fas fa-lock text-success" title="Locked"></i>{% else %}<i class="fas fa-lock-open text-muted"></i>{% endif %}</td>
+                            <td class="text-end" data-label="Locked">{% if r.is_locked %}<i class="fas fa-lock text-success" title="Locked"></i>{% else %}<i class="fas fa-lock-open text-muted"></i>{% endif %}</td>
                         </tr>
                         {% else %}
                         <tr><td colspan="5" class="text-center text-muted py-4">No attendance marked for this month.</td></tr>
@@ -231,7 +265,7 @@
         <!-- Payroll -->
         <div class="tab-pane fade {% if tab == 'payroll' %}show active{% endif %}" id="pane-payroll">
             <div class="table-responsive">
-                <table class="table profile-table align-middle mb-0">
+                <table class="table profile-table align-middle mb-0 pf-cards">
                     <thead>
                         <tr><th>Month</th><th class="text-end">Base</th><th class="text-end">Bonus</th><th class="text-end">Deductions</th><th class="text-end">Net Salary</th><th>Status</th><th class="text-end">Payslip</th></tr>
                     </thead>
@@ -239,14 +273,14 @@
                         {% for row in payroll_rows %}
                         <tr>
                             <td class="fw-bold">{{ row.label }}</td>
-                            <td class="text-end">{{ '{:,.0f}'.format(row.record.base_salary) }}</td>
-                            <td class="text-end">{{ '{:,.0f}'.format(row.record.bonus) }}</td>
-                            <td class="text-end text-danger">{{ '{:,.0f}'.format(row.record.deductions) }}</td>
-                            <td class="text-end fw-bold text-success">Rs. {{ '{:,.0f}'.format(row.record.net_salary) }}</td>
-                            <td>
+                            <td class="text-end" data-label="Base">{{ '{:,.0f}'.format(row.record.base_salary) }}</td>
+                            <td class="text-end" data-label="Bonus">{{ '{:,.0f}'.format(row.record.bonus) }}</td>
+                            <td class="text-end text-danger" data-label="Deductions">{{ '{:,.0f}'.format(row.record.deductions) }}</td>
+                            <td class="text-end fw-bold text-success" data-label="Net Salary">Rs. {{ '{:,.0f}'.format(row.record.net_salary) }}</td>
+                            <td data-label="Status">
                                 {% if row.record.payment_status == 'Paid' %}<span class="badge bg-success">Paid</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
                             </td>
-                            <td class="text-end">
+                            <td class="text-end" data-label="Payslip">
                                 <a class="btn btn-sm btn-outline-dark" href="{{ url_for('main.payroll_payslip_pdf', id=row.record.id) }}" title="Payslip PDF"><i class="fas fa-file-invoice me-1"></i>PDF</a>
                             </td>
                         </tr>

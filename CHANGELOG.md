@@ -49,6 +49,8 @@ release, rename `[Unreleased]` to the new version and date.
 ## [X.Y.Z] - YYYY-MM-DD
 
 ### Added
+- Tests — new `tests/test_teacher_list_mobile.py` and `tests/test_teacher_profile_mobile.py` cover the phone layout of the Teachers page and the teacher profile (full-screen forms, phone styles, tables shown as cards with a label on every line, sliding tabs, and that every view, tab and button is still there).
+- Teacher profile — **phone layout**: the *Attendance* and *Payroll* tables are shown as **small cards** on a phone (date or month as the heading, then *label — value* lines, with the *Payslip PDF* button inside the card), so nothing has to be scrolled sideways. Computers and tablets keep the tables.
 - Tests — new `tests/test_student_report_mobile.py` covers the phone layout of the student report page (five tables shown as cards, a label on every card line, two stat boxes per line, sliding tabs, and that every tab and button is still there).
 - Student report — **phone layout**: the five tables (*Enrollment History*, *Attendance History*, *Term Exam Results*, *Result Card — All Marks* and *Recent Fee Months*) are shown as **small cards** on a phone, with the first value as the heading and the rest as *label — value* lines, so nothing has to be scrolled sideways. Computers and tablets keep the tables.
 - Tests — new `tests/test_student_list_mobile.py` covers the phone layout of the Students page (a label on every card line, the sort box, full-screen Add / Edit forms, the phone styles, Urdu card labels, and that every desktop feature is still there).
@@ -90,6 +92,9 @@ release, rename `[Unreleased]` to the new version and date.
 - Tests — new `tests/test_qr_tab_page.py` covers the redesigned QR Scans tab (list order, chip counts, set-up steps open / folded, teacher view, approval card, closed day).
 
 ### Changed
+- Teachers — phone screens: **Add Teacher** is a full-width button with *Export / Columns / Manage* on one row (menus stay on the screen); the search, designation, gender and class filters sit two per line with bigger tap targets; on each teacher card the salary and the **Call / ID card / Edit / Archive** buttons wrap neatly and are easier to tap; the Table view's *entries* box and page buttons are bigger.
+- Teachers — **Add Teacher and Edit Teacher forms open full screen on a phone** with the Cancel / Save buttons always visible at the bottom, fields one under another, and no page zoom when a box is tapped. Computers and tablets are unchanged.
+- Teacher profile — on a phone the **Call / WhatsApp / Back** buttons sit in a tidy grid, the **five tabs stay on one line and slide sideways**, the Previous / Next month buttons share the width, and spacing is smaller so more fits on the screen.
 - Student report — on a phone the **summary boxes (Attendance, Fee Dues, Latest Position, Overall) sit two per line**, the **five tabs stay on one line and slide sideways**, the Call / WhatsApp / Admission Form / Transcript / History / Back buttons are laid out as a tidy grid, and the *Documents* buttons are two per line on small tablets. Padding is smaller so more fits on the screen.
 - Students — phone screens: the **Add Student** button is full width, **Export Data / Columns / Manage** share one row and their menus never go off the screen; search, class, section, gender, status and *Has dues* filters sit two per line with bigger tap targets; the quick filter, entries box and page buttons are easier to use; row buttons are bigger.
 - Students — **Add Student and Edit Student forms open full screen on a phone** with the Cancel / Save buttons always visible at the bottom, and form boxes no longer make the page zoom in when tapped. Computers and tablets are unchanged.

@@ -154,6 +154,64 @@
         .tm-seg label, .tm-seg button { flex: 1; text-align: center; }
         .tm-grid { grid-template-columns: 1fr; }
     }
+    /* ------------------------------------------------------------------
+       Phones: buttons, filters, cards and forms.  Same features, only the
+       layout changes.  The Table view keeps its sideways scroll (it is the
+       "every field" view) but its page controls are made touch friendly.
+       ------------------------------------------------------------------ */
+    @media (max-width: 767.98px) {
+        .tm-head { align-items: stretch; gap: 0.75rem; }
+        .tm-head > div:first-child { flex: 1 1 100%; }
+        .tm-tools { width: 100%; }
+        .tm-tools > .btn-primary { order: -1; flex: 1 1 100%; min-height: 2.75rem; font-size: 0.95rem; }
+        .tm-tools > .dropdown { flex: 1 1 0; min-width: 0; }
+        .tm-tools > .dropdown > .btn { width: 100%; min-height: 2.5rem; white-space: nowrap; }
+        .tm-tools .dropdown-menu { max-width: calc(100vw - 1.5rem); }
+        .tm-tools [data-column-picker] .dropdown-menu { min-width: 0 !important; width: min(22rem, calc(100vw - 1.5rem)); max-height: 60vh !important; }
+        .tm-tools .dropdown-item { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+
+        .tm-band { border-radius: 14px; }
+        .tm-stat { padding: 0.7rem 0.95rem; }
+        .tm-num { font-size: 1.4rem; }
+
+        .tm-filters { padding: 0.6rem; border-radius: 14px; }
+        .tm-search { flex: 1 1 100%; min-width: 0; }
+        .tm-filters .form-control, .tm-filters .form-select { font-size: 16px; }
+        .tm-filters .form-select { flex: 1 1 calc(50% - 0.3rem); min-width: 0; max-width: none; width: auto; }
+        .tm-seg { width: 100%; }
+        .tm-seg label, .tm-seg button { flex: 1; text-align: center; padding: 0.55rem 0.4rem; }
+        .tm-filters .btn { flex: 1 1 auto; justify-content: center; }
+
+        /* cards: bigger buttons that wrap under the salary instead of overflowing */
+        .tm-grid { grid-template-columns: 1fr; }
+        .tm-foot { flex-wrap: wrap; gap: 0.6rem; }
+        .tm-acts { margin-left: auto; flex-wrap: wrap; gap: 0.4rem; }
+        .tm-act { width: 2.6rem; height: 2.6rem; border-radius: 11px; font-size: 0.95rem; }
+        .tm-name { white-space: normal; overflow-wrap: anywhere; }
+
+        /* table view page controls */
+        .tm-panel .dataTables_wrapper > .row { --bs-gutter-x: 0; row-gap: 0.4rem; }
+        .tm-panel .dataTables_wrapper .dataTables_length { text-align: left !important; }
+        .tm-panel .dataTables_wrapper .dataTables_length select { font-size: 16px; }
+        .tm-panel .dataTables_wrapper .dataTables_info { text-align: center; white-space: normal; padding-top: 0; }
+        .tm-panel .dataTables_wrapper .pagination { justify-content: center; flex-wrap: wrap; gap: 0.2rem 0; }
+        .tm-panel .dataTables_wrapper .page-link { min-width: 2.4rem; min-height: 2.4rem; display: inline-flex; align-items: center; justify-content: center; }
+    }
+    @media (max-width: 575.98px) {
+        /* Add / Edit forms use the whole screen with a fixed Save bar */
+        #addTeacherModal .modal-content, [id^="editTeacher"] .modal-content { height: 100%; }
+        #addTeacherModal form, [id^="editTeacher"] form { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+        #addTeacherModal .modal-body, [id^="editTeacher"] .modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 1rem !important; }
+        #addTeacherModal .modal-header, [id^="editTeacher"] .modal-header,
+        #addTeacherModal .modal-footer, [id^="editTeacher"] .modal-footer { flex: none; padding-left: 1rem !important; padding-right: 1rem !important; }
+        #addTeacherModal .modal-footer, [id^="editTeacher"] .modal-footer { flex-wrap: nowrap; padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important; }
+        #addTeacherModal .modal-footer .btn, [id^="editTeacher"] .modal-footer .btn { flex: 1; min-height: 2.75rem; }
+        #addTeacherModal .modal-body .col-6, [id^="editTeacher"] .modal-body .col-6 { width: 100%; }
+        #addTeacherModal .form-control, #addTeacherModal .form-select,
+        [id^="editTeacher"] .form-control, [id^="editTeacher"] .form-select,
+        #importModal .form-control { font-size: 16px; }
+        #addTeacherModal input[style*="max-width"], [id^="editTeacher"] input[style*="max-width"], #importModal input[style*="max-width"] { max-width: none !important; }
+    }
     @media (prefers-reduced-motion: reduce) {
         .tm-bar i { animation: none; }
         .tm-card, .tm-name-link::after, .tm-act, .tm-seg label, .tm-seg button { transition: none; }
@@ -497,7 +555,7 @@
 {% for teacher in teachers %}
                 <!-- Edit Modal -->
                 <div class="modal fade" id="editTeacher{{ teacher.id }}" tabindex="-1" aria-hidden="true">
-                    <div class="modal-dialog modal-lg modal-dialog-centered">
+                    <div class="modal-dialog modal-lg modal-dialog-centered modal-fullscreen-sm-down">
                         <div class="modal-content">
                             <form action="{{ url_for('main.edit_teacher', id=teacher.id) }}" method="POST" enctype="multipart/form-data">
                                 <div class="modal-header bg-primary text-white">
@@ -670,7 +728,7 @@
 
 <!-- Add Teacher Modal -->
 <div class="modal fade" id="addTeacherModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-fullscreen-sm-down">
         <div class="modal-content border-0 shadow-lg overflow-hidden">
             <form action="{{ url_for('main.add_teacher') }}" method="POST" enctype="multipart/form-data">
                 <div class="modal-header px-4 py-3 text-white" style="background: linear-gradient(135deg, #0f172a 0%, #7c3aed 100%); border: none;">
