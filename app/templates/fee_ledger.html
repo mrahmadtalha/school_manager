@@ -1,6 +1,50 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+<style>
+    /* Student Fee Ledger on phones. Computer layout untouched: every rule sits inside a small-screen
+       media query. Uses the shared phone helpers (m-head, m-actions) from style.css. */
+    @media (max-width: 767.98px) {
+        .fl-page .fl-stat { padding-top: 0.7rem !important; padding-bottom: 0.7rem !important; }
+        .fl-page .fl-stat .h4, .fl-page .fl-stat .h5 { font-size: 1.3rem; overflow-wrap: anywhere; }
+        /* written-off box is empty when that feature is off: hide it and let Outstanding use the full line */
+        .fl-wo:not(:has(.h5)) { display: none; }
+        .fl-wo:not(:has(.h5)) + .fl-out { flex: 0 0 100%; max-width: 100%; }
+        .fl-month-head { flex-direction: column; gap: 0.3rem; }
+        .fl-page .table-responsive { overflow: visible; }
+        /* one card per entry instead of a wide table */
+        .fl-stack, .fl-stack tbody { display: block; width: 100% !important; }
+        .fl-stack thead { display: none; }
+        .fl-stack tbody { padding: 0.3rem 0.7rem 0.8rem; }
+        .fl-stack tbody tr { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem 0.7rem; margin-top: 0.6rem; padding: 0.7rem 0.85rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; }
+        .fl-stack td { display: block; padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; min-width: 0; text-align: left !important; white-space: normal !important; }
+        html[dir="rtl"] .fl-stack td { text-align: right !important; }
+        .fl-stack td:empty { display: none; }
+        .fl-stack td[data-label]::before { content: attr(data-label); display: block; font-size: 0.66rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.1rem; }
+        .fl-stack td.fl-type { order: 1; }
+        .fl-stack td.fl-amount { order: 2; text-align: right !important; font-size: 1.15rem; }
+        html[dir="rtl"] .fl-stack td.fl-amount { text-align: left !important; }
+        .fl-stack td.fl-when { order: 3; }
+        .fl-stack td.fl-id { order: 4; text-align: right !important; }
+        html[dir="rtl"] .fl-stack td.fl-id { text-align: left !important; }
+        .fl-stack td.fl-id::before { content: "#"; }
+        .fl-stack td.fl-method { order: 5; }
+        .fl-stack td.fl-ref { order: 6; }
+        .fl-stack td.fl-by { order: 7; grid-column: 1 / -1; }
+        .fl-stack td.fl-note { order: 8; grid-column: 1 / -1; }
+        .fl-stack td.fl-act { order: 9; grid-column: 1 / -1; display: flex; gap: 0.5rem; }
+        .fl-stack td.fl-act:empty { display: none; }
+        .fl-page .fl-act .btn.p-0 { padding: 0.4rem 0.9rem !important; min-height: 2.6rem; flex: 1; border: 1px solid currentColor; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; margin-left: 0 !important; }
+        /* windows */
+        .fl-page .modal .modal-header, .fl-page .modal .modal-body, .fl-page .modal .modal-footer { padding-left: 1rem; padding-right: 1rem; }
+        .fl-page .modal .modal-footer .btn { flex: 1 1 0; min-height: 2.7rem; }
+        .fl-page .modal .form-control-sm { min-height: 2.8rem; }
+    }
+    @media (max-width: 575.98px) {
+        .fl-page .modal .form-control-sm { font-size: 16px; }
+    }
+</style>
+<div class="fl-page">
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4 m-head">
     <div>
         <p class="eyebrow mb-2">Fees</p>
         <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-book text-primary me-2"></i>Fee Ledger</h1>
@@ -9,7 +53,7 @@
             Append-only history: nothing is ever deleted; corrections are voided with a reason.
         </p>
     </div>
-    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2 m-actions">
     {% if current_user.is_admin %}
     {% if features.advance_credit_writeoff %}
     <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#writeoffModal">
@@ -24,28 +68,28 @@
 </div>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm text-center py-3">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3 fl-stat">
             <div class="h4 fw-bold mb-0">{{ '%.2f'|format(totals.charged) }}</div>
             <div class="small text-muted">Total charged (PKR)</div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm text-center py-3">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3 fl-stat">
             <div class="h4 fw-bold text-success mb-0">{{ '%.2f'|format(totals.paid) }}</div>
             <div class="small text-muted">Total paid (PKR)</div>
         </div>
     </div>
-    <div class="col-md-2">
-        <div class="card border-0 shadow-sm text-center py-3">
+    <div class="col-6 col-md-2 fl-wo">
+        <div class="card border-0 shadow-sm text-center py-3 fl-stat">
             {% if features.advance_credit_writeoff %}
             <div class="h5 fw-bold text-secondary mb-0">{{ '%.2f'|format(totals.written_off) }}</div>
             <div class="small text-muted">Written off</div>
             {% endif %}
         </div>
     </div>
-    <div class="col-md-2">
-        <div class="card border-0 shadow-sm text-center py-3">
+    <div class="col-6 col-md-2 fl-out">
+        <div class="card border-0 shadow-sm text-center py-3 fl-stat">
             <div class="h4 fw-bold {% if totals.balance > 0 %}text-danger{% else %}text-success{% endif %} mb-0">
                 {{ '%.2f'|format(totals.balance) }}
             </div>
@@ -53,8 +97,8 @@
         </div>
     </div>
     {% if features.advance_credit_writeoff %}
-    <div class="col-md-2">
-        <div class="card border-0 shadow-sm text-center py-3">
+    <div class="col-12 col-md-2">
+        <div class="card border-0 shadow-sm text-center py-3 fl-stat">
             <div class="h5 fw-bold text-info mb-0">{{ '%.2f'|format(totals.credit) }}</div>
             <div class="small text-muted">Advance credit</div>
         </div>
@@ -64,7 +108,7 @@
 
 {% for row in rows %}
 <div class="card shadow-sm border-0 mb-3">
-    <div class="card-header bg-light d-flex justify-content-between">
+    <div class="card-header bg-light d-flex justify-content-between fl-month-head">
         <strong>{{ row.month_year }}</strong>
         <span>
             charged {{ '%.2f'|format(row.charged) }} ·
@@ -74,7 +118,7 @@
         </span>
     </div>
     <div class="card-body p-0 table-responsive">
-        <table class="table table-sm mb-0">
+        <table class="table table-sm mb-0 fl-stack">
             <thead class="table-light">
                 <tr>
                     <th class="ps-3">#</th><th>When</th><th>Type</th>
@@ -86,27 +130,27 @@
             <tbody>
                 {% for txn in row.transactions %}
                 <tr class="{% if txn.is_void %}text-decoration-line-through text-muted{% endif %}">
-                    <td class="ps-3 text-muted small">{{ txn.id }}</td>
-                    <td class="small">
+                    <td class="ps-3 text-muted small fl-id">{{ txn.id }}</td>
+                    <td class="small fl-when" data-label="When">
                         {{ txn.payment_date.strftime('%Y-%m-%d') if txn.payment_date else (txn.created_at.strftime('%Y-%m-%d') if txn.created_at else '—') }}
                         <div class="text-muted" style="font-size:.72rem;">{{ txn.created_at.strftime('%H:%M') if txn.created_at }}</div>
                     </td>
-                    <td>
+                    <td class="fl-type" data-label="Type">
                         <span class="badge {% if txn.txn_type == 'payment' %}bg-success{% elif txn.txn_type == 'charge' %}bg-secondary{% elif txn.txn_type == 'refund' %}bg-danger{% elif txn.txn_type == 'writeoff' %}bg-dark{% else %}bg-warning text-dark{% endif %}">
                             {{ txn.type_label }}
                         </span>
                         {% if txn.is_void %}<span class="badge bg-secondary" title="{{ txn.void_reason or '' }}">void</span>{% endif %}
                     </td>
-                    <td class="text-end fw-bold">{{ '%.2f'|format(txn.amount or 0) }}</td>
-                    <td class="small">{{ txn.method or '—' }}</td>
-                    <td class="small">{{ txn.reference or '—' }}</td>
-                    <td class="small">{{ txn.created_by_name or 'system' }}</td>
-                    <td class="small text-muted">
+                    <td class="text-end fw-bold fl-amount" data-label="Amount">{{ '%.2f'|format(txn.amount or 0) }}</td>
+                    <td class="small fl-method" data-label="Method">{{ txn.method or '—' }}</td>
+                    <td class="small fl-ref" data-label="Reference">{{ txn.reference or '—' }}</td>
+                    <td class="small fl-by" data-label="Recorded by">{{ txn.created_by_name or 'system' }}</td>
+                    <td class="small text-muted fl-note" data-label="Note">
                         {{ txn.note or '—' }}
                         {% if txn.is_void and txn.void_reason %}<div class="text-secondary">Voided: {{ txn.void_reason }}</div>{% endif %}
                     </td>
                     {% if (current_user.is_admin or current_user.role == 'accountant') and not txn.is_void %}
-                    <td class="pe-3 text-end text-nowrap">
+                    <td class="pe-3 text-end text-nowrap fl-act">
                         {% if txn.txn_type == 'payment' %}
                         <button type="button" class="btn btn-sm p-0 text-danger refund-btn" title="Refund part of this payment"
                                 data-txn="{{ txn.id }}" data-max="{{ '%.2f'|format(txn.amount or 0) }}">
@@ -119,7 +163,7 @@
                         </button>
                     </td>
                     {% elif current_user.is_admin or current_user.role == 'accountant' %}
-                    <td class="pe-3"></td>
+                    <td class="pe-3 fl-act"></td>
                     {% endif %}
                 </tr>
                 {% endfor %}
@@ -164,6 +208,7 @@
     <input type="hidden" name="reason">
     <input type="hidden" name="amount">
 </form>
+</div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {

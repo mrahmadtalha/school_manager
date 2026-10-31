@@ -1,6 +1,36 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+<style>
+    /* Fee Reconciliation on phones. Computer layout untouched: every rule sits inside a small-screen
+       media query. Uses the shared phone helpers (m-head, m-actions, m-tap, m-cards) from style.css. */
+    @media (max-width: 767.98px) {
+        .fr-page .dashboard-header code, .fr-page .alert code { overflow-wrap: anywhere; word-break: break-word; }
+        .fr-filter .form-select { min-height: 2.7rem; }
+        .fr-filter .btn { min-height: 2.7rem; }
+        .fr-page .fr-stat { padding-top: 0.7rem !important; padding-bottom: 0.7rem !important; }
+        .fr-page .fr-stat .h4 { font-size: 1.3rem; overflow-wrap: anywhere; }
+        .fr-repair { width: 100%; }
+        .fr-repair .btn { width: 100%; min-height: 2.7rem; }
+        .fr-page .table-responsive { overflow: visible; }
+        /* a student-month that does not match must still stand out in red */
+        .fr-page .m-cards tbody tr.table-danger { border-color: #fca5a5; border-left: 5px solid #dc2626; background: #fef2f2 !important; }
+        .fr-page .m-cards tbody td.fr-student { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.2rem 0.6rem; }
+        /* the Totals line: one card at the end of the list */
+        .fr-page .m-cards tfoot, .fr-page .m-cards tfoot tr { display: block; width: 100%; }
+        .fr-page .m-cards tfoot { padding: 0 0.7rem 0.8rem; }
+        .fr-page .m-cards tfoot tr { padding: 0.65rem 0.85rem; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; }
+        .fr-page .m-cards tfoot td { display: block; padding: 0.15rem 0 !important; border: 0 !important; background: none !important; text-align: left !important; }
+        .fr-page .m-cards tfoot td:empty { display: none; }
+        .fr-page .m-cards tfoot td[data-label] { display: flex; justify-content: space-between; gap: 0.75rem; text-align: right !important; border-top: 1px dashed #e2e8f0 !important; padding: 0.35rem 0 !important; }
+        .fr-page .m-cards tfoot td[data-label]::before { content: attr(data-label); flex: none; font-size: 0.74rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; }
+        html[dir="rtl"] .fr-page .m-cards tbody td[data-label], html[dir="rtl"] .fr-page .m-cards tfoot td[data-label] { text-align: left !important; }
+    }
+    @media (max-width: 575.98px) {
+        .fr-filter .form-select { font-size: 16px; }
+    }
+</style>
+<div class="fr-page">
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4 m-head">
     <div>
         <p class="eyebrow mb-2">Fees</p>
         <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-scale-balanced text-primary me-2"></i>Fee Reconciliation</h1>
@@ -9,7 +39,7 @@
             in <code>fee_records</code>. A discrepancy is shown in red and means the cache must be rebuilt.
         </p>
     </div>
-    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2 m-actions">
         {% if month_year %}
         <a class="btn btn-warning btn-sm" href="{{ url_for('main.fee_reminders', month_year=month_year) }}">
             <i class="fas fa-bell me-1"></i> Fee reminders
@@ -21,7 +51,7 @@
     </div>
 </div>
 
-<form method="GET" action="{{ url_for('main.fees_reconciliation') }}" class="card card-body shadow-sm border-0 mb-3">
+<form method="GET" action="{{ url_for('main.fees_reconciliation') }}" class="card card-body shadow-sm border-0 mb-3 fr-filter">
     <div class="row g-2 align-items-end">
         <div class="col-md-3">
             <label class="form-label small fw-bold text-muted mb-1">Billing month (blank = all months)</label>
@@ -39,28 +69,28 @@
 </form>
 
 <div class="row g-3 mb-3">
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm text-center py-3">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3 fr-stat">
             <div class="h4 fw-bold mb-0">{{ '%.2f'|format(totals.charged) }}</div>
             <div class="small text-muted">Total charged (PKR)</div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm text-center py-3">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3 fr-stat">
             <div class="h4 fw-bold text-success mb-0">{{ '%.2f'|format(totals.paid) }}</div>
             <div class="small text-muted">Total received (PKR)</div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm text-center py-3">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3 fr-stat">
             <div class="h4 fw-bold {% if totals.balance > 0 %}text-danger{% else %}text-success{% endif %} mb-0">
                 {{ '%.2f'|format(totals.balance) }}
             </div>
             <div class="small text-muted">Outstanding (PKR)</div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm text-center py-3">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3 fr-stat">
             <div class="h4 fw-bold mb-0">{{ totals.rows }}</div>
             <div class="small text-muted">Student-month rows</div>
         </div>
@@ -106,7 +136,7 @@
             {% endif %}
         </div>
         <form method="POST" action="{{ url_for('main.fees_repair_allocations') }}"
-              class="m-0">
+              class="m-0 fr-repair">
             <button type="submit" class="btn btn-dark btn-sm" {% if not orphan_count %}disabled{% endif %}
                     data-confirm="Repair {{ orphan_count }} unapplied row(s)? A safety backup of the database is taken first.">
                 <i class="fas fa-wand-magic-sparkles me-1"></i>Repair unapplied payments
@@ -117,7 +147,7 @@
 
 <div class="card shadow-sm border-0">
     <div class="card-body p-0 table-responsive">
-        <table class="table table-sm table-hover align-middle mb-0">
+        <table class="table table-sm table-hover align-middle mb-0 m-cards">
             <thead class="table-light">
                 <tr>
                     <th class="ps-3">Student</th>
@@ -135,22 +165,22 @@
             <tbody>
                 {% for row in rows %}
                 <tr class="{% if not row.balanced %}table-danger{% endif %}">
-                    <td class="ps-3 fw-bold">{{ row.student.student_name }}
+                    <td class="ps-3 fw-bold fr-student">{{ row.student.student_name }}
                         <span class="text-muted small font-monospace">{{ row.student.roll_number }}</span>
                     </td>
-                    <td class="small">{{ row.student.class_info.name if row.student.class_info else '—' }}</td>
-                    <td class="small">{{ row.month_year }}</td>
-                    <td class="text-end">{{ '%.2f'|format(row.charged) }}</td>
-                    <td class="text-end text-success">{{ '%.2f'|format(row.paid) }}</td>
-                    <td class="text-end {% if row.balance > 0 %}text-danger fw-bold{% endif %}">{{ '%.2f'|format(row.balance) }}</td>
-                    <td class="text-end text-muted">{{ '%.2f'|format(row.stored_due) if row.stored_due is not none else '—' }}</td>
-                    <td class="text-end text-muted">{{ '%.2f'|format(row.stored_paid) if row.stored_paid is not none else '—' }}</td>
-                    <td>
+                    <td class="small" data-label="Class">{{ row.student.class_info.name if row.student.class_info else '—' }}</td>
+                    <td class="small" data-label="Month">{{ row.month_year }}</td>
+                    <td class="text-end" data-label="Charged">{{ '%.2f'|format(row.charged) }}</td>
+                    <td class="text-end text-success" data-label="Paid">{{ '%.2f'|format(row.paid) }}</td>
+                    <td class="text-end {% if row.balance > 0 %}text-danger fw-bold{% endif %}" data-label="Balance">{{ '%.2f'|format(row.balance) }}</td>
+                    <td class="text-end text-muted" data-label="Stored due">{{ '%.2f'|format(row.stored_due) if row.stored_due is not none else '—' }}</td>
+                    <td class="text-end text-muted" data-label="Stored paid">{{ '%.2f'|format(row.stored_paid) if row.stored_paid is not none else '—' }}</td>
+                    <td data-label="Check">
                         {% if row.balanced %}<span class="badge bg-success">OK</span>
                         {% else %}<span class="badge bg-danger">MISMATCH</span>{% endif %}
                     </td>
-                    <td class="text-end pe-3">
-                        <a class="btn btn-sm btn-outline-secondary"
+                    <td class="text-end pe-3" data-label="Ledger">
+                        <a class="btn btn-sm btn-outline-secondary m-tap"
                            href="{{ url_for('main.fee_student_ledger', student_id=row.student.id) }}">
                             <i class="fas fa-book"></i>
                         </a>
@@ -164,14 +194,15 @@
             <tfoot class="table-light">
                 <tr class="fw-bold">
                     <td class="ps-3" colspan="3">Totals</td>
-                    <td class="text-end">{{ '%.2f'|format(totals.charged) }}</td>
-                    <td class="text-end text-success">{{ '%.2f'|format(totals.paid) }}</td>
-                    <td class="text-end">{{ '%.2f'|format(totals.balance) }}</td>
+                    <td class="text-end" data-label="Charged">{{ '%.2f'|format(totals.charged) }}</td>
+                    <td class="text-end text-success" data-label="Paid">{{ '%.2f'|format(totals.paid) }}</td>
+                    <td class="text-end" data-label="Balance">{{ '%.2f'|format(totals.balance) }}</td>
                     <td colspan="4"></td>
                 </tr>
             </tfoot>
             {% endif %}
         </table>
     </div>
+</div>
 </div>
 {% endblock %}
