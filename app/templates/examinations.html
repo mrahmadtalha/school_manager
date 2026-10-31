@@ -116,16 +116,70 @@
         .tl-tile:nth-child(n+3) { border-top: 1px solid #eef2f7; }
         html[dir="rtl"] .tl-tile:nth-child(odd) { border-right: 0; }
     }
+    /* phones: header buttons, list view and the Add Term Exam window fit the screen */
+    @media (max-width: 767.98px) {
+        /* header: the Class Tests / Term Examinations switch on its own line, the Add Term Exam button under it */
+        .tl-tools { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+        .tl-tools .tl-switch { grid-column: 1 / -1; display: flex; }
+        .tl-tools .tl-switch a { flex: 1; text-align: center; padding: 0.55rem 0.5rem; }
+        .tl-tools > .btn { grid-column: 1 / -1; width: 100%; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        /* list view: every exam becomes one card (name + type + status + dates, class / subjects / total marks, marks bar, buttons) */
+        .tl-reg .table-responsive { overflow: visible; }
+        .tl-reg .table, .tl-reg .table tbody { display: block; width: 100%; }
+        .tl-reg .table thead { display: none; }
+        .tl-reg .table > tbody > tr.tl-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.65rem 0.6rem; padding: 0.85rem 0.95rem; border-bottom: 1px solid #f1f5f9; box-shadow: inset 4px 0 0 var(--tone); }
+        html[dir="rtl"] .tl-reg .table > tbody > tr.tl-row { box-shadow: inset -4px 0 0 var(--tone); }
+        .tl-reg .table > tbody > tr.tl-row > td, html[dir="rtl"] .tl-reg .table > tbody > tr.tl-row > td:first-child { display: block; padding: 0; border: 0; background: transparent; box-shadow: none; min-width: 0; text-align: left !important; }
+        html[dir="rtl"] .tl-reg .table > tbody > tr.tl-row > td { text-align: right !important; }
+        .tl-reg .table > tbody > tr.tl-row > td.d-none { display: block !important; }
+        .tl-reg .table > tbody > tr.tl-row > td:first-child, .tl-reg .table > tbody > tr.tl-row > td.tl-c-wide { grid-column: 1 / -1; }
+        .tl-reg .tl-c-n::before { content: attr(data-label); display: block; font-size: 0.66rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.1rem; }
+        .tl-reg .tl-c-n { padding-top: 0.5rem !important; border-top: 1px dashed #e2e8f0 !important; }
+        .tl-reg .tl-row-prog { min-width: 0; }
+        .tl-reg .tl-row-acts { display: flex; width: 100%; }
+        .tl-reg .tl-row-acts .btn { min-height: 2.6rem; min-width: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .tl-reg .tl-row-acts .btn:not(:last-child) { flex: 1; }
+        .tl-reg .tl-row-acts .btn-go-label { display: inline; }
+        .tl-row:hover > * { --bs-table-bg-state: transparent; }
+        /* Add Term Exam window: less padding, full-width Create button, bigger helper buttons */
+        #addTermExamModal .modal-header, #addTermExamModal .modal-body, #addTermExamModal .modal-footer { padding-left: 1rem !important; padding-right: 1rem !important; }
+        #addTermExamModal .modal-footer { flex-wrap: wrap; }
+        #addTermExamModal .modal-footer .btn { flex: 1 1 100%; min-height: 2.6rem; margin: 0; }
+        #addTermExamModal .btn-sm.py-0 { padding-top: 0.4rem !important; padding-bottom: 0.4rem !important; font-size: 0.8rem !important; }
+        /* date sheet: one small card per subject instead of a 6-column table you had to swipe sideways */
+        #addTermExamModal .table-responsive { overflow: visible; }
+        .te-sheet, .te-sheet tbody { display: block; width: 100%; }
+        .te-sheet thead { display: none; }
+        .te-sheet tbody tr.te-subject-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.55rem 0.6rem; align-items: center; margin-bottom: 0.6rem; padding: 0.7rem 0.8rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; }
+        .te-sheet tbody tr.te-subject-row > td { display: block; padding: 0; border: 0; background: transparent; min-width: 0; text-align: left; }
+        html[dir="rtl"] .te-sheet tbody tr.te-subject-row > td { text-align: right; }
+        .te-sheet .te-c-inc { grid-column: 1; }
+        .te-sheet .te-c-name { grid-column: 2 / -1; font-weight: 700; color: #0f172a; }
+        .te-sheet .te-c-f { grid-column: span 2; }
+        .te-sheet .te-c-f::before { content: attr(data-label); display: block; font-size: 0.66rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.15rem; }
+        .te-sheet .te-c-f .form-control { min-height: 2.5rem; }
+    }
     @media (max-width: 575.98px) {
-        .tl-tiles { grid-template-columns: 1fr; }
-        .tl-tile + .tl-tile { border-left: 0; border-top: 1px solid #eef2f7; }
-        html[dir="rtl"] .tl-tile + .tl-tile { border-right: 0; }
-        .tl-toolbar .form-select, .tl-toolbar .tl-seg { width: 100%; max-width: none; }
-        .tl-seg button { flex: 1; padding: 0.6rem 0.4rem; }
+        /* summary: four small boxes in two lines (was four tall boxes in one stack) */
+        .tl-tile { padding: 0.7rem 0.8rem; gap: 0.6rem; }
+        .tl-ico { width: 36px; height: 36px; border-radius: 11px; font-size: 0.95rem; }
+        .tl-num { font-size: 1.4rem; }
+        .tl-lab { font-size: 0.72rem; }
+        /* tool bar: search on top, the menus two by two, the three tabs and the Cards / List switch full width */
+        .tl-search { flex: 1 1 100%; }
+        .tl-toolbar .form-select { flex: 1 1 calc(50% - 0.3rem); width: auto; min-width: 0; max-width: none; }
+        .tl-toolbar .tl-seg { width: 100%; max-width: none; }
+        /* 16px text in boxes: stops iPhones zooming the page when a box is tapped */
+        .tl-toolbar .form-select, .tl-search input { font-size: 16px; }
+        #tlSearch { text-overflow: ellipsis; }
+        .tl-seg button { flex: 1; padding: 0.55rem 0.3rem; white-space: normal; line-height: 1.15; font-size: 0.8rem; }
+        .tl-tabs button .n { display: block; margin-left: 0; }
+        .tl-clear { width: 100%; min-height: 2.5rem; }
         .tl-viewbox { margin: 0; width: 100%; }
         .tl-viewbox .tl-seg { flex: 1; }
-        .tl-row-acts .btn-go-label { display: none; }
-        .tl-row-prog { min-width: 7rem; }
+        /* cards: finger-sized buttons */
+        .tl-acts .btn-go, .tl-acts .btn-sheet { min-height: 2.75rem; }
+        .tl-acts .btn-sheet { min-width: 3rem; }
     }
     @media (prefers-reduced-motion: reduce) {
         .tl-card, .tl-seg button { transition: none; }
@@ -335,16 +389,16 @@
                             <span class="tl-date"><i class="fas fa-calendar-alt me-1"></i>{{ exam_dates(exam) }}</span>
                         </div>
                     </td>
-                    <td class="fw-semibold">{{ exam.class_info.name if exam.class_info else 'N/A' }}</td>
-                    <td class="d-none d-lg-table-cell text-center tl-row-num">{{ row.subject_count }}</td>
-                    <td class="d-none d-lg-table-cell text-end tl-row-num">{{ '{:,.0f}'.format(row.total_marks) }}</td>
-                    <td>
+                    <td class="fw-semibold tl-c-n" data-label="Class">{{ exam.class_info.name if exam.class_info else 'N/A' }}</td>
+                    <td class="d-none d-lg-table-cell text-center tl-row-num tl-c-n" data-label="Subjects">{{ row.subject_count }}</td>
+                    <td class="d-none d-lg-table-cell text-end tl-row-num tl-c-n" data-label="Total Marks">{{ '{:,.0f}'.format(row.total_marks) }}</td>
+                    <td class="tl-c-n tl-c-wide" data-label="Marks entered">
                         <div class="tl-row-prog">
                             {{ progress_pill(row) }}
                             <div class="tl-meter" role="img" aria-label="{{ row.progress_label }}"><i class="{{ 'done' if row.progress_state == 'done' else '' }}" style="width: {{ pct }}%"></i></div>
                         </div>
                     </td>
-                    <td class="text-end">
+                    <td class="text-end tl-c-wide">
                         <div class="tl-row-acts">
                             {% if needs or row.progress_state == 'empty' %}
                             <a href="{{ marks_url }}" class="btn btn-sm btn-primary"><i class="fas fa-edit me-1"></i><span class="btn-go-label">Enter Marks</span></a>
@@ -430,16 +484,16 @@
                             <input type="date" class="form-control" name="announce_date">
                         </div>
                         <div class="col-12 mt-2">
-                            <div class="d-flex justify-content-between align-items-center mb-1">
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
                                 <label class="form-label fw-bold small text-muted mb-0">Date Sheet — Subjects, Dates, Times &amp; Rooms — <span id="teCounter">0 of 0 included</span></label>
-                                <div class="d-flex gap-2">
+                                <div class="d-flex flex-wrap gap-2">
                                     <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="font-size:.75rem;" onclick="teSelectAll(true)">Select all</button>
                                     <button type="button" class="btn btn-outline-secondary btn-sm py-0" style="font-size:.75rem;" onclick="teSelectAll(false)">Select none</button>
                                     <button type="button" class="btn btn-outline-primary btn-sm py-0" style="font-size:.75rem;" onclick="teUseStartDate()">Use start date for all</button>
                                 </div>
                             </div>
                             <div class="table-responsive">
-                                <table class="table table-sm table-bordered mb-2">
+                                <table class="table table-sm table-bordered mb-2 te-sheet">
                                     <thead class="table-light">
                                         <tr>
                                             <th width="46px" class="text-center">Inc</th>
@@ -453,14 +507,14 @@
                                     <tbody>
                                         {% for s in subjects %}
                                         <tr class="te-subject-row" data-class-id="{{ s.class_id }}" style="display:none;">
-                                            <td class="text-center align-middle">
+                                            <td class="text-center align-middle te-c-inc">
                                                 <input class="form-check-input" type="checkbox" name="include_subject_{{ s.id }}" checked>
                                             </td>
-                                            <td class="align-middle">{{ s.name }}</td>
-                                            <td><input type="date" class="form-control form-control-sm" name="exam_date_{{ s.id }}"></td>
-                                            <td><input type="time" class="form-control form-control-sm" name="exam_time_{{ s.id }}"></td>
-                                            <td><input type="text" class="form-control form-control-sm" name="exam_room_{{ s.id }}" maxlength="60" placeholder="e.g. Hall A"></td>
-                                            <td><input type="number" step="0.5" min="0.5" class="form-control form-control-sm" name="marks_{{ s.id }}" placeholder="100"></td>
+                                            <td class="align-middle te-c-name">{{ s.name }}</td>
+                                            <td class="te-c-f" data-label="Exam Date"><input type="date" class="form-control form-control-sm" name="exam_date_{{ s.id }}"></td>
+                                            <td class="te-c-f" data-label="Time"><input type="time" class="form-control form-control-sm" name="exam_time_{{ s.id }}"></td>
+                                            <td class="te-c-f" data-label="Room"><input type="text" class="form-control form-control-sm" name="exam_room_{{ s.id }}" maxlength="60" placeholder="e.g. Hall A"></td>
+                                            <td class="te-c-f" data-label="Max Marks"><input type="number" step="0.5" min="0.5" class="form-control form-control-sm" name="marks_{{ s.id }}" placeholder="100"></td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>

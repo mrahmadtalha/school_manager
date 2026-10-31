@@ -1,8 +1,49 @@
 {% extends "base.html" %}
 {% block content %}
 
+<style>
+    /* ------------------------------------------------------------------
+       Term exam page on phones. Nothing here changes a computer screen:
+       every rule is inside a phone media query and scoped under .xd- .
+       ------------------------------------------------------------------ */
+    @media screen and (max-width: 767.98px) {
+        /* header: smaller, and the buttons in a tidy two-column grid (Enter Marks on top, the last one on its own line) */
+        .xd-head { padding: 1rem !important; gap: 0.75rem !important; }
+        .xd-head h1 { font-size: 1.4rem; line-height: 1.2; }
+        .xd-tools { width: 100%; display: grid !important; grid-template-columns: 1fr 1fr; gap: 0.5rem !important; }
+        .xd-tools > .btn, .xd-tools > form > .btn { width: 100%; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .xd-tools > form { display: block !important; margin: 0; }
+        .xd-tools > :first-child, .xd-tools > :last-child:nth-child(even) { grid-column: 1 / -1; }
+        /* Class Tests / Term Examinations switch: two equal buttons, the hint under them */
+        .xd-switch .btn-group { width: 100%; }
+        .xd-switch .btn-group .btn { flex: 1; min-height: 2.5rem; display: inline-flex; align-items: center; justify-content: center; }
+        /* summary: four small boxes in two lines */
+        .xd-stats .card-body { padding: 0.7rem 0.8rem; }
+        .xd-stats .h4 { font-size: 1.25rem; }
+        /* both date-sheet panels: less padding, tables become cards */
+        .xd-panel .card-body { padding: 0.7rem; }
+        .xd-panel .table-responsive { overflow: visible; }
+        .xd-sheet, .xd-sheet tbody, .xd-sheet tfoot, .xd-edit, .xd-edit tbody { display: block; width: 100%; }
+        .xd-sheet thead, .xd-edit thead { display: none; }
+        .xd-sheet tbody tr, .xd-sheet tfoot tr, .xd-edit tbody tr { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.55rem 0.6rem; align-items: start; margin-bottom: 0.6rem; padding: 0.7rem 0.8rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; }
+        .xd-sheet tfoot tr { background: #f8fafc; }
+        .xd-sheet td, .xd-edit td { display: block; padding: 0; border: 0; background: transparent; box-shadow: none; min-width: 0; text-align: left !important; }
+        html[dir="rtl"] .xd-sheet td, html[dir="rtl"] .xd-edit td { text-align: right !important; }
+        .xd-sheet td.xd-c-no, .xd-edit td.xd-c-no { grid-column: 1; }
+        .xd-sheet td.xd-c-name, .xd-edit td.xd-c-name { grid-column: 2 / -1; }
+        .xd-sheet td.xd-c-f, .xd-edit td.xd-c-f { grid-column: span 2; }
+        .xd-sheet td.xd-c-wide, .xd-edit td.xd-c-wide { grid-column: 1 / -1; }
+        .xd-c-f::before { content: attr(data-label); display: block; font-size: 0.66rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.1rem; }
+        /* Edit Date Sheet: bigger boxes (16px: an iPhone does not zoom in) */
+        .xd-edit .form-control, .xd-shift .form-control, .xd-panel .form-control { font-size: 16px; min-height: 2.5rem; }
+        .xd-shift .btn { width: 100%; min-height: 2.6rem; }
+        .xd-shift .form-control { width: 100% !important; }
+        #publishModal .modal-footer .btn { flex: 1; min-height: 2.6rem; }
+    }
+</style>
+
 <!-- Header -->
-<div class="dashboard-header d-flex justify-content-between align-items-start flex-wrap pt-3 pb-3 mb-4 gap-3">
+<div class="dashboard-header xd-head d-flex justify-content-between align-items-start flex-wrap pt-3 pb-3 mb-4 gap-3">
     <div>
         <p class="eyebrow mb-2">Term Examination</p>
         <h1 class="h2 fw-bold text-dark mb-1">
@@ -23,7 +64,7 @@
             {% endif %}
         </div>
     </div>
-    <div class="d-flex gap-2 flex-wrap">
+    <div class="d-flex gap-2 flex-wrap xd-tools">
         <a href="{{ url_for('main.enter_batch_marks', term_exam_id=exam.id) }}" class="btn btn-primary btn-sm">
             <i class="fas fa-edit me-1"></i> Enter Marks
         </a>
@@ -62,29 +103,31 @@
 </div>
 
 {% set exam_active = 'examinations' %}
+<div class="xd-switch">
 {% include '_exam_module_switch.html' %}
+</div>
 
 <!-- Summary strip -->
-<div class="row g-3 mb-3">
-    <div class="col-md-3">
+<div class="row g-3 mb-3 xd-stats">
+    <div class="col-6 col-md-3">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
             <div class="text-muted small text-uppercase fw-bold">Subjects</div>
             <div class="h4 fw-bold mb-0">{{ tests|length }}</div>
         </div></div>
     </div>
-    <div class="col-md-3">
+    <div class="col-6 col-md-3">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
             <div class="text-muted small text-uppercase fw-bold">Total Marks</div>
             <div class="h4 fw-bold mb-0">{{ '{:,.0f}'.format(total_max) }}</div>
         </div></div>
     </div>
-    <div class="col-md-3">
+    <div class="col-6 col-md-3">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
             <div class="text-muted small text-uppercase fw-bold">Students</div>
             <div class="h4 fw-bold mb-0">{{ student_count }}</div>
         </div></div>
     </div>
-    <div class="col-md-3">
+    <div class="col-6 col-md-3">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
             <div class="text-muted small text-uppercase fw-bold">Marks Entered</div>
             <div class="h4 fw-bold mb-0">{{ filled }}/{{ expected }}</div>
@@ -94,14 +137,14 @@
 </div>
 
 <!-- Date sheet / schedule -->
-<div class="card border-0 shadow-sm mb-4">
+<div class="card border-0 shadow-sm mb-4 xd-panel">
     <div class="card-header bg-dark text-white fw-bold border-0 d-flex justify-content-between align-items-center">
         <span><i class="fas fa-calendar-alt me-2"></i>Date Sheet</span>
         <span class="badge bg-light text-dark">{{ tests|length }} subject(s)</span>
     </div>
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle mb-0">
+            <table class="table table-sm table-hover align-middle mb-0 xd-sheet">
                 <thead class="table-light">
                     <tr>
                         <th>#</th>
@@ -116,21 +159,21 @@
                 <tbody>
                     {% for test in tests %}
                     <tr>
-                        <td class="text-muted">{{ loop.index }}</td>
-                        <td class="fw-bold">{{ test.subject_info.name if test.subject_info else '—' }}</td>
-                        <td>{{ test.test_date.strftime('%a, %d %b %Y') if test.test_date else '—' }}</td>
-                        <td>{{ test.start_time or '—' }}</td>
-                        <td>{{ test.room or '—' }}</td>
-                        <td class="text-end">{{ '{:,.0f}'.format(test.total_marks or 0) }}</td>
-                        <td class="text-end">{{ marks_counts.get(test.id, 0) }}/{{ student_count }}</td>
+                        <td class="text-muted xd-c-no">{{ loop.index }}</td>
+                        <td class="fw-bold xd-c-name">{{ test.subject_info.name if test.subject_info else '—' }}</td>
+                        <td class="xd-c-f" data-label="Exam Date">{{ test.test_date.strftime('%a, %d %b %Y') if test.test_date else '—' }}</td>
+                        <td class="xd-c-f" data-label="Time">{{ test.start_time or '—' }}</td>
+                        <td class="xd-c-f" data-label="Room">{{ test.room or '—' }}</td>
+                        <td class="text-end xd-c-f" data-label="Max Marks">{{ '{:,.0f}'.format(test.total_marks or 0) }}</td>
+                        <td class="text-end xd-c-f xd-c-wide" data-label="Marks Entered">{{ marks_counts.get(test.id, 0) }}/{{ student_count }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
                 <tfoot>
                     <tr class="table-light">
-                        <td colspan="5" class="fw-bold">Total</td>
-                        <td class="text-end fw-bold">{{ '{:,.0f}'.format(total_max) }}</td>
-                        <td class="text-end fw-bold">{{ filled }}/{{ expected }}</td>
+                        <td colspan="5" class="fw-bold xd-c-wide">Total</td>
+                        <td class="text-end fw-bold xd-c-f" data-label="Max Marks">{{ '{:,.0f}'.format(total_max) }}</td>
+                        <td class="text-end fw-bold xd-c-f" data-label="Marks Entered">{{ filled }}/{{ expected }}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -143,7 +186,7 @@
 
 {% if current_user.is_admin %}
 <div class="collapse mb-4" id="editSchedule">
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm xd-panel">
         <div class="card-header bg-dark text-white fw-bold border-0"><i class="fas fa-calendar-plus me-2"></i>Edit Date Sheet</div>
         <div class="card-body">
             <form method="POST" action="{{ url_for('main.examinations_schedule', id=exam.id) }}">
@@ -165,18 +208,18 @@
                     </div>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-3">
+                    <table class="table table-sm align-middle mb-3 xd-edit">
                         <thead class="table-light">
                             <tr><th>#</th><th>Subject</th><th style="width:150px;">Exam Date</th><th style="width:130px;">Time</th><th style="width:170px;">Room</th></tr>
                         </thead>
                         <tbody>
                             {% for test in tests %}
                             <tr>
-                                <td class="text-muted">{{ loop.index }}</td>
-                                <td class="fw-bold">{{ test.subject_info.name if test.subject_info else '—' }}</td>
-                                <td><input type="date" class="form-control form-control-sm" name="exam_date_{{ test.id }}" value="{{ test.test_date.isoformat() if test.test_date else '' }}" required></td>
-                                <td><input type="time" class="form-control form-control-sm" name="exam_time_{{ test.id }}" value="{{ test.start_time or '' }}"></td>
-                                <td><input type="text" class="form-control form-control-sm" name="exam_room_{{ test.id }}" value="{{ test.room or '' }}" maxlength="60"></td>
+                                <td class="text-muted xd-c-no">{{ loop.index }}</td>
+                                <td class="fw-bold xd-c-name">{{ test.subject_info.name if test.subject_info else '—' }}</td>
+                                <td class="xd-c-f" data-label="Exam Date"><input type="date" class="form-control form-control-sm" name="exam_date_{{ test.id }}" value="{{ test.test_date.isoformat() if test.test_date else '' }}" required></td>
+                                <td class="xd-c-f" data-label="Time"><input type="time" class="form-control form-control-sm" name="exam_time_{{ test.id }}" value="{{ test.start_time or '' }}"></td>
+                                <td class="xd-c-f xd-c-wide" data-label="Room"><input type="text" class="form-control form-control-sm" name="exam_room_{{ test.id }}" value="{{ test.room or '' }}" maxlength="60"></td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -184,17 +227,17 @@
                 </div>
             </form>
             <hr>
-            <form method="POST" action="{{ url_for('main.examinations_schedule', id=exam.id) }}" class="row g-2 align-items-end"
+            <form method="POST" action="{{ url_for('main.examinations_schedule', id=exam.id) }}" class="row g-2 align-items-end xd-shift"
                   data-confirm="Shift ALL exam dates by the number of days entered?"
                   data-confirm-ok="Shift dates">
-                <div class="col-auto">
+                <div class="col-12 col-sm-auto">
                     <label class="form-label small fw-bold mb-1">Postpone / shift all dates by</label>
                     <input type="number" class="form-control form-control-sm" name="shift_days" style="width:110px" placeholder="e.g. 7">
                 </div>
-                <div class="col-auto">
+                <div class="col-12 col-sm-auto">
                     <button class="btn btn-outline-dark btn-sm"><i class="fas fa-arrow-right me-1"></i>Shift Dates</button>
                 </div>
-                <div class="col-auto text-muted small">Negative values move dates earlier. Announce date shifts too.</div>
+                <div class="col-12 col-sm-auto text-muted small">Negative values move dates earlier. Announce date shifts too.</div>
             </form>
         </div>
     </div>
