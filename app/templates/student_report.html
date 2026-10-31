@@ -79,6 +79,44 @@
         background: #0f172a;
         color: #fff;
     }
+    /* ---- phones: same content, laid out for a narrow screen -------------- */
+    .profile-tabs { scrollbar-width: none; }
+    .profile-tabs::-webkit-scrollbar { display: none; }
+    .report-hero h1, .report-hero .badge { overflow-wrap: anywhere; white-space: normal; text-align: left; }
+    @media (max-width: 767.98px) {
+        .student-report-shell { padding: 14px; border-radius: 16px; box-shadow: 0 8px 22px rgba(15, 23, 42, 0.07); }
+        .report-hero { padding: 16px; border-radius: 16px; margin-bottom: 16px; }
+        .report-hero h1 { font-size: 1.35rem; }
+        .report-actions { width: 100%; display: grid !important; grid-template-columns: 1fr 1fr; gap: 0.5rem !important; }
+        .report-actions .btn, .report-actions .btn-group { width: 100%; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .report-actions .btn-group { grid-column: 1 / -1; }
+        .report-actions .btn-group .btn { flex: 1; }
+        .report-stat { min-height: 84px; padding: 12px 8px; border-radius: 14px; }
+        .report-stat .value { font-size: 1.3rem; }
+        .report-stat .small { font-size: 0.72rem; }
+
+        /* the five tabs stay on one line and slide sideways */
+        .profile-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-left: -4px; margin-right: -4px; padding: 2px 4px 6px; }
+        .profile-tabs .nav-item { flex: none; }
+        .profile-tabs .nav-link { padding: 0.6rem 1rem; white-space: nowrap; min-height: 2.6rem; }
+
+        .tab-content .card-header { flex-wrap: wrap; gap: 0.5rem; }
+        .tab-content .card-body .small { overflow-wrap: anywhere; }
+
+        /* every table row becomes a small card: first cell is the heading,
+           the other cells are "label ... value" lines */
+        .rp-cards { display: block; width: 100%; }
+        .rp-cards thead { display: none; }
+        .rp-cards tbody { display: block; padding: 0.4rem 0.7rem 0.7rem; }
+        .rp-cards tbody tr { display: block; margin-top: 0.6rem; padding: 0.65rem 0.85rem; background: #fff !important; border: 1px solid #e2e8f0; border-radius: 12px; --bs-table-bg-state: transparent; --bs-table-accent-bg: transparent; }
+        .rp-cards tbody td { display: block; padding: 0.15rem 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; text-align: left !important; }
+        .rp-cards tbody td:first-child { font-weight: 700; padding-bottom: 0.35rem !important; }
+        .rp-cards tbody td[data-label] { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; text-align: right !important; border-top: 1px dashed #eef2f7 !important; padding: 0.35rem 0 !important; }
+        .rp-cards tbody td[data-label]::before { content: attr(data-label); flex: none; max-width: 45%; text-align: left; font-size: 0.74rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; }
+        .rp-cards tbody td[colspan] { text-align: center !important; }
+        .rp-cards tbody tr:has(> td[colspan]) { border: 0; padding: 0; }
+        .report-table { border: 0; }
+    }
     .medal { display: inline-block; padding: 0.25rem 0.6rem; border-radius: 999px; color: #fff; font-weight: 700; font-size: 0.75rem; }
 </style>
 
@@ -101,7 +139,7 @@
             </div>
             </div>
         </div>
-        <div class="d-flex flex-wrap gap-2">
+        <div class="d-flex flex-wrap gap-2 report-actions">
             {% if student.guardian_phone %}
             <a class="btn btn-light btn-sm" href="tel:{{ student.guardian_phone }}" title="Call guardian">
                 <i class="fas fa-phone me-1"></i> Call
@@ -139,7 +177,7 @@
 
     <!-- Quick stats -->
     <div class="row g-3 mb-4">
-        <div class="col-md-3">
+        <div class="col-6 col-md-3">
             <div class="report-stat bg-white">
                 <div>
                     {% if summary.attendance_total %}
@@ -154,7 +192,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-6 col-md-3">
             <div class="report-stat bg-white">
                 <div>
                     {% if dues and dues > 0 %}
@@ -169,7 +207,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-6 col-md-3">
             <div class="report-stat bg-white">
                 <div>
                     {% if term_results %}
@@ -184,7 +222,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-6 col-md-3">
             <div class="report-stat bg-white">
                 <div>
                     {% if summary.has_results %}
@@ -272,7 +310,7 @@
                         <div class="card-header bg-info text-dark"><h6 class="mb-0"><i class="fas fa-layer-group me-2"></i>Enrollment History</h6></div>
                         <div class="card-body p-0">
                             <div class="table-responsive">
-                                <table class="table table-striped align-middle mb-0">
+                                <table class="table table-striped align-middle mb-0 rp-cards">
                                     <thead>
                                         <tr>
                                             <th class="ps-3">Session</th>
@@ -286,10 +324,10 @@
                                         {% for e in enrollments %}
                                         <tr>
                                             <td class="ps-3">{{ e.session_label or '—' }}</td>
-                                            <td class="fw-bold">{{ e.class_name or '—' }}</td>
-                                            <td>{{ e.section_name or '—' }}</td>
-                                            <td>{{ e.roll_number if e.roll_number is not none else '—' }}</td>
-                                            <td class="text-muted small">
+                                            <td class="fw-bold" data-label="Class">{{ e.class_name or '—' }}</td>
+                                            <td data-label="Section">{{ e.section_name or '—' }}</td>
+                                            <td data-label="Roll">{{ e.roll_number if e.roll_number is not none else '—' }}</td>
+                                            <td class="text-muted small" data-label="Period">
                                                 {{ e.start_date.strftime('%d %b %Y') if e.start_date else '—' }}
                                                 &rarr;
                                                 {% if e.end_date %}{{ e.end_date.strftime('%d %b %Y') }}{% else %}<span class="badge bg-success">Present</span>{% endif %}
@@ -319,7 +357,7 @@
                 <div class="card-header bg-success text-white"><h6 class="mb-0"><i class="fas fa-calendar-check me-2"></i>Attendance History ({{ summary.attendance_total }} records)</h6></div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-striped mb-0 align-middle">
+                        <table class="table table-striped mb-0 align-middle rp-cards">
                             <thead>
                                 <tr>
                                     <th class="ps-3">Date</th>
@@ -331,12 +369,12 @@
                                 {% for item in attendance_records %}
                                 <tr>
                                     <td class="ps-3">{{ item.date }}</td>
-                                    <td>
+                                    <td data-label="Status">
                                         <span class="status-pill {% if item.status == 'Present' %}bg-success text-white{% elif item.status == 'Absent' %}bg-danger text-white{% elif item.status == 'Late' %}bg-warning text-dark{% else %}bg-secondary text-white{% endif %}">
                                             {{ item.status }}
                                         </span>
                                     </td>
-                                    <td>
+                                    <td data-label="Check-in / Late">
                                         {% if item.late_time %}<span class="badge bg-light text-dark border">{{ item.late_time }}</span>{% else %}—{% endif %}
                                         {% if item.status == 'Late' and item.late_minutes is not none %}<span class="badge bg-warning text-dark ms-1">Late by {{ item.late_minutes }} min</span>{% endif %}
                                     </td>
@@ -357,7 +395,7 @@
                 <div class="card-header bg-dark text-white"><h6 class="mb-0"><i class="fas fa-award me-2"></i>Term Exam Results</h6></div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
+                        <table class="table table-hover align-middle mb-0 rp-cards">
                             <thead>
                                 <tr>
                                     <th class="ps-3">Examination</th>
@@ -374,25 +412,25 @@
                                 {% for tr in term_results %}
                                 <tr>
                                     <td class="ps-3 fw-bold">{{ tr.exam.name }}</td>
-                                    <td>{{ tr.exam.exam_type }}</td>
-                                    <td class="small text-muted">{{ tr.exam.start_date.strftime('%d %b %Y') if tr.exam.start_date else '—' }}</td>
+                                    <td data-label="Type">{{ tr.exam.exam_type }}</td>
+                                    <td class="small text-muted" data-label="Date">{{ tr.exam.start_date.strftime('%d %b %Y') if tr.exam.start_date else '—' }}</td>
                                     {% if tr.row.all_absent %}
-                                    <td class="text-muted">—</td>
-                                    <td class="text-muted">—</td>
-                                    <td><span class="grade-badge">ABS</span></td>
+                                    <td class="text-muted" data-label="Total">—</td>
+                                    <td class="text-muted" data-label="%">—</td>
+                                    <td data-label="Grade"><span class="grade-badge">ABS</span></td>
                                     {% else %}
-                                    <td>{{ '%g'|format(tr.row.total_obt) }}/{{ tr.row.max_marks|int }}{% if tr.row.absent_count %} <small class="text-muted">(absent in {{ tr.row.absent_count }})</small>{% endif %}</td>
-                                    <td>{{ tr.row.pct }}%</td>
-                                    <td><span class="grade-badge">{{ tr.row.grade }}</span></td>
+                                    <td data-label="Total">{{ '%g'|format(tr.row.total_obt) }}/{{ tr.row.max_marks|int }}{% if tr.row.absent_count %} <small class="text-muted">(absent in {{ tr.row.absent_count }})</small>{% endif %}</td>
+                                    <td data-label="%">{{ tr.row.pct }}%</td>
+                                    <td data-label="Grade"><span class="grade-badge">{{ tr.row.grade }}</span></td>
                                     {% endif %}
-                                    <td>
+                                    <td data-label="Position">
                                         {% if tr.row.rank == 1 %}<span class="medal" style="background:#d4af37;">🥇 {{ tr.row.position }}</span>
                                         {% elif tr.row.rank == 2 %}<span class="medal" style="background:#9ca3af;">🥈 {{ tr.row.position }}</span>
                                         {% elif tr.row.rank == 3 %}<span class="medal" style="background:#cd7f32;">🥉 {{ tr.row.position }}</span>
                                         {% else %}<span class="text-muted">{{ tr.row.position }}</span>{% endif %}
                                     </td>
                                     {% if current_user.is_admin %}
-                                    <td class="text-center">
+                                    <td class="text-center" data-label="Card">
                                         <a class="btn btn-sm btn-outline-danger" target="_blank"
                                            href="{{ url_for('main.examinations_result_card', id=tr.exam.id, student_id=student.id) }}" title="Report card PDF">
                                             <i class="fas fa-file-pdf"></i>
@@ -410,7 +448,7 @@
             </div>
 
             <div class="card border-0 shadow-sm">
-                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h6 class="mb-0"><i class="fas fa-file-alt me-2"></i>Result Card — All Marks</h6>
                     <div class="d-flex gap-2">
                         <a class="btn btn-light btn-sm" href="{{ url_for('main.student_report_pdf', id=student.id) }}" target="_blank">
@@ -420,7 +458,7 @@
                 </div>
                 <div class="card-body p-0 report-table">
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
+                        <table class="table table-hover align-middle mb-0 rp-cards">
                             <thead>
                                 <tr>
                                     <th class="ps-3">Test</th>
@@ -436,17 +474,17 @@
                                 {% for mark in marks %}
                                 <tr>
                                     <td class="ps-3">{{ mark.test_info.test_title if mark.test_info else 'N/A' }}</td>
-                                    <td>{{ mark.test_info.test_type if mark.test_info else 'N/A' }}</td>
-                                    <td>{{ mark.test_info.subject_info.name if mark.test_info and mark.test_info.subject_info else 'N/A' }}</td>
-                                    <td>{{ mark.test_info.test_date if mark.test_info else 'N/A' }}</td>
+                                    <td data-label="Type">{{ mark.test_info.test_type if mark.test_info else 'N/A' }}</td>
+                                    <td data-label="Subject">{{ mark.test_info.subject_info.name if mark.test_info and mark.test_info.subject_info else 'N/A' }}</td>
+                                    <td data-label="Date">{{ mark.test_info.test_date if mark.test_info else 'N/A' }}</td>
                                     {% if mark.is_absent %}
-                                    <td><span class="badge bg-warning text-dark">ABS</span></td>
-                                    <td>—</td>
-                                    <td><span class="grade-badge">ABS</span></td>
+                                    <td data-label="Obtained"><span class="badge bg-warning text-dark">ABS</span></td>
+                                    <td data-label="Percentage">—</td>
+                                    <td data-label="Grade"><span class="grade-badge">ABS</span></td>
                                     {% else %}
-                                    <td>{{ mark.marks_obtained }}</td>
-                                    <td>{{ mark.percentage if mark.percentage is not none else '—' }}%</td>
-                                    <td><span class="grade-badge">{{ mark.grade or '—' }}</span></td>
+                                    <td data-label="Obtained">{{ mark.marks_obtained }}</td>
+                                    <td data-label="Percentage">{{ mark.percentage if mark.percentage is not none else '—' }}%</td>
+                                    <td data-label="Grade"><span class="grade-badge">{{ mark.grade or '—' }}</span></td>
                                     {% endif %}
                                 </tr>
                                 {% else %}
@@ -462,7 +500,7 @@
         <!-- ============ FEES ============ -->
         <div class="tab-pane fade" id="tab-fees">
             <div class="row g-3 mb-4">
-                <div class="col-md-4">
+                <div class="col-6 col-md-4">
                     <div class="report-stat bg-white h-100">
                         <div>
                             {% if dues and dues > 0 %}
@@ -475,7 +513,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-6 col-md-4">
                     <div class="report-stat bg-white h-100">
                         <div>
                             <div class="value text-primary">Rs {{ '{:,.0f}'.format(student.monthly_fee or 0) }}</div>
@@ -483,7 +521,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-12 col-md-4">
                     <div class="card border-0 shadow-sm h-100"><div class="card-body d-flex flex-column justify-content-center gap-2">
                         <a class="btn btn-primary btn-sm" href="{{ url_for('main.fee_student_ledger', student_id=student.id) }}">
                             <i class="fas fa-book me-1"></i> Open Full Fee Ledger
@@ -499,7 +537,7 @@
                 <div class="card-header bg-warning text-dark"><h6 class="mb-0"><i class="fas fa-receipt me-2"></i>Recent Fee Months</h6></div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
+                        <table class="table table-hover align-middle mb-0 rp-cards">
                             <thead>
                                 <tr>
                                     <th class="ps-3">Month</th>
@@ -513,10 +551,10 @@
                                 {% for rec in fee_recent %}
                                 <tr>
                                     <td class="ps-3 fw-bold">{{ rec.month_year }}</td>
-                                    <td class="text-end">{{ '{:,.0f}'.format(rec.amount_due or 0) }}</td>
-                                    <td class="text-end text-success">{{ '{:,.0f}'.format(rec.amount_paid or 0) }}</td>
-                                    <td class="text-end {{ 'text-danger fw-bold' if (rec.balance or 0) > 0 else 'text-muted' }}">{{ '{:,.0f}'.format(rec.balance or 0) }}</td>
-                                    <td>
+                                    <td class="text-end" data-label="Due">{{ '{:,.0f}'.format(rec.amount_due or 0) }}</td>
+                                    <td class="text-end text-success" data-label="Paid">{{ '{:,.0f}'.format(rec.amount_paid or 0) }}</td>
+                                    <td class="text-end {{ 'text-danger fw-bold' if (rec.balance or 0) > 0 else 'text-muted' }}" data-label="Balance">{{ '{:,.0f}'.format(rec.balance or 0) }}</td>
+                                    <td data-label="Status">
                                         {% if rec.status == 'Paid' %}<span class="badge bg-success">Paid</span>
                                         {% elif rec.status == 'Partial' %}<span class="badge bg-warning text-dark">Partial</span>
                                         {% else %}<span class="badge bg-danger">{{ rec.status or 'Pending' }}</span>{% endif %}
@@ -538,47 +576,47 @@
                 <div class="card-header bg-dark text-white"><h6 class="mb-0"><i class="fas fa-folder-open me-2"></i>Documents &amp; Certificates</h6></div>
                 <div class="card-body">
                     <div class="row g-3">
-                        <div class="col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <a class="btn btn-outline-primary w-100 py-3" href="{{ url_for('main.export_student_id_cards', student_id=student.id) }}">
                                 <i class="fas fa-id-card me-1"></i> Student ID Card (PDF)
                             </a>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <a class="btn btn-outline-danger w-100 py-3" href="{{ url_for('main.student_report_pdf', id=student.id) }}" target="_blank">
                                 <i class="fas fa-file-pdf me-1"></i> Result Card (PDF)
                             </a>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <a class="btn btn-outline-dark w-100 py-3" href="{{ url_for('main.student_transcript_pdf', id=student.id) }}" target="_blank">
                                 <i class="fas fa-scroll me-1"></i> Academic Transcript (PDF)
                             </a>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <a class="btn btn-outline-warning w-100 py-3" href="{{ url_for('main.export_certificates', student_id=student.id, cert_type='leaving') }}">
                                 <i class="fas fa-door-open me-1"></i> School Leaving Certificate
                             </a>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <a class="btn btn-outline-secondary w-100 py-3" href="{{ url_for('main.export_certificates', student_id=student.id, cert_type='character') }}">
                                 <i class="fas fa-certificate me-1"></i> Character Certificate
                             </a>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <a class="btn btn-outline-secondary w-100 py-3" href="{{ url_for('main.export_certificates', student_id=student.id, cert_type='bonafide') }}">
                                 <i class="fas fa-certificate me-1"></i> Bonafide / Studentship
                             </a>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <a class="btn btn-outline-success w-100 py-3" href="{{ url_for('main.documents_hub', student_id=student.id, cert_type='merit') }}">
                                 <i class="fas fa-medal me-1"></i> Merit / Achievement Certificate
                             </a>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <a class="btn btn-outline-info w-100 py-3" href="{{ url_for('main.student_history', id=student.id) }}">
                                 <i class="fas fa-clock-rotate-left me-1"></i> Full Change History
                             </a>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <a class="btn btn-outline-primary w-100 py-3" href="{{ url_for('main.documents_hub', student_id=student.id) }}">
                                 <i class="fas fa-folder-open me-1"></i> Open Documents Hub
                             </a>

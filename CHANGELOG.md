@@ -49,6 +49,8 @@ release, rename `[Unreleased]` to the new version and date.
 ## [X.Y.Z] - YYYY-MM-DD
 
 ### Added
+- Tests — new `tests/test_student_report_mobile.py` covers the phone layout of the student report page (five tables shown as cards, a label on every card line, two stat boxes per line, sliding tabs, and that every tab and button is still there).
+- Student report — **phone layout**: the five tables (*Enrollment History*, *Attendance History*, *Term Exam Results*, *Result Card — All Marks* and *Recent Fee Months*) are shown as **small cards** on a phone, with the first value as the heading and the rest as *label — value* lines, so nothing has to be scrolled sideways. Computers and tablets keep the tables.
 - Tests — new `tests/test_student_list_mobile.py` covers the phone layout of the Students page (a label on every card line, the sort box, full-screen Add / Edit forms, the phone styles, Urdu card labels, and that every desktop feature is still there).
 - Students — **phone layout**: on a phone every student is shown as a **card** (photo, name and roll number on top, then each chosen field as a *label — value* line, with **Edit / Admission fee / Archive** buttons at the bottom) instead of a wide table that had to be scrolled sideways. Tapping a card still opens the full report. *Columns* still decides which fields appear on the card.
 - Students — **Sort by** box on phones (field + up / down button), because the table header is not shown on a phone. It sorts exactly like clicking a column heading on a computer.
@@ -88,6 +90,7 @@ release, rename `[Unreleased]` to the new version and date.
 - Tests — new `tests/test_qr_tab_page.py` covers the redesigned QR Scans tab (list order, chip counts, set-up steps open / folded, teacher view, approval card, closed day).
 
 ### Changed
+- Student report — on a phone the **summary boxes (Attendance, Fee Dues, Latest Position, Overall) sit two per line**, the **five tabs stay on one line and slide sideways**, the Call / WhatsApp / Admission Form / Transcript / History / Back buttons are laid out as a tidy grid, and the *Documents* buttons are two per line on small tablets. Padding is smaller so more fits on the screen.
 - Students — phone screens: the **Add Student** button is full width, **Export Data / Columns / Manage** share one row and their menus never go off the screen; search, class, section, gender, status and *Has dues* filters sit two per line with bigger tap targets; the quick filter, entries box and page buttons are easier to use; row buttons are bigger.
 - Students — **Add Student and Edit Student forms open full screen on a phone** with the Cancel / Save buttons always visible at the bottom, and form boxes no longer make the page zoom in when tapped. Computers and tablets are unchanged.
 - Urdu — small text shown beside a field on the Students phone cards is now translated too.
