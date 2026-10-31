@@ -573,6 +573,8 @@ UR.update({
     'Absent — not counted in total or grade': 'غیر حاضر — کل نمبر یا گریڈ میں شمار نہیں',
     'Individual Report Card PDF': 'انفرادی رپورٹ کارڈ (پی ڈی ایف)',
     'Report Card PDF': 'رپورٹ کارڈ (پی ڈی ایف)',
+    'Document': 'دستاویز',
+    'Paid by': 'ادائیگی بذریعہ', 'Receipt No': 'رسید نمبر', 'Entered by': 'درج کرنے والا',
     'No results found.': 'کوئی نتیجہ نہیں ملا۔',
     'Create tests and enter student marks to see results here.':
         'نتائج یہاں دیکھنے کے لیے ٹیسٹ بنائیں اور طلبہ کے نمبر درج کریں۔',

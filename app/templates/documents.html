@@ -71,12 +71,42 @@
     .dc-card h3 { font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0; padding: 0.85rem 1.1rem; border-bottom: 1px solid #eef2f7; }
 
     @media (max-width: 767.98px) {
-        .dc-tiles { grid-template-columns: 1fr; }
+        .dc-tiles { grid-template-columns: 1fr; gap: 0.5rem; }
+        .dc-tile { padding: 0.7rem 0.85rem; }
+        .dc-tile-ico { width: 40px; height: 40px; font-size: 1.1rem; }
         .dc-ribbon { grid-template-columns: 1fr 1fr 1fr; }
         .dc-stat { padding: 0.7rem 0.8rem; }
-        .dc-go .btn { width: 100%; }
+        .dc-num { font-size: 1.35rem; }
+        .dc-panel { padding: 0.95rem 0.95rem; }
+        .dc-go .btn { width: 100%; min-height: 2.8rem; }
         .dc-seg { display: flex; width: 100%; }
-        .dc-seg label { flex: 1; text-align: center; padding-left: 0.4rem; padding-right: 0.4rem; }
+        .dc-seg label { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 2.6rem; text-align: center; line-height: 1.15; padding-left: 0.4rem; padding-right: 0.4rem; }
+        .dc-types { grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); }
+        .dc-type label { min-height: 2.8rem; line-height: 1.2; }
+        .dc-result { align-items: flex-start; }
+        .dc-more > summary { min-height: 2.8rem; }
+        .dc-card h3 { padding: 0.75rem 0.95rem; }
+        /* "Recently issued": one small card per document instead of a 5-column table you had to swipe sideways */
+        .dc-rec, .dc-rec tbody { display: block; width: 100%; }
+        .dc-rec thead { display: none; }
+        .dc-rec tbody tr { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem 0.6rem; padding: 0.75rem 0.95rem; border-bottom: 1px solid #eef2f7; }
+        .dc-rec tbody tr:last-child { border-bottom: 0; }
+        .dc-rec td { display: block; padding: 0; border: 0; background: transparent; box-shadow: none; min-width: 0; text-align: left !important; }
+        html[dir="rtl"] .dc-rec td { text-align: right !important; }
+        .dc-rec td::before { content: attr(data-label); display: block; font-size: 0.66rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; }
+        .dc-rec .dc-c-date { order: 1; } .dc-rec .dc-c-fee { order: 2; }
+        .dc-rec .dc-c-student { order: 3; grid-column: 1 / -1; }
+        .dc-rec .dc-c-doc { order: 4; grid-column: 1 / -1; }
+        .dc-rec .dc-c-rcpt { order: 5; grid-column: 1 / -1; }
+    }
+    @media (max-width: 575.98px) {
+        /* 16px text in boxes: stops iPhones zooming the page when a box is tapped */
+        .dc-panel .form-control, .dc-panel .form-select, .dc-more-body .form-control { font-size: 16px; }
+        .dc-more-body .form-control { min-height: 2.6rem; }
+        /* fee boxes one under the other, so every label is fully readable */
+        .dc-more-body .row > [class*="col-"] { flex: 0 0 100%; max-width: 100%; }
+        .dc-more-body .btn { width: 100%; min-height: 2.6rem; }
+        .dc-lab { font-size: 0.72rem; }
     }
     @media (prefers-reduced-motion: reduce) { .dc-tile, .dc-more > summary .dc-chev { transition: none; } }
 </style>
@@ -316,16 +346,16 @@
             <div class="card-body p-0">
                 {% if recent_issues %}
                 <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0 small">
+                <table class="table table-sm align-middle mb-0 small dc-rec">
                     <thead><tr><th>Date</th><th>Student</th><th>Document</th><th class="text-end">Fee</th><th>Receipt</th></tr></thead>
                     <tbody>
                     {% for d in recent_issues %}
                     <tr class="{{ 'text-decoration-line-through text-muted' if not d.is_effective else '' }}">
-                        <td>{{ d.issue_date.strftime('%d %b') }}</td>
-                        <td>{{ d.student.student_name if d.student else '—' }}</td>
-                        <td>{{ title_for(d.doc_kind, d.cert_type) }}{% if d.is_duplicate %} <span class="badge bg-warning-subtle text-dark">dup</span>{% endif %}</td>
-                        <td class="text-end">{{ fee_money(d.fee_paisa) if d.fee_paisa else 'free' }}</td>
-                        <td><a href="{{ url_for('main.document_receipt', doc_id=d.id) }}">{{ d.income.receipt_no if d.income else 'open' }}</a></td>
+                        <td class="dc-c-date" data-label="Date">{{ d.issue_date.strftime('%d %b') }}</td>
+                        <td class="dc-c-student" data-label="Student">{{ d.student.student_name if d.student else '—' }}</td>
+                        <td class="dc-c-doc" data-label="Document">{{ title_for(d.doc_kind, d.cert_type) }}{% if d.is_duplicate %} <span class="badge bg-warning-subtle text-dark">dup</span>{% endif %}</td>
+                        <td class="text-end dc-c-fee" data-label="Fee">{{ fee_money(d.fee_paisa) if d.fee_paisa else 'free' }}</td>
+                        <td class="dc-c-rcpt" data-label="Receipt"><a href="{{ url_for('main.document_receipt', doc_id=d.id) }}">{{ d.income.receipt_no if d.income else 'open' }}</a></td>
                     </tr>
                     {% endfor %}
                     </tbody>

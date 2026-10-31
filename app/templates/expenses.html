@@ -141,10 +141,74 @@
         .ex-stat:nth-child(3) { border-left: 0; border-top: 1px solid #eef2f7; }
         .ex-stat:nth-child(4) { border-top: 1px solid #eef2f7; }
     }
+    /* phones: header buttons in a grid, month bar and filters stacked, every expense / category a small card instead of a wide table */
+    @media (max-width: 767.98px) {
+        .ex-tools { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem !important; }
+        .ex-tools > .btn { grid-column: 1 / -1; width: 100%; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .ex-tools > #categoriesButton { grid-column: auto; }
+        .ex-tools .dropdown .btn { width: 100%; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .ex-bar-top { flex-direction: column; align-items: stretch; }
+        .ex-nav { width: 100%; }
+        .ex-nav form { order: -1; flex: 1 1 100%; }
+        .ex-nav .form-select { width: 100%; min-width: 0; height: 2.7rem; }
+        .ex-nav > .btn { flex: 1; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .ex-seg { display: flex; width: 100%; }
+        .ex-seg a, .ex-seg button { flex: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 2.5rem; text-align: center; }
+        .ex-search { flex: 1 1 100%; min-width: 0; }
+        .ex-filters .ex-cat { flex: 1 1 100%; width: 100%; max-width: none; }
+        .ex-filters .btn { flex: 1; justify-content: center; }
+        .ex-dates .ex-dates-row > div { flex: 1 1 calc(50% - 0.3rem); min-width: 0; }
+        .ex-num { font-size: 1.35rem; overflow-wrap: anywhere; }
+        .ex-stat { padding: 0.7rem 0.85rem; }
+        .ex-count { flex-direction: column; align-items: stretch; }
+        /* cards: Copy / Edit / Void share the line */
+        .ex-foot { justify-content: stretch; }
+        .ex-acts { display: flex; width: 100%; }
+        .ex-acts .btn { width: 100%; min-height: 2.5rem; display: inline-flex; align-items: center; justify-content: center; }
+        .ex-acts .btn, .ex-acts form { flex: 1 1 0; }
+        .ex-acts .ex-payroll { min-height: 2.5rem; }
+        /* tables become cards (Table view, Categories, Continue Previous Month) */
+        .ex-panel .table-responsive, .ex-page .modal .table-responsive { overflow: visible; }
+        .ex-stack, .ex-stack tbody { display: block; width: 100% !important; }
+        .ex-stack thead { display: none; }
+        .ex-stack tbody tr { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 0.6rem; padding: 0.8rem 0.95rem; border-bottom: 1px solid #f1f5f9; }
+        .ex-stack tbody tr:last-child { border-bottom: 0; }
+        .ex-stack td { display: block; padding: 0 !important; border: 0 !important; background: transparent; box-shadow: none; min-width: 0; text-align: left !important; white-space: normal !important; }
+        html[dir="rtl"] .ex-stack td { text-align: right !important; }
+        .ex-stack td[data-label]::before { content: attr(data-label); display: block; font-size: 0.66rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.1rem; }
+        .ex-stack .dataTables_empty { grid-column: 1 / -1; }
+        .ex-tbl-main tbody tr > td:nth-child(2), .ex-tbl-cont tbody tr > td:nth-child(2) { order: 1; }
+        .ex-tbl-main tbody tr > td:nth-child(1), .ex-tbl-cont tbody tr > td:nth-child(1) { order: 2; text-align: right !important; color: #64748b; font-size: 0.8rem; }
+        html[dir="rtl"] .ex-tbl-main tbody tr > td:nth-child(1), html[dir="rtl"] .ex-tbl-cont tbody tr > td:nth-child(1) { text-align: left !important; }
+        .ex-tbl-main tbody tr > td:nth-child(3), .ex-tbl-cont tbody tr > td:nth-child(3) { order: 3; grid-column: 1 / -1; font-size: 1.3rem; font-weight: 800; }
+        .ex-tbl-main tbody tr > td:nth-child(3)::before, .ex-tbl-cont tbody tr > td:nth-child(3)::before { content: "Rs. "; font-size: 0.85rem; font-weight: 700; color: #94a3b8; }
+        .ex-tbl-main tbody tr > td:nth-child(4) { order: 4; }
+        .ex-tbl-main tbody tr > td:nth-child(5) { order: 5; }
+        .ex-tbl-main tbody tr > td:nth-child(n+6) { grid-column: 1 / -1; }
+        .ex-tbl-main tbody tr > td:nth-child(6) { order: 6; } .ex-tbl-main tbody tr > td:nth-child(7) { order: 7; } .ex-tbl-main tbody tr > td:nth-child(8) { order: 8; }
+        .ex-tbl-cont tbody tr > td:nth-child(n+4) { grid-column: 1 / -1; }
+        .ex-tbl-cont tbody tr > td:nth-child(4) { order: 4; } .ex-tbl-cont tbody tr > td:nth-child(5) { order: 5; } .ex-tbl-cont tbody tr > td:nth-child(6) { order: 6; }
+        .ex-tbl-cont .btn { width: 100%; min-height: 2.6rem; }
+        .ex-tbl-cat tbody tr > td:nth-child(1), .ex-tbl-cat tbody tr > td:nth-child(2) { grid-column: 1 / -1; }
+        .ex-tbl-cat tbody tr > td:nth-child(1) { font-size: 1rem; }
+        .ex-tbl-cat tbody tr > td:nth-child(6) { display: flex; gap: 0.4rem; align-items: center; }
+        .ex-tbl-cat tbody tr > td:nth-child(6)::before { display: none; }
+        .ex-tbl-cat .btn { min-width: 2.6rem; min-height: 2.6rem; }
+        /* windows (Add / Edit / Categories / Void) */
+        .ex-page .modal .modal-header, .ex-page .modal .modal-body, .ex-page .modal .modal-footer { padding-left: 1rem; padding-right: 1rem; }
+        .ex-page .modal .modal-footer .btn { flex: 1 1 0; min-height: 2.7rem; }
+        .ex-form .ex-pay { flex-wrap: wrap; }
+        .ex-form .ex-pay label { min-width: 5rem; min-height: 2.8rem; display: flex; align-items: center; justify-content: center; }
+        .ex-form .ex-quick button, .ex-reasons button { min-height: 2.3rem; padding: 0.3rem 0.9rem; }
+        .ex-page .modal .form-control-sm { min-height: 2.6rem; }
+    }
     @media (max-width: 575.98px) {
-        .ex-band { grid-template-columns: 1fr; }
-        .ex-stat + .ex-stat { border-left: 0; border-top: 1px solid #eef2f7; }
         .ex-grid { grid-template-columns: 1fr; }
+        .ex-stat { padding: 0.65rem 0.8rem; }
+        .ex-num { font-size: 1.2rem; }
+        .ex-lab { font-size: 0.72rem; }
+        /* 16px text in boxes: stops iPhones zooming the page when a box is tapped */
+        .ex-search input, .ex-filters .form-select, .ex-filters .form-control.ex-date, .ex-nav .form-select, .ex-form .form-control, .ex-form .form-select, .ex-page .modal .form-control-sm { font-size: 16px; }
     }
 </style>
 <div class="ex-page">
@@ -156,7 +220,7 @@
         <h1 class="h2 fw-bold text-dark mb-1">Expense Tracker</h1>
         <p class="text-muted small mb-0">Write down the money the school spends: bills, rent, repairs, stationery.</p>
     </div>
-    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2 ex-tools">
         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addExpenseModal">
             <i class="fas fa-plus me-1"></i> Add Expense
         </button>
@@ -385,7 +449,7 @@
     <div class="card ex-panel mb-4">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle datatable mb-0" id="expenseMainTable" data-page-length="25" data-order='[[0,"desc"]]'>
+                <table class="table table-sm table-hover align-middle datatable mb-0 ex-stack ex-tbl-main" id="expenseMainTable" data-page-length="25" data-order='[[0,"desc"]]'>
                     <thead class="table-light">
                         <tr>
                             <th class="ps-3">Date</th>
@@ -407,10 +471,10 @@
                             <td class="ex-date ps-3" data-order="{{ e.date.isoformat() if e.date else '' }}">{{ e.date.strftime('%d %b %Y') if e.date else '—' }}</td>
                             <td><span class="ex-cat-badge">{{ cname }}</span></td>
                             <td class="text-end fw-bold ex-amt" data-order="{{ e.amount or 0 }}">{{ rs(e.amount) }}</td>
-                            <td>{{ e.payment_method }}</td>
-                            <td class="font-monospace small">{{ e.receipt_no or '—' }}</td>
-                            <td class="text-muted small">{{ e.description or '—' }}</td>
-                            <td class="small">{{ e.logged_by_name or '—' }}</td>
+                            <td data-label="Paid by">{{ e.payment_method }}</td>
+                            <td class="font-monospace small" data-label="Receipt No">{{ e.receipt_no or '—' }}</td>
+                            <td class="text-muted small" data-label="Description">{{ e.description or '—' }}</td>
+                            <td class="small" data-label="Entered by">{{ e.logged_by_name or '—' }}</td>
                             <td class="text-end text-nowrap pe-3"><div class="ex-acts">
                                 {% if e.is_void %}
                                 <span class="badge bg-secondary" title="{{ e.void_reason or '' }}">Voided</span>
@@ -497,7 +561,7 @@
                     </div>
                 </form>
                 <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
+                    <table class="table table-sm align-middle mb-0 ex-stack ex-tbl-cat">
                         <thead class="table-light">
                             <tr>
                                 <th>Name</th>
@@ -512,14 +576,14 @@
                             {% for row in all_categories %}
                             <tr class="{% if not row.category.is_active %}text-muted{% endif %}">
                                 <td class="fw-bold">{{ row.category.name }}</td>
-                                <td class="small">{{ row.category.description or '—' }}</td>
-                                <td class="text-end">{{ row.count }}</td>
-                                <td class="text-end">{{ '{:,.0f}'.format(row.total) }}</td>
-                                <td>
+                                <td class="small" data-label="Description">{{ row.category.description or '—' }}</td>
+                                <td class="text-end" data-label="Entries">{{ row.count }}</td>
+                                <td class="text-end" data-label="Total (Rs.)">{{ '{:,.0f}'.format(row.total) }}</td>
+                                <td data-label="Status">
                                     {% if row.category.is_active %}<span class="badge bg-success">Active</span>
                                     {% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
                                 </td>
-                                <td class="text-center text-nowrap">
+                                <td class="text-center text-nowrap" data-label="Actions">
                                     {% if row.category.is_system %}
                                     <span class="badge bg-dark" title="Fed automatically by salary payments — manual use is locked">System</span>
                                     {% else %}
@@ -564,7 +628,7 @@
                     which you can check and change before saving. The old entry is never changed.
                 </p>
                 <div class="table-responsive">
-                    <table class="table table-sm table-hover align-middle mb-0">
+                    <table class="table table-sm table-hover align-middle mb-0 ex-stack ex-tbl-cont">
                         <thead class="table-light">
                             <tr>
                                 <th>Date</th>
@@ -581,8 +645,8 @@
                                 <td class="text-nowrap">{{ e.date.strftime('%d %b %Y') if e.date else '—' }}</td>
                                 <td><span class="ex-cat-badge">{{ e.category.name if e.category else '—' }}</span></td>
                                 <td class="text-end fw-bold">{{ '{:,.0f}'.format(e.amount or 0) }}</td>
-                                <td>{{ e.payment_method }}</td>
-                                <td class="text-muted small">{{ e.description or '—' }}</td>
+                                <td data-label="Method">{{ e.payment_method }}</td>
+                                <td class="text-muted small" data-label="Description">{{ e.description or '—' }}</td>
                                 <td class="text-end text-nowrap">
                                     <button type="button" class="btn btn-sm btn-success continue-expense-btn"
                                             data-source-id="{{ e.id }}"
