@@ -1123,3 +1123,678 @@ UR.update({
     'No, do not mark anyone': 'نہیں، کسی کو غیر حاضر نہ لگائیں',
     'Auto-absent is waiting for approval': 'خودکار غیر حاضری آپ کی منظوری کی منتظر ہے',
 })
+
+
+# --- Financial Insights page (plain-language redesign) ---------------------------------
+UR.update({
+    'What changed since last month, and what to do about it.':
+        'پچھلے مہینے کے بعد کیا بدلا، اور آپ کو کیا کرنا ہے۔',
+    'Show month': 'مہینہ دکھائیں',
+    'What to do': 'کیا کرنا ہے',
+    'The list below says what to do.': 'نیچے فہرست میں لکھا ہے کہ کیا کرنا ہے۔',
+    'Insights compare this month with last month. When last month has records, the comparison will appear here.':
+        'یہ صفحہ اس مہینے کا پچھلے مہینے سے موازنہ کرتا ہے۔ جب پچھلے مہینے کا ریکارڈ ہوگا تو موازنہ یہاں نظر آئے گا۔',
+    'Nothing needs your attention.': 'کسی چیز پر توجہ کی ضرورت نہیں۔',
+    'Fees paid this month': 'اس مہینے ادا ہونے والی فیس',
+    'Old dues paid this month': 'اس مہینے ادا ہونے والے پرانے بقایا',
+    'Unpaid fees from earlier months that were paid this month.':
+        'پچھلے مہینوں کی غیر ادا شدہ فیس جو اس مہینے ادا ہوئی۔',
+    'No old dues are left unpaid.': 'کوئی پرانا بقایا باقی نہیں۔',
+    'Salaries vs money received': 'تنخواہیں اور موصول رقم',
+    'No money was received this month.': 'اس مہینے کوئی رقم موصول نہیں ہوئی۔',
+    'Net Position': 'خالص پوزیشن',
+    'Money received minus money paid out.': 'موصول رقم منفی ادا کی گئی رقم۔',
+    "Simple steps, based on this month's records": 'اس مہینے کے ریکارڈ کی بنیاد پر آسان اقدامات',
+    'See who owes': 'دیکھیں کس کے ذمے ہے',
+    'Send reminders': 'یاد دہانی بھیجیں',
+    'Open expenses': 'اخراجات کھولیں',
+    'Open inventory': 'اسٹاک کھولیں',
+    'Open Financial Overview': 'مالی جائزہ کھولیں',
+    'What changed since last month': 'پچھلے مہینے کے بعد کیا بدلا',
+    'Shop and stock': 'دکان اور اسٹاک',
+    'Shop sales': 'دکان کی فروخت',
+    'Already included in the money received.': 'موصول رقم میں پہلے سے شامل۔',
+    'Cost of items sold': 'بکنے والی اشیاء کی لاگت',
+    'What the items that left the shelf cost you.': 'جو اشیاء بک گئیں ان کی اپنی خرید کی لاگت۔',
+    'What the school earned minus salaries, running costs and the cost of items sold. An estimate, not money moved.':
+        'اسکول نے جو کمایا، منفی تنخواہیں، روزمرہ اخراجات اور بکنے والی اشیاء کی لاگت۔ یہ اندازہ ہے، رقم کی نقل و حرکت نہیں۔',
+    'Stock bought': 'خریدا گیا اسٹاک',
+    'Money paid out, but not an expense. The cost is counted when items sell.':
+        'ادا کی گئی رقم، مگر خرچ نہیں۔ لاگت تب گنی جاتی ہے جب اشیاء بکتی ہیں۔',
+    'See more details': 'مزید تفصیل دیکھیں',
+    '\u00b7 spending by type, students who left': '\u00b7 قسم کے لحاظ سے اخراجات، چھوڑ جانے والے طلبہ',
+    'Spending by type': 'قسم کے لحاظ سے اخراجات',
+    'Last month': 'پچھلا مہینہ',
+    'Salaries are not included here.': 'تنخواہیں اس میں شامل نہیں۔',
+    'Students who have left': 'چھوڑ جانے والے طلبہ',
+    'Fees no longer coming in': 'جو فیس اب نہیں آ رہی',
+    'A guess of the monthly fees that are no longer being billed. It is not a loss.':
+        'ان ماہانہ فیسوں کا اندازہ جو اب بل نہیں ہو رہیں۔ یہ نقصان نہیں ہے۔',
+})
+
+HTML_SENTENCES.append(
+    ('Read the <b>short answer</b> first, then do what is listed under <b>What to do</b>.',
+     'پہلے <b>مختصر جواب</b> پڑھیں، پھر <b>کیا کرنا ہے</b> میں لکھے کام کریں۔'))
+
+_MONTH_YEAR = r'(%s) (\d{4})' % '|'.join(_MONTHS)
+
+
+def _my(month, year):
+    return '%s %s' % (MONTH_UR[month], year)
+
+
+def _better(word):
+    return 'بہتر' if word in ('better', 'Better than') else 'کم'
+
+
+PATTERNS += [
+    # headline and tiles
+    (r'^(\d+) thing\(s\) need your attention in %s\.$' % _MONTH_YEAR,
+     lambda m: '%s باتوں پر %s میں آپ کی توجہ درکار ہے۔' % (_n(m.group(1)), _my(m.group(2), m.group(3)))),
+    (r'^Everything looks fine for %s\.$' % _MONTH_YEAR,
+     lambda m: '%s میں سب کچھ ٹھیک نظر آ رہا ہے۔' % _my(m.group(1), m.group(2))),
+    (r'^Nothing needs your attention for %s\.$' % _MONTH_YEAR,
+     lambda m: '%s میں کسی چیز پر توجہ کی ضرورت نہیں۔' % _my(m.group(1), m.group(2))),
+    (r'^%s and last month$' % _MONTH_YEAR,
+     lambda m: '%s اور پچھلا مہینہ' % _my(m.group(1), m.group(2))),
+    (r'^%s paid out of %s due this month$' % (_RS, _RS),
+     _isolate('اس مہینے واجب {2} میں سے {1} ادا ہو چکے')),
+    (r'^(Better than|Lower than) last month \(%s%%\)$' % _PC,
+     lambda m: 'پچھلے مہینے سے %s (%s%%)' % (_better(m.group(1)), _n(m.group(2)))),
+    (r'^Same as last month \(%s%%\)$' % _PC,
+     _isolate('پچھلے مہینے کے برابر ({1}%)')),
+    (r'^%s from earlier months is still unpaid\.$' % _RS,
+     _isolate('پچھلے مہینوں کے {1} ابھی ادا نہیں ہوئے۔')),
+    (r'^Out of every Rs 100 received, about Rs (\d+) went to salaries\.$',
+     _isolate('ہر 100 روپے کی آمد میں سے تقریباً {1} روپے تنخواہوں پر گئے۔')),
+    (r'^Salaries paid %s \u00b7 received %s$' % (_RS, _RS),
+     _isolate('ادا شدہ تنخواہیں {1} \u00b7 موصول {2}')),
+    (r'^%s (better|lower) than last month \(%s\)$' % (_RS, _RS),
+     lambda m: '%s پچھلے مہینے سے %s (%s)' % (_n(m.group(1)), _better(m.group(2)), _n(m.group(3)))),
+    (r'^Same as last month \(%s\)$' % _RS,
+     _isolate('پچھلے مہینے کے برابر ({1})')),
+    (r'^%s of it went out inside admission packages \(already paid in the admission fee\)\.$' % _RS,
+     _isolate('اس میں سے {1} داخلہ پیکیج کے ساتھ دیے گئے (داخلہ فیس میں پہلے ہی ادا)۔')),
+
+    # what to do
+    (r'^Collect old dues: %s from earlier months is still unpaid\.$' % _RS,
+     _isolate('پرانا بقایا وصول کریں: پچھلے مہینوں کے {1} ابھی ادا نہیں ہوئے۔')),
+    (r"^Only %s%% of this month's fees are paid\. Call the parents who have not paid yet\.$" % _PC,
+     _isolate('اس مہینے کی صرف {1}% فیس ادا ہوئی ہے۔ جن والدین نے ابھی ادا نہیں کی ان سے رابطہ کریں۔')),
+    (r'^In total, %s of fees is still unpaid\. Start with the biggest dues\.$' % _RS,
+     _isolate('کل {1} فیس ابھی ادا نہیں ہوئی۔ سب سے بڑے بقایا والوں سے شروع کریں۔')),
+    (r'^(.+) spending went up %s%% since last month\. Check for waste or one-time purchases\.$' % _PC,
+     lambda m: '%s کے اخراجات پچھلے مہینے سے %s%% بڑھے۔ فضول خرچی یا ایک بار کی خریداری دیکھیں۔' % (
+         m.group(1), _n(m.group(2)))),
+    (r'^Order more stock soon: (.+) (is|are) running low\.$',
+     lambda m: 'جلد مزید اسٹاک منگوائیں: %s ختم ہونے کے قریب %s۔' % (
+         m.group(1), 'ہے' if m.group(2) == 'is' else 'ہیں')),
+    (r'^More money went out than came in this month \(Net Position is below zero\)\.$',
+     'اس مہینے آمد سے زیادہ رقم خرچ ہوئی (خالص پوزیشن صفر سے نیچے ہے)۔'),
+    (r'^More money went out than came in this month \(Net Position is below zero\)\. '
+     r'%s of it was spent on stock, which you still have\. It is not lost\.$' % _RS,
+     _isolate('اس مہینے آمد سے زیادہ رقم خرچ ہوئی (خالص پوزیشن صفر سے نیچے ہے)۔ '
+              'اس میں سے {1} اسٹاک پر لگے، جو آپ کے پاس موجود ہے۔ یہ ضائع نہیں ہوا۔')),
+
+    # what changed
+    (r'^Fee collection is (better|weaker) than last month: %s%% paid now, %s%% last month\.$' % (_PC, _PC),
+     lambda m: 'فیس کی وصولی پچھلے مہینے سے %s ہے: اب %s%% ادا، پچھلے مہینے %s%%۔' % (
+         'بہتر' if m.group(1) == 'better' else 'کمزور', _n(m.group(2)), _n(m.group(3)))),
+    (r'^Fee collection is the same as last month: %s%% paid\.$' % _PC,
+     _isolate('فیس کی وصولی پچھلے مہینے جیسی ہے: {1}% ادا۔')),
+    (r'^%s of old unpaid fees was paid this month\.$' % _RS,
+     _isolate('اس مہینے {1} کی پرانی غیر ادا شدہ فیس ادا ہوئی۔')),
+    (r'^You received %s%% (more|less) money than last month \(%s now, %s last month\)\.$' % (_PC, _RS, _RS),
+     lambda m: 'آپ کو پچھلے مہینے سے %s%% %s رقم ملی (اب %s، پچھلے مہینے %s)۔' % (
+         _n(m.group(1)), 'زیادہ' if m.group(2) == 'more' else 'کم', _n(m.group(3)), _n(m.group(4)))),
+    (r'^Net Position is %s (better|lower) than last month\.$' % _RS,
+     lambda m: 'خالص پوزیشن پچھلے مہینے سے %s %s ہے۔' % (_n(m.group(1)), _better(m.group(2)))),
+    (r'^(.+) spending went up %s%% since last month \(%s more\)\.$' % (_PC, _RS),
+     lambda m: '%s کے اخراجات پچھلے مہینے سے %s%% بڑھے (%s زیادہ)۔' % (
+         m.group(1), _n(m.group(2)), _n(m.group(3)))),
+    (r'^Shop sales were %s and the items sold cost %s \(profit on them: %s\)\.$' % (_RS, _RS, _RS),
+     _isolate('دکان کی فروخت {1} رہی اور بکنے والی اشیاء کی لاگت {2} (ان پر منافع: {3})۔')),
+    (r'^Books and uniform worth %s were given with admissions\. Their price is already inside the admission fee\.$' % _RS,
+     _isolate('{1} کی کتابیں اور یونیفارم داخلے کے ساتھ دیے گئے۔ ان کی قیمت داخلہ فیس میں پہلے ہی شامل ہے۔')),
+    (r'^%s was spent on buying stock\. It is money paid out, but not an expense\. The cost is counted when the items are sold\.$' % _RS,
+     _isolate('{1} اسٹاک خریدنے پر لگے۔ یہ ادا کی گئی رقم ہے مگر خرچ نہیں۔ اس کی لاگت چیزیں بکنے پر گنی جاتی ہے۔')),
+    (r'^Estimated Net Operating Position was %s \(what the school earned, minus salaries, running costs and the cost of items sold\)\. It is an estimate, not money moved\.$' % _RS,
+     _isolate('اندازاً خالص آپریٹنگ پوزیشن {1} رہی (اسکول نے جو کمایا، منفی تنخواہیں، روزمرہ اخراجات اور بکنے والی اشیاء کی لاگت)۔ یہ اندازہ ہے، رقم کی نقل و حرکت نہیں۔')),
+    (r'^Students who left mean about %s less in monthly fees \(estimate\)\.$' % _RS,
+     _isolate('چھوڑنے والے طلبہ کی وجہ سے ماہانہ فیس میں اندازاً {1} کم آئیں گے۔')),
+]
+
+# --- Teacher attendance page, redesigned (Oct 2026) ---
+UR.update({
+    'Monthly Summary': 'ماہانہ خلاصہ',
+    'Teachers in school': 'اسکول کے اساتذہ',
+    'Saved for this day': 'اس دن کی حاضری محفوظ ہے',
+    'You can still change a teacher and save again.': 'آپ اب بھی کسی استاد کو بدل کر دوبارہ محفوظ کر سکتے ہیں۔',
+    'Not Yet Saved': 'ابھی محفوظ نہیں',
+    'Find a teacher by name or ID…': 'نام یا شناخت سے استاد تلاش کریں…',
+    'Find a teacher': 'استاد تلاش کریں',
+    'Show only these teachers': 'صرف یہ اساتذہ دکھائیں',
+    'Show all teachers': 'تمام اساتذہ دکھائیں',
+    'All Teachers at Time': 'سب اساتذہ اس وقت پر',
+    'No teacher matches your search.': 'آپ کی تلاش سے کوئی استاد نہیں ملا۔',
+    'Go to Teachers': 'اساتذہ پر جائیں',
+    'Mark every teacher as Absent?': 'کیا تمام اساتذہ کو غیر حاضر لگانا ہے؟',
+    'Save Teacher Attendance': 'اساتذہ کی حاضری محفوظ کریں',
+    'You can open this day again later and change it.': 'آپ اس دن کو بعد میں دوبارہ کھول کر بدل سکتے ہیں۔',
+})
+HTML_SENTENCES.extend([
+    ('Mark which teachers came to school. Everyone starts as <b>Present</b>, so you only need to '
+     'touch the teachers who are absent, late or on leave.',
+     'دیکھیں کون سے اساتذہ اسکول آئے۔ سب پہلے سے <b>حاضر</b> ہوتے ہیں، اس لیے صرف غیر حاضر، '
+     'دیر سے آنے والے یا رخصت والے اساتذہ کو بدلیں۔'),
+    ('Tap <b>Absent</b>, <b>Late</b> or <b>Leave</b> for the teachers who need it, then press '
+     '<b>Save Teacher Attendance</b> at the bottom.',
+     'جن اساتذہ کو ضرورت ہو ان کے لیے <b>غیر حاضر</b>، <b>تاخیر</b> یا <b>رخصت</b> دبائیں، '
+     'پھر نیچے <b>اساتذہ کی حاضری محفوظ کریں</b> دبائیں۔'),
+    ('School hours: {1}–{2}. Late is automatic after start + {3} minute(s) grace. '
+     'Enter each teacher’s actual check-in time, or use <strong>All Teachers at Time</strong> '
+     'to mark everyone on time and only change the late ones.',
+     'اسکول کے اوقات: {1}–{2}۔ آغاز + {3} منٹ کی رعایت کے بعد تاخیر خود بخود لگ جاتی ہے۔ '
+     'ہر استاد کے آنے کا اصل وقت درج کریں، یا سب کو وقت پر حاضر کرنے اور صرف دیر سے آنے '
+     'والوں کا وقت بدلنے کے لیے <strong>سب اساتذہ اس وقت پر</strong> استعمال کریں۔'),
+    ('Showing <strong id="taVisible">{1}</strong> of <strong>{2}</strong> teachers',
+     'کل <strong>{2}</strong> میں سے <strong id="taVisible">{1}</strong> اساتذہ دکھائے جا رہے ہیں'),
+    ('<strong>{1} of {2}</strong> teachers: attendance not marked yet',
+     '<strong>{1} of {2}</strong> اساتذہ کی حاضری ابھی نہیں لگی'),
+    ('Teachers you do not touch are saved as <strong>Present</strong> when you press Save.',
+     'جن اساتذہ کو آپ نہیں چھیڑیں گے وہ محفوظ کرتے وقت <strong>حاضر</strong> لگ جائیں گے۔'),
+])
+
+# --- Attendance Summary page, redesigned (Oct 2026) ---
+UR.update({
+    'Whole-School Attendance Summary': 'پورے اسکول کی حاضری کا خلاصہ',
+    'Class Attendance Summary': 'کلاس کی حاضری کا خلاصہ',
+    'Take Attendance': 'حاضری لگائیں',
+    'Teacher Attendance Summary': 'اساتذہ کی حاضری کا خلاصہ',
+    'All School Students': 'اسکول کے تمام طلبہ',
+    'This Month': 'اس مہینے', 'Last Month': 'پچھلا مہینہ',
+    'From': 'سے', 'To': 'تک',
+    'Students in the school': 'اسکول کے طلبہ',
+    'Never absent (100%)': 'کبھی غیر حاضر نہیں (100%)',
+    'Need attention (below 75%)': 'توجہ درکار (75% سے کم)',
+    'Nobody is below 75%': 'کوئی بھی 75% سے کم نہیں',
+    'All students': 'تمام طلبہ',
+    'Need attention': 'توجہ درکار',
+    'Never absent': 'کبھی غیر حاضر نہیں',
+    'Attendance': 'حاضری',
+    'Student': 'طالب علم',
+    'How to read the boxes:': 'خانوں کو کیسے پڑھیں:',
+    'Not taken': 'حاضری نہیں لگی',
+    'Go to Students': 'طلبہ پر جائیں',
+    'No attendance logs found for this class and date range.': 'اس کلاس اور تاریخوں کی کوئی حاضری نہیں ملی۔',
+})
+HTML_SENTENCES.extend([
+    ('See how often each student came to school between two dates. Students who came to school on '
+     'fewer than <b>75%</b> of the days are marked in red, so you can talk to their parents.',
+     'دیکھیں ہر طالب علم دو تاریخوں کے درمیان کتنی بار اسکول آیا۔ جو طلبہ <b>75%</b> سے کم دن آئے '
+     'انہیں سرخ نشان لگایا گیا ہے تاکہ آپ ان کے والدین سے بات کر سکیں۔'),
+    ('Press <b>Need attention</b> to see only the students below 75%, then talk to their parents. '
+     'The coloured boxes on the right show every school day.',
+     '<b>توجہ درکار</b> دبائیں تاکہ صرف 75% سے کم والے طلبہ نظر آئیں، پھر ان کے والدین سے بات کریں۔ '
+     'دائیں طرف رنگین خانے ہر اسکول کا دن دکھاتے ہیں۔'),
+    ('<strong>No attendance has been saved</strong> for these dates yet, so every box below shows a dash. '
+     'Take attendance first, or choose other dates.',
+     '<strong>ان تاریخوں کی حاضری ابھی محفوظ نہیں ہوئی</strong>، اس لیے نیچے ہر خانے میں لکیر ہے۔ '
+     'پہلے حاضری لگائیں، یا دوسری تاریخیں چنیں۔'),
+    ('Average attendance &middot; {1} school day(s) recorded',
+     'اوسط حاضری &middot; {1} اسکول کے دن درج'),
+])
+
+# --- Teacher Attendance Summary page, redesigned (Oct 2026) ---
+UR.update({
+    'Take Teacher Attendance': 'اساتذہ کی حاضری لگائیں',
+    'Student Attendance Summary': 'طلبہ کی حاضری کا خلاصہ',
+    'All teachers': 'تمام اساتذہ',
+    'Teacher': 'استاد',
+    'Find a teacher by name or ID…': 'نام یا شناخت سے استاد تلاش کریں…',
+    'No teacher matches your search.': 'آپ کی تلاش سے کوئی استاد نہیں ملا۔',
+    'No teachers found.': 'کوئی استاد نہیں ملا۔',
+    'Go to Teachers': 'اساتذہ پر جائیں',
+    'No attendance logs found for teachers in this date range.': 'ان تاریخوں میں اساتذہ کی کوئی حاضری نہیں ملی۔',
+})
+HTML_SENTENCES.extend([
+    ('See how often each teacher came to school between two dates. Teachers who came on '
+     'fewer than <b>75%</b> of the days are marked in red, so you can talk to them.',
+     'دیکھیں ہر استاد دو تاریخوں کے درمیان کتنی بار اسکول آیا۔ جو اساتذہ <b>75%</b> سے کم دن آئے '
+     'انہیں سرخ نشان لگایا گیا ہے تاکہ آپ ان سے بات کر سکیں۔'),
+    ('Press <b>Need attention</b> to see only the teachers below 75%, then talk to them. '
+     'The coloured boxes on the right show every school day.',
+     '<b>توجہ درکار</b> دبائیں تاکہ صرف 75% سے کم والے اساتذہ نظر آئیں، پھر ان سے بات کریں۔ '
+     'دائیں طرف رنگین خانے ہر اسکول کا دن دکھاتے ہیں۔'),
+    ('Showing <strong id="tsVisible">{1}</strong> of <strong>{2}</strong> teachers',
+     'کل <strong>{2}</strong> میں سے <strong id="tsVisible">{1}</strong> اساتذہ دکھائے جا رہے ہیں'),
+])
+
+# --- Class Tests page, redesigned (Oct 2026) ---
+UR.update({
+    'Class Tests': 'کلاس ٹیسٹ',
+    'Add Test': 'ٹیسٹ شامل کریں',
+    'Add a Test': 'ٹیسٹ شامل کریں',
+    'Test Categories': 'ٹیسٹ کی اقسام',
+    'Make a test, then enter the marks of every student.': 'ٹیسٹ بنائیں، پھر ہر طالب علم کے نمبر لگائیں۔',
+    'Term Examinations': 'ٹرم امتحانات',
+    'Tests in all': 'کل ٹیسٹ',
+    'Tests this month': 'اس مہینے کے ٹیسٹ',
+    'Marks complete': 'نمبر مکمل',
+    'Marks still to enter': 'نمبر لگانا باقی',
+    'Nothing waiting for marks': 'کسی ٹیسٹ کے نمبر باقی نہیں',
+    'All tests': 'تمام ٹیسٹ',
+    'Marks to enter': 'نمبر لگانے ہیں',
+    'Find a test': 'ٹیسٹ تلاش کریں',
+    'Find a test by name…': 'نام سے ٹیسٹ تلاش کریں…',
+    'No test matches your search.': 'آپ کی تلاش سے کوئی ٹیسٹ نہیں ملا۔',
+    'Total Marks': 'کل نمبر',
+    'Marks entered': 'لگے ہوئے نمبر',
+    'No date': 'تاریخ نہیں',
+    'No marks yet': 'ابھی نمبر نہیں لگے',
+    'No students': 'کوئی طالب علم نہیں',
+    'Enter Marks': 'نمبر لگائیں',
+    'Edit Marks': 'نمبر درست کریں',
+    'Delete this test': 'یہ ٹیسٹ حذف کریں',
+    'Show tests as': 'ٹیسٹ اس طرح دکھائیں',
+    'Clear filters': 'فلٹر ہٹائیں',
+    'Cards': 'کارڈ',
+})
+PATTERNS += [
+    (r'^Marks (\d+)/(\d+) \((\d+)%\)$', r'نمبر \1/\2 (\3%)'),
+]
+HTML_SENTENCES.extend([
+    ('Term exams (mid-term, final) are in <b>Term Examinations</b>. This page shows Class Tests only.',
+     'ٹرم امتحانات (مڈ ٹرم، فائنل) <b>ٹرم امتحانات</b> میں ہیں۔ اس صفحے پر صرف کلاس ٹیسٹ ہیں۔'),
+    ('Press <b>Marks to enter</b> to see the tests that are waiting for marks, then press <b>Enter Marks</b> on a test.',
+     '<b>نمبر لگانے ہیں</b> دبائیں تاکہ وہ ٹیسٹ نظر آئیں جن کے نمبر باقی ہیں، پھر ٹیسٹ پر <b>نمبر لگائیں</b> دبائیں۔'),
+    ('Showing <strong id="testCount">{1}</strong> of <strong>{2}</strong> tests',
+     'کل <strong>{2}</strong> میں سے <strong id="testCount">{1}</strong> ٹیسٹ دکھائے جا رہے ہیں'),
+    ('No tests yet. Press <strong>Add Test</strong> to make your first one.',
+     'ابھی کوئی ٹیسٹ نہیں۔ پہلا ٹیسٹ بنانے کے لیے <strong>ٹیسٹ شامل کریں</strong> دبائیں۔'),
+])
+
+# --- Term Examinations page, redesigned (Oct 2026) ---
+UR.update({
+    'Add Term Exam': 'ٹرم امتحان شامل کریں',
+    'Official term exams with schedules, marks and results.': 'سرکاری ٹرم امتحانات: شیڈول، نمبر اور رزلٹ۔',
+    'Term exams in all': 'کل ٹرم امتحانات',
+    'Results published': 'رزلٹ شائع ہو چکے',
+    'All term exams': 'تمام ٹرم امتحانات',
+    'Find an exam': 'امتحان تلاش کریں',
+    'Find an exam by name…': 'نام سے امتحان تلاش کریں…',
+    'No exam matches your search.': 'آپ کی تلاش سے کوئی امتحان نہیں ملا۔',
+    'All Status': 'تمام حیثیتیں',
+    'All Sessions': 'تمام سیشن',
+    'Scheduled': 'طے شدہ',
+    'Ongoing': 'جاری',
+    'Published': 'شائع شدہ',
+    'Date sheet': 'ڈیٹ شیٹ',
+    'No dates': 'تاریخیں نہیں',
+    'Show exams as': 'امتحانات اس طرح دکھائیں',
+    'No term exams yet.': 'ابھی کوئی ٹرم امتحان نہیں۔',
+})
+HTML_SENTENCES.extend([
+    ('Press <b>Marks to enter</b> to see the exams that are waiting for marks, then press <b>Enter Marks</b> on an exam.',
+     '<b>نمبر لگانے ہیں</b> دبائیں تاکہ وہ امتحانات نظر آئیں جن کے نمبر باقی ہیں، پھر امتحان پر <b>نمبر لگائیں</b> دبائیں۔'),
+    ('Showing <strong id="examCount">{1}</strong> of <strong>{2}</strong> term exams',
+     'کل <strong>{2}</strong> میں سے <strong id="examCount">{1}</strong> ٹرم امتحانات دکھائے جا رہے ہیں'),
+    ('No term exams yet. Press <strong>Add Term Exam</strong> to schedule one.',
+     'ابھی کوئی ٹرم امتحان نہیں۔ امتحان طے کرنے کے لیے <strong>ٹرم امتحان شامل کریں</strong> دبائیں۔'),
+])
+
+# --- Class Results page, redesigned (Oct 2026) ---
+UR.update({
+    'Class Results': 'کلاس کے نتائج',
+    'See how every student did, write a remark and print the report cards.':
+        'دیکھیں ہر طالب علم کا نتیجہ کیسا رہا، ریمارک لکھیں اور رپورٹ کارڈ پرنٹ کریں۔',
+    'More downloads': 'مزید ڈاؤن لوڈ',
+    'No classes yet.': 'ابھی کوئی کلاس نہیں۔',
+    'Add your classes and students first, then come back here to see results.':
+        'پہلے کلاسیں اور طلبہ شامل کریں، پھر نتائج دیکھنے یہاں واپس آئیں۔',
+    'Go to Classes': 'کلاسز پر جائیں',
+    'These two details are printed on the report cards and the class result sheet.':
+        'یہ دونوں تفصیلات رپورٹ کارڈ اور کلاس کی رزلٹ شیٹ پر چھپتی ہیں۔',
+    'Everyone who sat the tests has passed. You can print the report cards now.':
+        'ٹیسٹ دینے والے سب طلبہ پاس ہیں۔ اب آپ رپورٹ کارڈ پرنٹ کر سکتے ہیں۔',
+    'Class average': 'کلاس کی اوسط',
+    'Find a student': 'طالب علم تلاش کریں',
+    'Find a student by name or roll no…': 'نام یا رول نمبر سے طالب علم تلاش کریں…',
+    'All students': 'تمام طلبہ',
+    'Passed': 'پاس',
+    'Not passed': 'فیل',
+    'Sort by': 'ترتیب',
+    'Position (1st first)': 'پوزیشن (پہلی پوزیشن پہلے)',
+    'Name (A to Z)': 'نام (الف سے ی)',
+    'Highest marks first': 'زیادہ نمبر پہلے',
+    'Lowest marks first': 'کم نمبر پہلے',
+    'How grades work': 'گریڈ کیسے بنتے ہیں',
+    'A student passes with any grade except F.': 'F کے علاوہ کسی بھی گریڈ پر طالب علم پاس ہوتا ہے۔',
+    'Write a remark…': 'ریمارک لکھیں…',
+    'No student matches your search.': 'آپ کی تلاش سے کوئی طالب علم نہیں ملا۔',
+    'This class has no students yet.': 'اس کلاس میں ابھی کوئی طالب علم نہیں۔',
+    'Add students to this class and their results will appear here.':
+        'اس کلاس میں طلبہ شامل کریں، ان کے نتائج یہاں نظر آئیں گے۔',
+    'Go to Students': 'طلبہ پر جائیں',
+    'No tests of this type for this class.': 'اس کلاس کے لیے اس قسم کا کوئی ٹیسٹ نہیں۔',
+    'Choose another test type, or show all of them.': 'کوئی اور ٹیسٹ کی قسم چنیں، یا سب دکھائیں۔',
+    'Show all test types': 'تمام ٹیسٹ کی اقسام دکھائیں',
+    'No tests for this class yet.': 'اس کلاس کا ابھی کوئی ٹیسٹ نہیں۔',
+    'Make a test and enter the marks. The results will appear here by themselves.':
+        'ٹیسٹ بنائیں اور نمبر لگائیں۔ نتائج خود بخود یہاں آ جائیں گے۔',
+    'Go to Class Tests': 'کلاس ٹیسٹ پر جائیں',
+    'Unknown Subject': 'نامعلوم مضمون',
+})
+PATTERNS += [
+    (r'^(\d+) tests?$', r'\1 ٹیسٹ'),
+    (r'^(\d+) passed, (\d+) not passed$', r'\1 پاس، \2 فیل'),
+    (r'^absent in (\d+)$', r'\1 میں غیر حاضر'),
+    (r'^out of ([\d.]+)$', r'کل \1 میں سے'),
+    (r'^([\d.]+)% and above$', r'\1% اور اس سے اوپر'),
+    (r'^Below ([\d.]+)%$', r'\1% سے کم'),
+]
+HTML_SENTENCES.extend([
+    ('<b>{1}</b> student(s) did not pass. Press <b>Not passed</b> to see them, then write a remark for each.',
+     '<b>{1}</b> طلبہ پاس نہیں ہوئے۔ انہیں دیکھنے کے لیے <b>فیل</b> دبائیں، پھر ہر ایک کے لیے ریمارک لکھیں۔'),
+    ('Showing <strong id="crCount">{1}</strong> of <strong>{2}</strong> students',
+     'کل <strong>{2}</strong> میں سے <strong id="crCount">{1}</strong> طلبہ دکھائے جا رہے ہیں'),
+    ('<strong id="crDirty">{1}</strong> remark(s) not saved yet',
+     '<strong id="crDirty">{1}</strong> ریمارکس ابھی محفوظ نہیں ہوئے'),
+])
+
+# --- Login page, redesigned (Oct 2026) ---
+UR.update({
+    'Welcome! Sign in to open your school records.':
+        'خوش آمدید! اپنے اسکول کا ریکارڈ کھولنے کے لیے لاگ ان کریں۔',
+    'Type your username and password, then press the green button.':
+        'اپنا صارف نام اور پاس ورڈ لکھیں، پھر سبز بٹن دبائیں۔',
+    'Type your username': 'اپنا صارف نام لکھیں',
+    'Type your password': 'اپنا پاس ورڈ لکھیں',
+    'School logo': 'اسکول کا لوگو',
+    'Signing in…': 'لاگ ان ہو رہا ہے…',
+    'Caps Lock is on. Your password may be typed in capital letters.':
+        'کیپس لاک آن ہے۔ آپ کا پاس ورڈ بڑے حروف میں لکھا جا سکتا ہے۔',
+    'First time here? Use this starting login:': 'پہلی بار آئے ہیں؟ یہ شروع کا لاگ ان استعمال کریں:',
+    'Username:': 'صارف نام:',
+    'Password:': 'پاس ورڈ:',
+    'Please change this password after you sign in.': 'لاگ ان کے بعد یہ پاس ورڈ ضرور تبدیل کر لیں۔',
+    'Need help? Ask your school administrator.': 'مدد چاہیے؟ اپنے اسکول کے ایڈمن سے پوچھیں۔',
+    'Incorrect username or password.': 'صارف نام یا پاس ورڈ درست نہیں ہے۔',
+})
+
+# --- Audit Log page, redesigned (Oct 2026) ---
+UR.update({
+    'See who did what and when: every add, change, delete and sign-in is recorded here.':
+        'دیکھیں کس نے کیا اور کب کیا: ہر اضافہ، تبدیلی، حذف اور لاگ ان یہاں درج ہوتا ہے۔',
+    'Use the search and filters to find an entry, then press See what changed on a row to read the old and new values. If something looks wrong, check Failed sign-ins and Deleted first.':
+        'اندراج ڈھونڈنے کے لیے تلاش اور فلٹر استعمال کریں، پھر کسی قطار پر "کیا بدلا دیکھیں" دبا کر پرانی اور نئی قدریں پڑھیں۔ اگر کچھ غلط لگے تو پہلے ناکام لاگ ان اور حذف شدہ دیکھیں۔',
+    'Nothing is recorded for these filters. Choose Any time, or clear the filters.':
+        'ان فلٹرز کے لیے کچھ درج نہیں۔ "کسی بھی وقت" چنیں، یا فلٹر ہٹا دیں۔',
+    'Entries on this list': 'اس فہرست میں اندراجات',
+    'To check:': 'جانچنے کے لیے:',
+    'Failed sign-ins': 'ناکام لاگ ان',
+    'Failed sign-in': 'ناکام لاگ ان',
+    'Show failed sign-ins': 'ناکام لاگ ان دکھائیں',
+    'Show deleted records': 'حذف شدہ ریکارڈ دکھائیں',
+    'Deleted': 'حذف شدہ',
+    'Added': 'شامل کیا',
+    'Changed': 'تبدیل کیا',
+    'Signed in': 'لاگ ان ہوا',
+    'Signed out': 'لاگ آؤٹ ہوا',
+    'Fee charged': 'فیس لگائی گئی',
+    'Payment received': 'ادائیگی وصول ہوئی',
+    'Cancelled (void)': 'منسوخ',
+    'Settings changed': 'سیٹنگز بدلی گئیں',
+    'Data exported': 'ڈیٹا ایکسپورٹ ہوا',
+    'User account': 'صارف اکاؤنٹ',
+    'Reminder sent': 'یاددہانی بھیجی گئی',
+    'Search a name or a sentence…': 'نام یا جملہ تلاش کریں…',
+    '— All records —': '— تمام ریکارڈ —',
+    '— Everything that happened —': '— جو کچھ ہوا —',
+    '— All users —': '— تمام صارفین —',
+    'What was it about': 'کس بارے میں تھا',
+    'What happened': 'کیا ہوا',
+    'Who did it': 'کس نے کیا',
+    'Any time': 'کسی بھی وقت',
+    'Last 7 days': 'پچھلے 7 دن',
+    'Last 30 days': 'پچھلے 30 دن',
+    'entries, newest first': 'اندراجات، نئے پہلے',
+    'When': 'کب',
+    'Details': 'تفصیل',
+    'Who': 'کون',
+    'About': 'متعلق',
+    'See what changed': 'کیا بدلا دیکھیں',
+    'Field': 'خانہ',
+    'Before': 'پہلے',
+    'After': 'بعد میں',
+    'Show everything': 'سب دکھائیں',
+    'No audit entries match these filters.': 'ان فلٹرز سے کوئی آڈٹ اندراج نہیں ملا۔',
+    'Showing up to 500 most recent matching entries (CSV export is uncapped).':
+        'زیادہ سے زیادہ 500 تازہ ترین اندراجات دکھائے جا رہے ہیں (CSV ایکسپورٹ میں سب شامل ہوتے ہیں)۔',
+})
+
+# --- Forgot username / password page, redesigned (Oct 2026) ---
+UR.update({
+    'Forgot username or password?': 'صارف نام یا پاس ورڈ بھول گئے؟',
+    "Don't worry. We will help you get back in.": 'فکر نہ کریں۔ ہم آپ کو دوبارہ اندر آنے میں مدد دیں گے۔',
+    'Your vendor will help you in three easy steps.': 'آپ کا وینڈر تین آسان مراحل میں آپ کی مدد کرے گا۔',
+    'Last step: choose the account and type a new password.': 'آخری مرحلہ: اکاؤنٹ چنیں اور نیا پاس ورڈ لکھیں۔',
+    'Send your request code to your vendor': 'اپنا ریکویسٹ کوڈ وینڈر کو بھیجیں',
+    'WhatsApp or SMS is fine.': 'واٹس ایپ یا ایس ایم ایس سے بھیج سکتے ہیں۔',
+    'Wait for your reset token': 'ری سیٹ ٹوکن کا انتظار کریں',
+    'Your vendor confirms it is really you, then sends the token back.':
+        'وینڈر تصدیق کرتا ہے کہ یہ واقعی آپ ہیں، پھر ٹوکن واپس بھیجتا ہے۔',
+    'Paste the token in the box below': 'ٹوکن نیچے والے خانے میں پیسٹ کریں',
+    'Then press the green button.': 'پھر سبز بٹن دبائیں۔',
+    'Your request code': 'آپ کا ریکویسٹ کوڈ',
+    'Copy code': 'کوڈ کاپی کریں',
+    'Copied!': 'کاپی ہو گیا!',
+    'Send on WhatsApp': 'واٹس ایپ پر بھیجیں',
+    'Need a new request code?': 'نیا ریکویسٹ کوڈ چاہیے؟',
+    'Only do this if your vendor asks. The old code stops working.':
+        'یہ صرف تب کریں جب وینڈر کہے۔ پرانا کوڈ کام کرنا بند کر دے گا۔',
+    'Generate a new request code': 'نیا ریکویسٹ کوڈ بنائیں',
+    'Reset token from your vendor': 'وینڈر کی طرف سے ری سیٹ ٹوکن',
+    'Check token and continue': 'ٹوکن جانچیں اور آگے بڑھیں',
+    'Checking…': 'جانچ ہو رہی ہے…',
+    'Back to sign in': 'لاگ ان پر واپس جائیں',
+    'Administrator account': 'ایڈمن اکاؤنٹ',
+    'This also shows you your username.': 'اس سے آپ کا صارف نام بھی نظر آتا ہے۔',
+    'At least 8 characters, with a letter and a number.': 'کم از کم 8 حروف، جن میں ایک حرف اور ایک ہندسہ ہو۔',
+    'Set new password': 'نیا پاس ورڈ لگائیں',
+    'Saving…': 'محفوظ ہو رہا ہے…',
+    'Type a new password': 'نیا پاس ورڈ لکھیں',
+    'Type the same password again': 'وہی پاس ورڈ دوبارہ لکھیں',
+})
+UR.update({
+    'Passwords do not match.': 'پاس ورڈ آپس میں نہیں ملتے۔',
+    'Choose which administrator account to recover.': 'چنیں کون سا ایڈمن اکاؤنٹ بحال کرنا ہے۔',
+    'Enter the reset token from your vendor first.': 'پہلے وینڈر کا دیا ہوا ری سیٹ ٹوکن لکھیں۔',
+    'A new request code was generated. Send the NEW code to your vendor.': 'نیا ریکویسٹ کوڈ بن گیا ہے۔ وینڈر کو نیا کوڈ بھیجیں۔',
+})
+# --- Users & Roles page (redesign) ---
+UR.update({
+    'Users & Roles': 'صارفین اور اختیارات',
+    'Give your staff and parents their own login, and choose what each person can see.':
+        'اپنے عملے اور والدین کو الگ لاگ ان دیں، اور طے کریں کہ ہر شخص کیا دیکھ سکتا ہے۔',
+    'Activity Log': 'سرگرمی کا ریکارڈ', 'Add User': 'نیا صارف شامل کریں',
+    'Logins in all': 'کل لاگ ان', 'Login in all': 'کل لاگ ان', 'Can sign in': 'لاگ ان کر سکتے ہیں',
+    'switched off': 'بند', 'Find by name or username…': 'نام یا صارف نام سے تلاش کریں…',
+    '— All roles —': '— تمام کردار —', 'Switched off': 'بند', 'Person': 'شخص', 'Role': 'کردار',
+    'Connected to': 'منسلک', 'Can sign in?': 'لاگ ان کر سکتا ہے؟', 'Last signed in': 'آخری لاگ ان',
+    'Never signed in': 'کبھی لاگ ان نہیں ہوا', 'No child linked yet': 'ابھی کوئی بچہ منسلک نہیں',
+    'You': 'آپ', 'Yes': 'جی ہاں', 'Tip: click a row to edit that person': 'مشورہ: ترمیم کے لیے شخص کی قطار پر کلک کریں',
+    'No one matches your search.': 'آپ کی تلاش سے کوئی میل نہیں کھاتا۔', 'Clear filters': 'فلٹر ہٹائیں',
+    'What can each role do?': 'ہر کردار کیا کر سکتا ہے؟',
+    'Full control: every page, all settings, and creating other users.':
+        'مکمل اختیار: تمام صفحات، تمام ترتیبات، اور دوسرے صارفین بنانا۔',
+    'Daily class work: attendance, marks, class tests and exams.':
+        'روزانہ کلاس کا کام: حاضری، نمبر، کلاس ٹیسٹ اور امتحانات۔',
+    'Sees only their own child: attendance, fees and results.':
+        'صرف اپنے بچے کو دیکھتا ہے: حاضری، فیس اور رزلٹ۔',
+    'Principal / owner: read-only overview of the whole school.':
+        'پرنسپل / مالک: پورے اسکول کا صرف دیکھنے والا خلاصہ۔',
+    'Money matters: fees, expenses, salaries and financial reports.':
+        'مالی امور: فیس، اخراجات، تنخواہیں اور مالی رپورٹس۔',
+    'Gate phone app only: scans student QR cards at the gate.':
+        'صرف گیٹ کی فون ایپ: گیٹ پر طلبہ کے کیو آر کارڈ اسکین کرتا ہے۔',
+    'Not in your plan': 'آپ کے پلان میں شامل نہیں', 'Recent activity': 'حالیہ سرگرمی',
+    'See everything': 'سب دیکھیں', 'Nothing yet. Changes to logins will show up here.':
+        'ابھی کچھ نہیں۔ لاگ ان میں تبدیلیاں یہاں نظر آئیں گی۔',
+    'Add a new user': 'نیا صارف شامل کریں',
+    'Fill in the details. The person signs in with the username and password you set.':
+        'تفصیل بھریں۔ شخص آپ کے دیے ہوئے صارف نام اور پاس ورڈ سے لاگ ان کرے گا۔',
+    'Full name': 'پورا نام', 'What will this person do?': 'یہ شخص کیا کام کرے گا؟',
+    'What they type to sign in. No spaces is easiest.': 'لاگ ان کے لیے جو وہ لکھیں گے۔ خالی جگہ کے بغیر بہتر ہے۔',
+    'At least 8 characters with letters and numbers. Write it down and tell the person.':
+        'کم از کم 8 حروف، حروف اور ہندسوں کے ساتھ۔ اسے لکھ لیں اور شخص کو بتا دیں۔',
+    'Suggest': 'تجویز', 'Which teacher is this?': 'یہ کون سا استاد ہے؟', '(optional)': '(اختیاری)',
+    '— Not linked to a staff record —': '— عملے کے ریکارڈ سے منسلک نہیں —',
+    "Linking shows this login on the teacher's profile and reports.":
+        'منسلک کرنے سے یہ لاگ ان استاد کی پروفائل اور رپورٹس میں نظر آئے گا۔',
+    'Which children does this parent have?': 'اس والد/والدہ کے کون سے بچے ہیں؟',
+    'Tick every child. A parent sees only the children ticked here.':
+        'ہر بچے پر نشان لگائیں۔ والدین صرف یہاں نشان زد بچوں کو دیکھیں گے۔',
+    'Please tick at least one child for a parent login.': 'والدین کے لاگ ان کے لیے کم از کم ایک بچے پر نشان لگائیں۔',
+    'Please tick at least one child.': 'کم از کم ایک بچے پر نشان لگائیں۔',
+    'Type a name or roll number…': 'نام یا رول نمبر لکھیں…',
+    'No student matches your search.': 'کوئی طالب علم نہیں ملا۔',
+    'Create User': 'صارف بنائیں', 'Edit': 'ترمیم',
+    'Change the name or the role. The username and password stay the same.':
+        'نام یا کردار بدلیں۔ صارف نام اور پاس ورڈ وہی رہیں گے۔',
+    'You cannot change your own role. This keeps you from locking yourself out.':
+        'آپ اپنا کردار نہیں بدل سکتے۔ اس سے آپ خود لاک ہونے سے بچتے ہیں۔',
+    'New password for': 'نیا پاس ورڈ برائے', 'The old password stops working right away.':
+        'پرانا پاس ورڈ فوراً کام کرنا بند کر دے گا۔',
+    'New password': 'نیا پاس ورڈ', 'Save Password': 'پاس ورڈ محفوظ کریں',
+    'Children of': 'بچے:', 'Tick every child this parent should see.':
+        'ہر اس بچے پر نشان لگائیں جو اس والد/والدہ کو نظر آنا چاہیے۔',
+    'Save Children': 'بچے محفوظ کریں', 'Cancel': 'منسوخ کریں', 'Save': 'محفوظ کریں',
+    'Created': 'بنایا گیا', 'Signed in': 'لاگ ان ہوا', 'Wrong password': 'غلط پاس ورڈ',
+    'Changed': 'تبدیل', 'Account change': 'اکاؤنٹ میں تبدیلی',
+})
+# --- Software License page (redesign) ---
+UR.update({
+    'Software License': 'سافٹ ویئر لائسنس',
+    'Activate your license to begin setting up the school.': 'اسکول کی سیٹنگ شروع کرنے کے لیے اپنا لائسنس فعال کریں۔',
+    'See whether your program is up to date, and enter a new key to renew.':
+        'دیکھیں کہ آپ کا پروگرام درست چل رہا ہے یا نہیں، اور تجدید کے لیے نئی کلید درج کریں۔',
+    'Licensed to': 'لائسنس یافتہ', 'Valid until': 'درست تاریخ تک', 'Ended': 'ختم ہو گیا',
+    'After this date the program only opens': 'اس تاریخ کے بعد پروگرام صرف کھلے گا',
+    'You can still look at everything, but nothing can be changed.': 'آپ سب کچھ دیکھ سکتے ہیں، مگر کچھ بدلا نہیں جا سکے گا۔',
+    'Technical details (for your software provider)': 'تکنیکی تفصیل (آپ کے سافٹ ویئر فراہم کنندہ کے لیے)',
+    'License ID': 'لائسنس آئی ڈی', 'Issued': 'جاری ہوا', 'Key revision': 'کلید کا ورژن',
+    'Message from your software provider:': 'آپ کے سافٹ ویئر فراہم کنندہ کا پیغام:', 'Time to renew:': 'تجدید کا وقت:',
+    'Contact your software provider and enter the new key below.': 'اپنے سافٹ ویئر فراہم کنندہ سے رابطہ کریں اور نئی کلید نیچے درج کریں۔',
+    'Inspection mode is on': 'معائنہ موڈ آن ہے', 'End inspection now': 'معائنہ ابھی ختم کریں',
+    'Activate your license': 'اپنا لائسنس فعال کریں', 'Renew or enter a new key': 'تجدید کریں یا نئی کلید درج کریں',
+    'Three simple steps. The key comes from your software provider.': 'تین آسان مراحل۔ کلید آپ کے سافٹ ویئر فراہم کنندہ سے ملتی ہے۔',
+    "This computer's code": 'اس کمپیوٹر کا کوڈ', 'Copy': 'کاپی', 'Copied': 'کاپی ہو گیا',
+    'License key': 'لائسنس کلید', '…or choose the key file': '…یا کلید کی فائل چنیں',
+    'Activate': 'فعال کریں', 'Included features': 'شامل خصوصیات',
+    'Your features will be listed here once a license is activated.': 'لائسنس فعال ہونے کے بعد آپ کی خصوصیات یہاں نظر آئیں گی۔',
+    'WhatsApp messages': 'واٹس ایپ پیغامات', 'This month': 'اس مہینے',
+    "How many messages you have sent against your plan's limit.": 'آپ کے پلان کی حد کے مقابلے میں کتنے پیغامات بھیجے گئے۔',
+    'No message limit on this license.': 'اس لائسنس میں پیغامات کی کوئی حد نہیں۔',
+})
+# --- Change Password window + Documents page (redesign) ---
+UR.update({
+    'Choose a new password for your own login.': 'اپنے لاگ ان کے لیے نیا پاس ورڈ چنیں۔',
+    'Your current password': 'آپ کا موجودہ پاس ورڈ', 'New password': 'نیا پاس ورڈ',
+    'At least 8 characters': 'کم از کم 8 حروف', 'At least one letter': 'کم از کم ایک حرف',
+    'At least one number': 'کم از کم ایک ہندسہ', 'Type the new password again': 'نیا پاس ورڈ دوبارہ لکھیں',
+    'Both passwords are the same': 'دونوں پاس ورڈ ایک جیسے ہیں', 'The two passwords are different': 'دونوں پاس ورڈ مختلف ہیں',
+    'Documents': 'دستاویزات',
+    'Print ID cards and certificates for your students and staff.': 'اپنے طلبہ اور عملے کے آئی ڈی کارڈ اور سرٹیفکیٹ پرنٹ کریں۔',
+    'Pick what you want to print, say who it is for, then press the download button.':
+        'چنیں کیا پرنٹ کرنا ہے، بتائیں کس کے لیے ہے، پھر ڈاؤن لوڈ کا بٹن دبائیں۔',
+    'You get a PDF that is ready to print. School name, logo and address from Settings are added for you.':
+        'آپ کو پرنٹ کے لیے تیار پی ڈی ایف ملتی ہے۔ اسکول کا نام، لوگو اور پتہ ترتیبات سے خود شامل ہو جاتے ہیں۔',
+    'Available records': 'دستیاب ریکارڈ', 'Staff': 'عملہ', '1. What do you want to print?': '1. آپ کیا پرنٹ کرنا چاہتے ہیں؟',
+    'For one student, a class or everyone': 'ایک طالب علم، کلاس یا سب کے لیے', 'For one teacher or all staff': 'ایک استاد یا تمام عملے کے لیے',
+    'Bonafide, character, leaving, merit': 'بونافائڈ، کردار، اسکول چھوڑنا، اعزازی',
+    "Choose who the cards are for. Each card carries the student's photo, name, class and roll number.":
+        'چنیں کارڈ کس کے لیے ہیں۔ ہر کارڈ پر طالب علم کی تصویر، نام، کلاس اور رول نمبر ہوتا ہے۔',
+    'Who is it for?': 'یہ کس کے لیے ہے؟', 'Everyone': 'سب', 'A whole class': 'پوری کلاس', 'One student': 'ایک طالب علم',
+    'All staff': 'تمام عملہ', 'One teacher': 'ایک استاد', 'Teacher': 'استاد', '(helps you find the student)': '(طالب علم تلاش کرنے میں مدد)',
+    '— Choose a student —': '— طالب علم چنیں —', '— Choose a teacher —': '— استاد چنیں —', '— Choose a class —': '— کلاس چنیں —',
+    'Academic session': 'تعلیمی سیشن', 'Student': 'طالب علم', 'Download student cards': 'طلبہ کے کارڈ ڈاؤن لوڈ کریں',
+    'Download staff cards': 'عملے کے کارڈ ڈاؤن لوڈ کریں', 'Download certificates PDF': 'سرٹیفکیٹ پی ڈی ایف ڈاؤن لوڈ کریں',
+    'Print one teacher\'s card, or the cards of all active staff at once.': 'ایک استاد کا کارڈ پرنٹ کریں، یا تمام فعال عملے کے کارڈ ایک ساتھ۔',
+    'Pick the kind of certificate, then who it is for. School name, logo, address and phone from Settings are printed automatically.':
+        'سرٹیفکیٹ کی قسم چنیں، پھر بتائیں کس کے لیے ہے۔ اسکول کا نام، لوگو، پتہ اور فون ترتیبات سے خود چھپ جاتے ہیں۔',
+    'Please choose a class.': 'براہ کرم کلاس چنیں۔', 'Please choose a student.': 'براہ کرم طالب علم چنیں۔',
+    'Please choose a teacher.': 'براہ کرم استاد چنیں۔', 'For the school office': 'اسکول آفس کے لیے',
+})
+# --- School Settings page (redesign) ---
+UR.update({
+    'School Settings': 'اسکول کی ترتیبات',
+    "Your school's details, timings, extra form fields and connected services.": 'آپ کے اسکول کی تفصیل، اوقات، اضافی فارم خانے اور منسلک سروسز۔',
+    'Pick a tab, change what you need, then press the green Save button of that section.':
+        'ایک ٹیب چنیں، جو بدلنا ہے بدلیں، پھر اسی حصے کا سبز محفوظ کریں بٹن دبائیں۔',
+    'Each section saves on its own, so a change is only kept after you press its Save.':
+        'ہر حصہ الگ محفوظ ہوتا ہے، اس لیے تبدیلی تبھی رہتی ہے جب آپ اس کا محفوظ بٹن دبائیں۔',
+    'General School Info': 'اسکول کی عمومی معلومات', 'Academic Timings': 'تعلیمی اوقات',
+    'Custom Fields Manager': 'اضافی خانوں کا انتظام', 'System Integrations': 'سسٹم کنکشنز',
+    'School Identity': 'اسکول کی شناخت',
+    'Your name and logo appear on the sidebar, receipts, report cards, ID cards and certificates.':
+        'آپ کا نام اور لوگو سائیڈ بار، رسیدوں، رپورٹ کارڈ، آئی ڈی کارڈ اور سرٹیفکیٹ پر آتا ہے۔',
+    'School name': 'اسکول کا نام', 'Tagline / Motto': 'نعرہ / مقصد', 'School logo': 'اسکول کا لوگو',
+    '(PNG, JPG or WEBP — optional)': '(پی این جی، جے پی جی یا ویب پی — اختیاری)', 'Your current logo': 'آپ کا موجودہ لوگو',
+    'Choose a new picture only if you want to replace the current logo.': 'نئی تصویر تب چنیں جب موجودہ لوگو بدلنا ہو۔',
+    'Brand Colors': 'برانڈ کے رنگ', 'The whole program, and your printed papers, use these two colors.': 'پورا پروگرام اور آپ کے پرنٹ شدہ کاغذات یہی دو رنگ استعمال کرتے ہیں۔',
+    'Main color': 'بنیادی رنگ', 'Second color': 'دوسرا رنگ', 'Go back to the standard colors': 'معیاری رنگوں پر واپس جائیں',
+    'Contact Details': 'رابطے کی تفصیل', 'Printed at the top of receipts and certificates. All three are optional.':
+        'رسیدوں اور سرٹیفکیٹ کے اوپر چھپتی ہے۔ تینوں اختیاری ہیں۔',
+    'Phone': 'فون', 'Email': 'ای میل', 'Admission Numbers': 'داخلہ نمبر',
+    'Every student gets a number like': 'ہر طالب علم کو اس طرح کا نمبر ملتا ہے:',
+    'Starts with (prefix)': 'شروع میں (پریفکس)', 'Digits': 'ہندسے', 'Start from': 'یہاں سے شروع',
+    'Press Save to keep your changes in this tab.': 'اس ٹیب کی تبدیلیاں رکھنے کے لیے محفوظ کریں دبائیں۔',
+    'Save School Info': 'اسکول کی معلومات محفوظ کریں', 'Students without an Admission No': 'بغیر داخلہ نمبر والے طلبہ',
+    'Every student already has an Admission No.': 'ہر طالب علم کے پاس پہلے سے داخلہ نمبر ہے۔',
+    'Sidebar Preview': 'سائیڈ بار کا نمونہ', 'This is how your school looks on the left menu. It changes as you type.':
+        'بائیں مینو میں آپ کا اسکول ایسا نظر آئے گا۔ لکھتے ہی یہ بدلتا ہے۔',
+    'School Day': 'اسکول کا دن',
+    'The session and the daily timing are used to pre-fill reports, documents and attendance.':
+        'سیشن اور روزانہ کا وقت رپورٹس، دستاویزات اور حاضری میں پہلے سے بھرے جاتے ہیں۔',
+    'Attendance Rules': 'حاضری کے اصول',
+    'How late arrivals are shown and how the attendance percentage is worked out.': 'دیر سے آنے والے کیسے دکھیں اور حاضری کا فیصد کیسے نکلے۔',
+    'Days Off & Holidays': 'چھٹیوں کے دن اور تعطیلات',
+    'The school is closed on these days. They are never counted as attendance days.': 'ان دنوں اسکول بند ہوتا ہے۔ یہ حاضری کے دنوں میں شمار نہیں ہوتے۔',
+    'School is closed every Saturday.': 'اسکول ہر ہفتے بند رہتا ہے۔', 'School is closed every Sunday.': 'اسکول ہر اتوار بند رہتا ہے۔',
+    'Name (e.g. Summer Vacations)': 'نام (مثلاً گرمیوں کی چھٹیاں)', 'From': 'از', 'To': 'تا', 'Remove': 'ہٹائیں',
+    'Timetable Periods': 'ٹائم ٹیبل کے پیریڈ', 'Saved here once so the timetable can use them automatically.': 'یہاں ایک بار محفوظ کریں تاکہ ٹائم ٹیبل خود استعمال کرے۔',
+    'Save Academic Settings': 'تعلیمی ترتیبات محفوظ کریں', 'Grading Scale': 'گریڈنگ اسکیل',
+    'Write the lowest percentage needed for each grade. For example, A+ from 85 means anyone with 85% or more gets A+.':
+        'ہر گریڈ کے لیے کم از کم فیصد لکھیں۔ مثلاً A+ کے لیے 85 کا مطلب ہے 85% یا زیادہ پر A+ ملے گا۔',
+    'Save Grading Scale': 'گریڈنگ اسکیل محفوظ کریں', 'Add Grade': 'گریڈ شامل کریں', 'Add Field': 'خانہ شامل کریں',
+    'Add Holiday Range': 'چھٹیوں کی مدت شامل کریں',
+    'Short name': 'مختصر نام', 'Label on form': 'فارم پر عنوان', 'Required': 'لازمی',
+    'Student Custom Fields': 'طلبہ کے اضافی خانے', 'Teacher Custom Fields': 'اساتذہ کے اضافی خانے',
+    'Save Student Fields': 'طلبہ کے خانے محفوظ کریں', 'Save Teacher Fields': 'اساتذہ کے خانے محفوظ کریں',
+    'WhatsApp Messaging': 'واٹس ایپ پیغامات', 'Open WhatsApp Center': 'واٹس ایپ سینٹر کھولیں',
+    'Connect WhatsApp to send fee reminders and attendance messages, and to approve messages before they go out.':
+        'فیس کی یاد دہانی اور حاضری کے پیغامات بھیجنے، اور بھیجنے سے پہلے پیغامات منظور کرنے کے لیے واٹس ایپ جوڑیں۔',
+    'Backups': 'بیک اپ', 'Back up now': 'ابھی بیک اپ لیں',
+    'A backup is a safe copy of all your school data. Keep a recent one on a USB drive or another computer.':
+        'بیک اپ آپ کے اسکول کے تمام ڈیٹا کی محفوظ کاپی ہے۔ ایک حالیہ کاپی یو ایس بی یا دوسرے کمپیوٹر میں رکھیں۔',
+    'File': 'فائل', 'Created (local)': 'بنایا گیا (مقامی)', 'Size': 'سائز', 'Download': 'ڈاؤن لوڈ',
+})
+UR.update({
+    'Choose a topic on the left, change what you need, then press Save.': 'بائیں طرف سے موضوع چنیں، جو بدلنا ہے بدلیں، پھر محفوظ کریں دبائیں۔',
+    'You have unsaved changes': 'آپ کی تبدیلیاں محفوظ نہیں ہوئیں', 'Name, logo, colors, address': 'نام، لوگو، رنگ، پتہ',
+    'Session, timings, holidays, grades': 'سیشن، اوقات، تعطیلات، گریڈ', 'Extra boxes on student and teacher forms': 'طلبہ اور اساتذہ کے فارم کے اضافی خانے',
+    'WhatsApp and backups': 'واٹس ایپ اور بیک اپ', 'School': 'اسکول', 'Contact': 'رابطہ', 'Printed at the top of every paper.': 'ہر کاغذ کے اوپر چھپتا ہے۔',
+    'How it looks on the menu': 'مینو میں کیسا نظر آتا ہے', 'Changes as you type.': 'لکھتے ہی بدلتا ہے۔', 'Standard colors': 'معیاری رنگ',
+    'Pattern': 'پیٹرن', 'Preview': 'پیش نظارہ', 'School timings': 'اسکول کے اوقات', 'Back up your data': 'اپنا ڈیٹا بیک اپ کریں',
+    'Automatic backups': 'خودکار بیک اپ', 'Lowest percentage for each grade': 'ہر گریڈ کے لیے کم از کم فیصد',
+})
+UR.update({
+    # Sidebar group headings and the keyboard "skip" link
+    'Academics': 'تعلیم', 'Assessment': 'امتحانات اور نتائج', 'Documents & Messages': 'دستاویزات اور پیغامات',
+    'System': 'سسٹم', 'Skip to main content': 'مرکزی صفحے پر جائیں',
+})
+UR.update({
+    # Sidebar quick find
+    'Find a page': 'صفحہ تلاش کریں', 'Find a page in the menu': 'مینو میں صفحہ تلاش کریں', 'No page found': 'کوئی صفحہ نہیں ملا',
+})

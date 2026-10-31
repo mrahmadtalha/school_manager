@@ -1,219 +1,562 @@
 {% extends "base.html" %}
+{% from "_photo_macro.html" import avatar %}
 {% block content %}
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+<style>
+    /* ------------------------------------------------------------------
+       Teacher attendance — same "register book" family as the Student
+       Attendance page. Colours come from the school's brand
+       (--bs-primary-rgb). Everything is scoped under .ta- so nothing
+       leaks to other pages.
+       ------------------------------------------------------------------ */
+    .ta-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0.25rem 0 1.1rem; }
+    .ta-head h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; margin: 0; line-height: 1.1; }
+    .ta-head p { margin: 0.35rem 0 0; color: #64748b; font-size: 0.92rem; max-width: 46rem; }
+    .ta-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .ta-tools .btn { box-shadow: none; }
+    .ta-tools .btn-outline-secondary { background: #fff; }
+    .ta-tools .dropdown-menu { border-radius: 14px; border-color: #e2e8f0; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12); padding: 0.4rem; }
+    .ta-tools .dropdown-item { border-radius: 9px; font-size: 0.9rem; padding: 0.45rem 0.7rem; }
+
+    /* date bar */
+    .ta-filters { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.7rem; margin-bottom: 0.9rem; }
+    .ta-filters form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
+    .ta-filters .form-control { height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background-color: #f8fafc; width: auto; min-width: 10.5rem; font-weight: 600; }
+    .ta-daybox { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .ta-daybtn { width: 2.7rem; height: 2.7rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; color: #475569; text-decoration: none; transition: background 0.15s ease, color 0.15s ease; }
+    .ta-daybtn:hover { background: rgb(var(--bs-primary-rgb)); border-color: rgb(var(--bs-primary-rgb)); color: #fff; }
+    .ta-today { height: 2.7rem; display: inline-flex; align-items: center; padding: 0 1rem; border-radius: 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-size: 0.88rem; font-weight: 600; color: #475569; text-decoration: none; }
+    .ta-today:hover { background: #fff; color: #0f172a; }
+    .ta-today.is-on { background: rgba(var(--bs-primary-rgb), 0.1); border-color: rgba(var(--bs-primary-rgb), 0.35); color: rgb(var(--bs-primary-rgb)); }
+
+    /* summary ribbon: total · live counts · saved / not saved */
+    .ta-ribbon { display: grid; grid-template-columns: minmax(8rem, 0.6fr) minmax(16rem, 2fr) minmax(12rem, 0.9fr); background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .ta-stat { padding: 0.85rem 1.2rem; display: flex; flex-direction: column; justify-content: center; gap: 0.2rem; min-width: 0; }
+    .ta-stat + .ta-stat { border-left: 1px solid #eef2f7; }
+    .ta-num { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .ta-lab { font-size: 0.78rem; color: #64748b; }
+    .ta-bar { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: #eef2f7; margin: 0.15rem 0 0.45rem; }
+    .ta-bar i { display: block; height: 100%; width: 0; transition: width 0.35s cubic-bezier(.2, .7, .2, 1); }
+    .ta-bar .p { background: #16a34a; }
+    .ta-bar .l { background: #f59e0b; }
+    .ta-bar .a { background: #dc2626; }
+    .ta-bar .v { background: #94a3b8; }
+    .ta-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; font-size: 0.85rem; color: #475569; font-variant-numeric: tabular-nums; }
+    .ta-legend b { color: #0f172a; font-size: 0.98rem; }
+    .ta-legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 0.3rem; vertical-align: middle; }
+    .ta-state { border-left: 4px solid #16a34a !important; background: #f3fbf6; }
+    .ta-state.is-open { border-left-color: #f59e0b !important; background: #fffbf3; }
+    .ta-state .ta-num { font-size: 1.15rem; display: flex; align-items: center; gap: 0.45rem; }
+    .ta-state .ta-num i { color: #16a34a; }
+    .ta-state.is-open .ta-num i { color: #d97706; }
+
+    /* "what to do now" note */
+    .ta-hint { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid rgb(var(--bs-primary-rgb)); border-radius: 14px; color: #475569; font-size: 0.88rem; padding: 0.65rem 1rem; margin-bottom: 0.9rem; }
+    .ta-hint b { color: #0f172a; }
+    .ta-hint .ta-sub { display: block; margin-top: 0.25rem; font-size: 0.8rem; color: #64748b; }
+    .ta-warn { background: #fffbf3; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b; border-radius: 14px; color: #78350f; font-size: 0.88rem; padding: 0.65rem 1rem; margin-bottom: 0.9rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; flex-wrap: wrap; }
+    .ta-warn .ta-sub { display: block; font-size: 0.8rem; color: #92400e; margin-top: 0.2rem; }
+
+    /* quick tools */
+    .ta-toolbar { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.7rem; margin-bottom: 0.9rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
+    .ta-search { position: relative; flex: 1 1 15rem; min-width: 12rem; }
+    .ta-search i { position: absolute; left: 0.95rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+    .ta-search input { padding-left: 2.5rem; height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background: #f8fafc; }
+    .ta-search input:focus { background: #fff; }
+    .ta-toolbar .btn { box-shadow: none; height: 2.7rem; display: inline-flex; align-items: center; border-radius: 12px; font-weight: 600; }
+    .ta-timebox { display: inline-flex; align-items: center; gap: 0.35rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.2rem 0.2rem 0.2rem 0.75rem; }
+    .ta-timebox label { margin: 0; font-size: 0.8rem; color: #64748b; font-weight: 600; white-space: nowrap; }
+    .ta-timebox .form-control { width: 9rem; height: 2.2rem; border-radius: 9px; border-color: #e2e8f0; }
+    .ta-timebox .btn { height: 2.2rem; border-radius: 9px; }
+    .ta-note { font-size: 0.82rem; font-weight: 700; color: rgb(var(--bs-primary-rgb)); }
+
+    /* register table */
+    .ta-panel { border: 1px solid #e2e8f0 !important; box-shadow: none !important; border-radius: 18px; overflow: hidden; }
+    .ta-panel:hover { transform: none; }
+    .ta-count { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.7rem 1.1rem; border-bottom: 1px solid #eef2f7; font-size: 0.86rem; color: #64748b; flex-wrap: wrap; }
+    .ta-count strong { color: #0f172a; }
+    .ta-table { margin: 0; }
+    .ta-table thead th { background: #f8fafc; color: #64748b; font-size: 0.74rem; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding: 0.65rem 0.75rem; white-space: nowrap; }
+    .ta-table > :not(caption) > * > * { padding: 0.55rem 0.75rem; border-bottom-color: #f1f5f9; vertical-align: middle; }
+    .ta-row > td { transition: background 0.15s ease; }
+    .ta-row[data-status="Absent"] > td { background: #fff5f5; }
+    .ta-row[data-status="Late"] > td { background: #fffbf0; }
+    .ta-row[data-status="Leave"] > td { background: #f6f7f9; }
+    .ta-row[data-status="Absent"] > td:first-child { box-shadow: inset 4px 0 0 #dc2626; }
+    .ta-row[data-status="Late"] > td:first-child { box-shadow: inset 4px 0 0 #f59e0b; }
+    .ta-row[data-status="Leave"] > td:first-child { box-shadow: inset 4px 0 0 #94a3b8; }
+    .ta-code { display: inline-block; min-width: 2.4rem; text-align: center; padding: 0.12rem 0.5rem; border-radius: 8px; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); font-weight: 800; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+    .ta-who { display: flex; align-items: center; gap: 0.7rem; min-width: 0; }
+    .ta-who-text { min-width: 0; }
+    .ta-who-name { font-weight: 700; color: #0f172a; line-height: 1.25; }
+    .ta-who-sub { font-size: 0.78rem; color: #64748b; line-height: 1.25; }
+    .ta-tag { display: inline-block; padding: 0.08rem 0.5rem; border-radius: 99px; font-size: 0.7rem; font-weight: 600; margin-left: 0.35rem; vertical-align: middle; white-space: nowrap; }
+    .ta-tag-new { background: #e0f2fe; color: #075985; }
+    .ta-tag-late { background: #fef3c7; color: #92400e; }
+
+    /* the four big status buttons */
+    .ta-seg { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; }
+    .ta-seg input { position: absolute; opacity: 0; pointer-events: none; }
+    .ta-seg label { margin: 0; min-width: 4.6rem; padding: 0.5rem 0.7rem; border-radius: 9px; font-size: 0.85rem; font-weight: 700; color: #64748b; cursor: pointer; text-align: center; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; transition: background 0.12s ease, color 0.12s ease; user-select: none; }
+    .ta-seg label:hover { background: #e2e8f0; color: #0f172a; }
+    .ta-seg input:checked + label.p { background: #16a34a; color: #fff; box-shadow: 0 1px 3px rgba(22, 163, 74, 0.4); }
+    .ta-seg input:checked + label.a { background: #dc2626; color: #fff; box-shadow: 0 1px 3px rgba(220, 38, 38, 0.4); }
+    .ta-seg input:checked + label.l { background: #f59e0b; color: #422006; box-shadow: 0 1px 3px rgba(245, 158, 11, 0.45); }
+    .ta-seg input:checked + label.v { background: #64748b; color: #fff; box-shadow: 0 1px 3px rgba(100, 116, 139, 0.4); }
+    .ta-seg input:focus-visible + label { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 1px; }
+
+    .ta-time { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .ta-time .form-control { width: 8rem; height: 2.3rem; border-radius: 10px; border-color: #e2e8f0; background: #f8fafc; }
+    .ta-time .btn { width: 2.3rem; height: 2.3rem; padding: 0; border-radius: 10px; border: 1px solid #e2e8f0; background: #fff; color: #475569; display: inline-flex; align-items: center; justify-content: center; }
+    .ta-time .btn:hover { background: rgb(var(--bs-primary-rgb)); border-color: rgb(var(--bs-primary-rgb)); color: #fff; }
+    .ta-dash { color: #94a3b8; }
+
+    /* save bar stays on screen while the list scrolls */
+    .ta-save { position: sticky; bottom: 0; z-index: 5; background: rgba(255, 255, 255, 0.97); border-top: 1px solid #e2e8f0; padding: 0.75rem 1.1rem; display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.06); }
+    .ta-save-sum { font-size: 0.9rem; color: #475569; }
+    .ta-save-sum b { color: #0f172a; font-variant-numeric: tabular-nums; }
+    .ta-save-sub { font-size: 0.78rem; color: #94a3b8; display: block; }
+    .ta-save .btn-success { font-weight: 700; padding: 0.7rem 2rem; border-radius: 12px; box-shadow: none; }
+
+    .ta-empty { text-align: center; padding: 3.5rem 1rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; }
+    .ta-empty .ta-empty-icon { width: 76px; height: 76px; border-radius: 24px; margin: 0 auto 1rem; display: flex; align-items: center; justify-content: center; font-size: 1.9rem; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); }
+    .ta-empty p { font-weight: 700; color: #334155; margin-bottom: 1rem; }
+
+    html[dir="rtl"] .ta-search i { left: auto; right: 0.95rem; }
+    html[dir="rtl"] .ta-search input { padding-left: 0.75rem; padding-right: 2.5rem; }
+    html[dir="rtl"] .ta-stat + .ta-stat { border-left: 0; border-right: 1px solid #eef2f7; }
+    html[dir="rtl"] .ta-state, html[dir="rtl"] .ta-hint, html[dir="rtl"] .ta-warn { border-left-width: 1px; border-right-width: 4px; }
+    html[dir="rtl"] .ta-state { border-left-color: #eef2f7 !important; border-right: 4px solid #16a34a !important; }
+    html[dir="rtl"] .ta-state.is-open { border-right-color: #f59e0b !important; }
+    html[dir="rtl"] .ta-daybtn i { transform: scaleX(-1); }
+
+    @media (max-width: 991.98px) {
+        .ta-ribbon { grid-template-columns: 1fr 1fr; }
+        .ta-ribbon .ta-stat:nth-child(3) { grid-column: 1 / -1; border-left: 4px solid #16a34a; border-top: 1px solid #eef2f7; }
+        .ta-ribbon .ta-stat.is-open:nth-child(3) { border-left-color: #f59e0b; }
+    }
+    /* phones: every teacher becomes one tappable card */
+    @media (max-width: 767.98px) {
+        .ta-ribbon { grid-template-columns: 1fr; }
+        .ta-stat + .ta-stat { border-left: 0; border-top: 1px solid #eef2f7; }
+        .ta-filters .form-control[type=date] { flex: 1; }
+        .ta-daybox { flex: 1 1 100%; }
+        .ta-timebox { flex: 1 1 100%; flex-wrap: wrap; padding: 0.5rem; }
+        .ta-timebox label { flex: 1 1 100%; }
+        .ta-timebox .form-control { flex: 1 1 auto; width: auto; }
+        .ta-timebox .btn { flex: 1 1 100%; justify-content: center; }
+        .ta-toolbar .btn { flex: 1 1 auto; justify-content: center; }
+        .ta-table thead { display: none; }
+        .ta-table, .ta-table tbody { display: block; }
+        .ta-table .ta-row { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 0.6rem; padding: 0.8rem 0.9rem; border-bottom: 1px solid #f1f5f9; }
+        .ta-table .ta-row > td { display: block; padding: 0; border: 0; background: transparent !important; box-shadow: none !important; }
+        .ta-row[data-status="Absent"] { background: #fff5f5; box-shadow: inset 4px 0 0 #dc2626; }
+        .ta-row[data-status="Late"] { background: #fffbf0; box-shadow: inset 4px 0 0 #f59e0b; }
+        .ta-row[data-status="Leave"] { background: #f6f7f9; box-shadow: inset 4px 0 0 #94a3b8; }
+        .ta-table .ta-c-code { align-self: center; }
+        .ta-table .ta-c-status, .ta-table .ta-c-time { grid-column: 1 / -1; }
+        .ta-table .ta-c-status .ta-seg { display: flex; }
+        .ta-table .ta-c-status .ta-seg label { flex: 1; min-width: 0; padding: 0.7rem 0.2rem; font-size: 0.82rem; }
+        .ta-table .ta-c-status .ta-seg label i { display: none; }
+        .ta-table .ta-c-time { text-align: left !important; }
+        .ta-time .form-control { flex: 1; width: auto; }
+        .ta-save { padding: 0.65rem 0.8rem; }
+        .ta-save .btn-success { width: 100%; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .ta-bar i, .ta-row > td, .ta-seg label { transition: none; }
+    }
+</style>
+
+<div class="ta-head">
     <div>
-        <p class="eyebrow mb-2">Faculty tracking</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-chalkboard-teacher text-primary me-2"></i>Teacher Attendance Sheet</h1>
-        <p class="text-muted small mb-0">Monitor teacher logins, leave status, and daily coverage.</p>
+        <h1>Teacher Attendance</h1>
+        <p>Mark which teachers came to school. Everyone starts as <b>Present</b>, so you only need to touch the teachers who are absent, late or on leave.</p>
     </div>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        <a href="{{ url_for('main.teacher_attendance_summary') }}" class="btn btn-outline-dark btn-sm me-2">
-            <i class="fas fa-calendar-alt me-1"></i> View Teacher Attendance Summary
-        </a>
-        <a href="{{ url_for('main.student_attendance') }}" class="btn btn-outline-secondary btn-sm">
-            <i class="fas fa-user-graduate me-1"></i> Switch to Student Attendance
-        </a>
-    </div>
-</div>
-
-<!-- Flash Messages -->
-
-<!-- Date Selector Card -->
-<div class="card shadow-sm mb-4">
-    <div class="card-body bg-light">
-        <form method="GET" action="{{ url_for('main.teacher_attendance') }}" class="row g-3 align-items-center">
-            <div class="col-md-10">
-                <label class="form-label fw-bold">Select Date:</label>
-                <input type="date" class="form-control" name="date" value="{{ selected_date }}" onchange="this.form.submit()">
-            </div>
-            <div class="col-md-2 d-flex align-items-end">
-                <button type="submit" class="btn btn-dark w-100 mt-4"><i class="fas fa-sync-alt me-1"></i> Load</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Attendance Form Grid -->
-<form method="POST">
-    <input type="hidden" name="date" value="{{ selected_date }}">
-
-    <!-- Header & Export Dropdown -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="text-secondary mb-0">Teacher Roster &amp; Attendance Entry</h5>
-
+    <div class="ta-tools btn-toolbar">
+        {% if teachers %}
         <div class="dropdown">
-            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fas fa-print me-1"></i> Print / Export Sheet
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                <i class="fas fa-download me-1"></i> Export
             </button>
             <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_attendance_pdf', date=selected_date) }}"><i class="fas fa-file-pdf text-danger me-2"></i>Export PDF Sheet</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_attendance_excel', date=selected_date) }}"><i class="fas fa-file-excel text-success me-2"></i>Export Excel Sheet</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_attendance_csv', date=selected_date) }}"><i class="fas fa-file-csv text-primary me-2"></i>Export CSV Sheet</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_attendance_pdf', date=selected_date) }}"><i class="fas fa-file-pdf text-danger me-2"></i>PDF</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_attendance_excel', date=selected_date) }}"><i class="fas fa-file-excel text-success me-2"></i>Excel</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_attendance_csv', date=selected_date) }}"><i class="fas fa-file-csv text-primary me-2"></i>CSV</a></li>
             </ul>
         </div>
+        {% endif %}
+        <a href="{{ url_for('main.teacher_attendance_summary') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-calendar-alt me-1"></i> Monthly Summary
+        </a>
+        <a href="{{ url_for('main.student_attendance') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-user-graduate me-1"></i> Student Attendance
+        </a>
     </div>
+</div>
 
-    {% if teachers %}
-    <div class="alert alert-info py-2 small"><i class="fas fa-clock me-1"></i>School hours: {{ school_start_time }}–{{ school_end_time }}. Late is automatic after start + {{ attendance_grace_minutes }} minute(s) grace. Enter the actual check-in time for each teacher, or use <strong>All Teachers at Time</strong> to mark everyone on time and only change the late ones. <span id="allTeachersAtTimeNote" class="fw-bold ms-1"></span></div>
-    <!-- Quick Actions & Live Counter -->
-    <div class="card bg-light border-0 mb-3 shadow-sm">
-        <div class="card-body py-2 d-flex justify-content-between align-items-center flex-wrap gap-3">
-            <div class="d-flex gap-2 align-items-center flex-wrap">
-                <span class="text-muted small fw-bold"><i class="fas fa-bolt text-warning me-1"></i>Quick Actions:</span>
-                <button type="button" class="btn btn-outline-success btn-sm px-3" onclick="markAllTeachers('Present')">
-                    <i class="fas fa-check-double me-1"></i> All Present
-                </button>
-                <button type="button" class="btn btn-outline-danger btn-sm px-3" onclick="markAllTeachers('Absent')">
-                    <i class="fas fa-times-circle me-1"></i> All Absent
-                </button>
-                <div class="input-group input-group-sm" style="width:auto;" title="Paper register? Mark everyone on time with one click, then only edit the late teachers.">
-                    <span class="input-group-text bg-white"><i class="fas fa-clock text-primary"></i></span>
-                    <input type="time" id="allTeachersAtTime" class="form-control" value="{{ school_start_time }}" style="max-width:120px;" aria-label="On-time check-in time">
-                    <button type="button" class="btn btn-primary" onclick="markAllTeachersAtTime()">
-                        <i class="fas fa-user-clock me-1"></i> All Teachers at Time
-                    </button>
-                </div>
-            </div>
-            <div class="d-flex gap-2 align-items-center flex-wrap">
-                <span class="badge bg-dark px-2 py-2">Total: {{ teachers|length }}</span>
-                <span class="badge bg-success px-2 py-2">Present: <span id="tcntPresent">0</span></span>
-                <span class="badge bg-danger px-2 py-2">Absent: <span id="tcntAbsent">0</span></span>
-                <span class="badge bg-warning text-dark px-2 py-2">Late: <span id="tcntLate">0</span></span>
-                <span class="badge bg-secondary px-2 py-2">Leave: <span id="tcntLeave">0</span></span>
-            </div>
+<!-- Date -->
+<div class="ta-filters no-print">
+    <form method="GET" action="{{ url_for('main.teacher_attendance') }}">
+        <div class="ta-daybox">
+            <a class="ta-daybtn" href="{{ url_for('main.teacher_attendance', date=prev_date) }}" title="Previous day" aria-label="Previous day"><i class="fas fa-chevron-left"></i></a>
+            <input type="date" class="form-control" name="date" value="{{ selected_date }}" aria-label="Date" onchange="this.form.submit()">
+            <a class="ta-daybtn" href="{{ url_for('main.teacher_attendance', date=next_date) }}" title="Next day" aria-label="Next day"><i class="fas fa-chevron-right"></i></a>
+        </div>
+        <a class="ta-today {% if is_today %}is-on{% endif %}" href="{{ url_for('main.teacher_attendance', date=today_date) }}">Today</a>
+    </form>
+</div>
+
+{% if teachers %}
+{% set ns = namespace(names=[], n_present=0, n_absent=0, n_late=0, n_leave=0, n_marked=0) %}
+{% for t in teachers %}
+    {% if t.id not in marked_ids %}{% set ns.names = ns.names + [t] %}{% else %}{% set ns.n_marked = ns.n_marked + 1 %}{% endif %}
+    {% set st = attendance_map.get(t.id) %}
+    {% if st == 'Absent' %}{% set ns.n_absent = ns.n_absent + 1 %}
+    {% elif st == 'Late' %}{% set ns.n_late = ns.n_late + 1 %}
+    {% elif st == 'Leave' %}{% set ns.n_leave = ns.n_leave + 1 %}
+    {% else %}{% set ns.n_present = ns.n_present + 1 %}
+    {% endif %}
+{% endfor %}
+{% set n_total = teachers | length %}
+
+<!-- Summary: total, live counts, saved / not saved -->
+<section class="ta-ribbon no-print" aria-label="Summary">
+    <div class="ta-stat">
+        <span class="ta-num">{{ n_total }}</span>
+        <span class="ta-lab">Teachers in school</span>
+    </div>
+    <div class="ta-stat">
+        <div class="ta-bar" role="img" aria-label="Attendance of teachers">
+            <i class="p" id="barPresent"></i><i class="l" id="barLate"></i><i class="a" id="barAbsent"></i><i class="v" id="barLeave"></i>
+        </div>
+        <div class="ta-legend">
+            <span><span class="dot" style="background:#16a34a"></span>Present <b id="cntPresent">{{ ns.n_present }}</b></span>
+            <span><span class="dot" style="background:#dc2626"></span>Absent <b id="cntAbsent">{{ ns.n_absent }}</b></span>
+            <span><span class="dot" style="background:#f59e0b"></span>Late <b id="cntLate">{{ ns.n_late }}</b></span>
+            <span><span class="dot" style="background:#94a3b8"></span>Leave <b id="cntLeave">{{ ns.n_leave }}</b></span>
         </div>
     </div>
+    {% if ns.n_marked == n_total %}
+    <div class="ta-stat ta-state">
+        <span class="ta-num"><i class="fas fa-circle-check"></i> Saved for this day</span>
+        <span class="ta-lab">You can still change a teacher and save again.</span>
+    </div>
+    {% else %}
+    <div class="ta-stat ta-state is-open">
+        <span class="ta-num"><i class="fas fa-pen-to-square"></i> Not Yet Saved</span>
+        <span class="ta-lab">Press Save when you are done.</span>
+    </div>
+    {% endif %}
+</section>
 
-    <div class="card shadow-sm">
-        <div class="card-body table-responsive">
-            <table class="table table-striped table-hover align-middle">
+<!-- What to do now -->
+<div class="ta-hint no-print" role="status">
+    <b><i class="fas fa-circle-info me-1"></i>What to do now:</b> Tap <b>Absent</b>, <b>Late</b> or <b>Leave</b> for the teachers who need it, then press <b>Save Teacher Attendance</b> at the bottom.
+    <span class="ta-sub">School hours: {{ school_start_time }}–{{ school_end_time }}. {% if late_auto %}Late is automatic after start + {{ attendance_grace_minutes }} minute(s) grace.{% else %}Arrivals after the cutoff stay <strong>Present</strong> (school setting); choose Late by hand when needed.{% endif %} Enter each teacher’s actual check-in time, or use <strong>All Teachers at Time</strong> to mark everyone on time and only change the late ones.</span>
+</div>
+
+{% if ns.names and ns.n_marked > 0 %}
+<div class="ta-warn no-print">
+    <div>
+        <i class="fas fa-exclamation-triangle me-1"></i>
+        <strong>{{ ns.names|length }} of {{ teachers|length }}</strong> teachers: attendance not marked yet
+        <span class="ta-sub">{% for t in ns.names[:10] %}{{ t.teacher_name }}{% if not loop.last %}, {% endif %}{% endfor %}{% if ns.names|length > 10 %} &hellip; and {{ ns.names|length - 10 }} more{% endif %}</span>
+        <span class="ta-sub">Teachers you do not touch are saved as <strong>Present</strong> when you press Save.</span>
+    </div>
+    <button type="button" class="btn btn-sm btn-warning" id="toggleUnmarkedBtn" onclick="toggleUnmarkedOnly()">
+        <i class="fas fa-filter me-1"></i> Show only these teachers</button>
+</div>
+{% endif %}
+
+<!-- Quick tools -->
+<div class="ta-toolbar no-print">
+    <div class="ta-search">
+        <i class="fas fa-search"></i>
+        <input type="text" class="form-control" id="taSearch" aria-label="Find a teacher"
+               placeholder="Find a teacher by name or ID…" autocomplete="off">
+    </div>
+    <button type="button" class="btn btn-outline-success" onclick="markAll('Present')">
+        <i class="fas fa-check-double me-1"></i> All Present
+    </button>
+    <button type="button" class="btn btn-outline-secondary" onclick="resetToInitial()">
+        <i class="fas fa-undo me-1"></i> Reset
+    </button>
+    <div class="dropdown">
+        <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-label="More quick actions">
+            <i class="fas fa-ellipsis-h"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+            <li><button type="button" class="dropdown-item text-danger" onclick="markAllAbsentAsk()">
+                <i class="fas fa-times-circle me-2"></i>All Absent</button></li>
+        </ul>
+    </div>
+    <div class="ta-timebox" title="Paper register? Mark everyone on time with one click, then only edit the late teachers.">
+        <label for="allTeachersAtTime"><i class="fas fa-clock text-primary me-1"></i>Arrival time</label>
+        <input type="time" id="allTeachersAtTime" class="form-control" value="{{ school_start_time }}" aria-label="On-time check-in time">
+        <button type="button" class="btn btn-primary btn-sm" onclick="markAllAtTime()">
+            <i class="fas fa-user-clock me-1"></i> All Teachers at Time
+        </button>
+    </div>
+    <span id="allTeachersAtTimeNote" class="ta-note w-100"></span>
+</div>
+
+<!-- Attendance form -->
+<form method="POST" action="{{ url_for('main.teacher_attendance') }}">
+    <input type="hidden" name="date" value="{{ selected_date }}">
+
+    <div class="card border-0 ta-panel">
+        <div class="ta-count">
+            <span>Showing <strong id="taVisible">{{ n_total }}</strong> of <strong>{{ n_total }}</strong> teachers</span>
+            <span class="small text-muted" id="taNoMatch" hidden>No teacher matches your search.</span>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-hover align-middle ta-table" id="attTable">
                 <thead>
                     <tr>
-                        <th>Teacher ID</th>
+                        <th class="ps-3">Teacher ID</th>
                         <th>Teacher Name</th>
-                        <th>Qualification</th>
-                        <th class="text-center">Attendance Status</th>
+                        <th class="text-center">Status</th>
                         <th class="text-center">Check-in / Late</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for teacher in teachers %}
                     {% set current_status = attendance_map.get(teacher.id, 'Present') %}
-                    {% set current_checkin = late_time_map.get(teacher.id, '') or (current_checkin_time if current_status in ['Present', 'Late'] else '') %}
-                    <tr>
-                        <td><strong>{{ teacher.teacher_id_str }}</strong></td>
-                        <td>{{ teacher.teacher_name }}</td>
-                        <td>{{ teacher.qualification }}</td>
-                        <td class="text-center">
-                            <div class="btn-group" role="group">
-                                <input type="radio" class="btn-check" name="status_{{ teacher.id }}" id="tp_{{ teacher.id }}" value="Present" {% if current_status == 'Present' %}checked{% endif %} onchange="updateTeacherCounters()">
-                                <label class="btn btn-outline-success btn-sm px-3" for="tp_{{ teacher.id }}">Present</label>
-
-                                <input type="radio" class="btn-check" name="status_{{ teacher.id }}" id="ta_{{ teacher.id }}" value="Absent" {% if current_status == 'Absent' %}checked{% endif %} onchange="updateTeacherCounters()">
-                                <label class="btn btn-outline-danger btn-sm px-3" for="ta_{{ teacher.id }}">Absent</label>
-
-                                <input type="radio" class="btn-check" name="status_{{ teacher.id }}" id="tl_{{ teacher.id }}" value="Late" {% if current_status == 'Late' %}checked{% endif %} onchange="updateTeacherCounters()">
-                                <label class="btn btn-outline-warning btn-sm px-3" for="tl_{{ teacher.id }}">Late</label>
-
-                                <input type="radio" class="btn-check" name="status_{{ teacher.id }}" id="tlv_{{ teacher.id }}" value="Leave" {% if current_status == 'Leave' %}checked{% endif %} onchange="updateTeacherCounters()">
-                                <label class="btn btn-outline-secondary btn-sm px-3" for="tlv_{{ teacher.id }}">Leave</label>
+                    {% set is_marked = teacher.id in marked_ids %}
+                    {% set current_late = late_time_map.get(teacher.id, '') %}
+                    {% set checkin_default = current_late or (current_checkin_time if current_status in ['Present', 'Late'] else '') %}
+                    {% set late_min = late_minutes_map.get(teacher.id) %}
+                    <tr id="row_{{ teacher.id }}" class="ta-row"
+                        data-unmarked="{{ 0 if is_marked else 1 }}"
+                        data-status="{{ current_status }}"
+                        data-search="{{ (teacher.teacher_name ~ ' ' ~ teacher.teacher_id_str ~ ' ' ~ (teacher.qualification or '')) | lower }}">
+                        <td class="ps-3 ta-c-code"><span class="ta-code">{{ teacher.teacher_id_str }}</span></td>
+                        <td class="ta-c-name">
+                            <div class="ta-who">
+                                {{ avatar('teacher', teacher, 38) }}
+                                <div class="ta-who-text">
+                                    <div class="ta-who-name">{{ teacher.teacher_name }}{% if not is_marked and ns.n_marked > 0 %} <span class="ta-tag ta-tag-new" id="unmarked_{{ teacher.id }}">Not marked yet</span>{% endif %}{% if current_status == 'Late' and late_min %} <span class="ta-tag ta-tag-late" id="latetag_{{ teacher.id }}">Late · {{ late_min }} min</span>{% endif %}</div>
+                                    {% if teacher.designation or teacher.qualification %}<div class="ta-who-sub">{{ teacher.designation or teacher.qualification }}</div>{% endif %}
+                                </div>
                             </div>
-                            {% if current_status == 'Late' %}
-                            <div class="mt-1"><span class="badge bg-warning text-dark">Late{% if late_minutes_map.get(teacher.id) is not none %} · {{ late_minutes_map.get(teacher.id) }} min{% endif %}</span></div>
-                            {% endif %}
                         </td>
-                        <td class="text-center">
-                            <div class="d-flex gap-1 justify-content-center align-items-center">
+                        <td class="text-center ta-c-status">
+                            <div class="ta-seg" role="radiogroup" aria-label="Attendance of {{ teacher.teacher_name }}">
+                                <input type="radio" name="status_{{ teacher.id }}" id="p_{{ teacher.id }}" value="Present"
+                                       {% if current_status == 'Present' %}checked{% endif %}
+                                       onchange="updateRow({{ teacher.id }}, 'Present')">
+                                <label class="p" for="p_{{ teacher.id }}"><i class="fas fa-check"></i>Present</label>
+
+                                <input type="radio" name="status_{{ teacher.id }}" id="a_{{ teacher.id }}" value="Absent"
+                                       {% if current_status == 'Absent' %}checked{% endif %}
+                                       onchange="updateRow({{ teacher.id }}, 'Absent')">
+                                <label class="a" for="a_{{ teacher.id }}"><i class="fas fa-xmark"></i>Absent</label>
+
+                                <input type="radio" name="status_{{ teacher.id }}" id="l_{{ teacher.id }}" value="Late"
+                                       {% if current_status == 'Late' %}checked{% endif %}
+                                       onchange="updateRow({{ teacher.id }}, 'Late')">
+                                <label class="l" for="l_{{ teacher.id }}"><i class="fas fa-clock"></i>Late</label>
+
+                                <input type="radio" name="status_{{ teacher.id }}" id="lv_{{ teacher.id }}" value="Leave"
+                                       {% if current_status == 'Leave' %}checked{% endif %}
+                                       onchange="updateRow({{ teacher.id }}, 'Leave')">
+                                <label class="v" for="lv_{{ teacher.id }}"><i class="fas fa-envelope-open-text"></i>Leave</label>
+                            </div>
+                        </td>
+                        <td class="text-center ta-c-time">
+                            <div class="ta-time" id="timebox_{{ teacher.id }}" {% if current_status not in ['Present', 'Late'] %}hidden{% endif %}>
                                 <input type="time" class="form-control form-control-sm"
                                        name="checkin_time_{{ teacher.id }}"
-                                       id="teacher-checkin-{{ teacher.id }}"
-                                       value="{{ current_checkin }}" style="width:125px; max-width:100%;">
-                                <button type="button" class="btn btn-outline-secondary btn-sm px-2"
-                                        onclick="setTeacherCheckinNow({{ teacher.id }})"
-                                        title="Use current time" data-bs-toggle="tooltip" aria-label="Use current time">
-                                    <i class="fas fa-clock"></i>
-                                </button>
+                                       id="checkintime_{{ teacher.id }}"
+                                       value="{{ checkin_default }}"
+                                       aria-label="Check-in time of {{ teacher.teacher_name }}"
+                                       {% if current_status not in ['Present', 'Late'] %}disabled{% endif %}>
+                                <button type="button" class="btn" onclick="setNow({{ teacher.id }})"
+                                        title="Use current time" aria-label="Use current time"><i class="fas fa-clock"></i></button>
                             </div>
+                            <span class="ta-dash" id="dash_{{ teacher.id }}" {% if current_status in ['Present', 'Late'] %}hidden{% endif %}>—</span>
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
-            <div class="text-end mt-3">
-                <button type="submit" class="btn btn-success btn-lg px-5">
-                    <i class="fas fa-save me-2"></i> Save Teacher Attendance
-                </button>
+        </div>
+
+        <div class="ta-save">
+            <div class="ta-save-sum">
+                Ready to save: <b id="sumPresent">{{ ns.n_present }}</b> present ·
+                <b id="sumAbsent">{{ ns.n_absent }}</b> absent ·
+                <b id="sumLate">{{ ns.n_late }}</b> late ·
+                <b id="sumLeave">{{ ns.n_leave }}</b> on leave
+                <span class="ta-save-sub"><i class="fas fa-info-circle me-1"></i>You can open this day again later and change it.</span>
             </div>
+            <button type="submit" class="btn btn-success btn-lg">
+                <i class="fas fa-save me-2"></i> Save Teacher Attendance
+            </button>
         </div>
     </div>
-    {% else %}
-    <div class="card shadow-sm">
-        <div class="card-body text-center py-5">
-            <p class="text-muted fs-5"><i class="fas fa-info-circle me-2"></i>No teachers found.</p>
-        </div>
-    </div>
-    {% endif %}
 </form>
 
-<script>
-document.addEventListener('DOMContentLoaded', updateTeacherCounters);
+{% else %}
+<div class="ta-empty">
+    <div class="ta-empty-icon"><i class="fas fa-chalkboard-teacher"></i></div>
+    <p>No teachers found.</p>
+    <a href="{{ url_for('main.teachers_list') }}" class="btn btn-primary"><i class="fas fa-user-plus me-1"></i> Go to Teachers</a>
+</div>
+{% endif %}
 
-function updateTeacherCounters() {
-    var radios = document.querySelectorAll('input[type="radio"]:checked');
-    var p = 0, a = 0, l = 0, lv = 0;
-    radios.forEach(function(r) {
-        if (r.value === 'Present') p++;
-        else if (r.value === 'Absent') a++;
-        else if (r.value === 'Late') l++;
-        else if (r.value === 'Leave') lv++;
+<script>
+// The page remembers each teacher's starting status, so Reset can undo this visit's changes.
+var initialState = {};
+var unmarkedOnly = false;
+var IS_TODAY = {{ 'true' if is_today else 'false' }};
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('#attTable input[type="radio"]:checked').forEach(function(r) {
+        initialState[r.name] = r.value;
     });
-    var elP = document.getElementById('tcntPresent');
-    var elA = document.getElementById('tcntAbsent');
-    var elL = document.getElementById('tcntLate');
-    var elLV = document.getElementById('tcntLeave');
-    if (elP) elP.textContent = p;
-    if (elA) elA.textContent = a;
-    if (elL) elL.textContent = l;
-    if (elLV) elLV.textContent = lv;
+    var search = document.getElementById('taSearch');
+    if (search) search.addEventListener('input', applyRowFilters);
+    updateLiveCounters();
+});
+
+// Counts come from each row's data-status.
+function updateLiveCounters() {
+    var c = {Present: 0, Absent: 0, Late: 0, Leave: 0};
+    var rows = document.querySelectorAll('#attTable tbody tr');
+    rows.forEach(function(row) {
+        if (c.hasOwnProperty(row.dataset.status)) c[row.dataset.status]++;
+    });
+    var total = rows.length || 1;
+    var set = function(id, value) { var el = document.getElementById(id); if (el) el.textContent = value; };
+    set('cntPresent', c.Present); set('cntAbsent', c.Absent); set('cntLate', c.Late); set('cntLeave', c.Leave);
+    set('sumPresent', c.Present); set('sumAbsent', c.Absent); set('sumLate', c.Late); set('sumLeave', c.Leave);
+    var bar = function(id, value) { var el = document.getElementById(id); if (el) el.style.width = (value * 100 / total) + '%'; };
+    bar('barPresent', c.Present); bar('barLate', c.Late); bar('barAbsent', c.Absent); bar('barLeave', c.Leave);
 }
 
-function markAllTeachers(status) {
-    var inputs = document.querySelectorAll('input[type="radio"]');
-    inputs.forEach(function(r) {
-        if (r.value === status) {
-            r.checked = true;
+// One place decides which rows are visible: the search box and "show only not marked yet".
+function applyRowFilters() {
+    var search = document.getElementById('taSearch');
+    var needle = search ? search.value.trim().toLowerCase() : '';
+    var shown = 0, total = 0;
+    document.querySelectorAll('#attTable tbody tr').forEach(function(row) {
+        total++;
+        var hide = (unmarkedOnly && row.dataset.unmarked === '0') ||
+                   (needle && (row.dataset.search || '').indexOf(needle) === -1);
+        row.style.display = hide ? 'none' : '';
+        if (!hide) shown++;
+    });
+    var count = document.getElementById('taVisible');
+    if (count) count.textContent = shown;
+    var none = document.getElementById('taNoMatch');
+    if (none) none.hidden = shown !== 0 || total === 0;
+}
+
+// Show only the teachers whose attendance is not marked yet (and back to everyone)
+function toggleUnmarkedOnly() {
+    unmarkedOnly = !unmarkedOnly;
+    applyRowFilters();
+    var btn = document.getElementById('toggleUnmarkedBtn');
+    if (btn) btn.innerHTML = unmarkedOnly
+        ? '<i class="fas fa-users me-1"></i> Show all teachers'
+        : '<i class="fas fa-filter me-1"></i> Show only these teachers';
+}
+
+// Row colour + check-in box follow the chosen status
+function updateRow(id, status) {
+    var row = document.getElementById('row_' + id);
+    if (!row) return;
+    var flag = document.getElementById('unmarked_' + id);   // touched: no longer "not marked"
+    if (flag) flag.remove();
+    var lateTag = document.getElementById('latetag_' + id);  // old "Late · N min" is out of date now
+    if (lateTag) lateTag.remove();
+    row.dataset.status = status;
+
+    // Present and Late keep a check-in time so the server can apply school timing.
+    var withTime = (status === 'Present' || status === 'Late');
+    var box = document.getElementById('timebox_' + id);
+    var input = document.getElementById('checkintime_' + id);
+    var dash = document.getElementById('dash_' + id);
+    if (box) box.hidden = !withTime;
+    if (dash) dash.hidden = withTime;
+    if (input) {
+        input.disabled = !withTime;       // a disabled box is not sent
+        if (withTime && !input.value && IS_TODAY) setNow(id);
+    }
+    updateLiveCounters();
+}
+
+// Set current time into the check-in field
+function setNow(id) {
+    var el = document.getElementById('checkintime_' + id);
+    if (!el) return;
+    var now = new Date();
+    el.value = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+}
+
+// Mark all teachers with a single status
+function markAll(status) {
+    var key = status === 'Present' ? 'p_' : status === 'Absent' ? 'a_' : status === 'Late' ? 'l_' : 'lv_';
+    document.querySelectorAll('#attTable tbody tr').forEach(function(row) {
+        var id = row.id.replace('row_', '');
+        var radio = document.getElementById(key + id);
+        if (radio) {
+            radio.checked = true;
+            updateRow(parseInt(id), status);
         }
     });
-    updateTeacherCounters();
+    updateLiveCounters();
+}
+
+// "All Absent" is rarely right, so it asks first (the shared styled dialog).
+function markAllAbsentAsk() {
+    window.SchoolUI.confirm('Mark every teacher as Absent?', {
+        okLabel: 'Mark all Absent', variant: 'danger'
+    }).then(function(ok) { if (ok) markAll('Absent'); });
 }
 
 // All Teachers at Time: one click marks everyone Present with the same check-in time
-// (default = school start time, so nobody is late). Teachers marked Absent or Leave are
-// left alone. Then edit the time of anyone who was late; late minutes are still
-// calculated automatically on save.
-function markAllTeachersAtTime() {
+// (default = school start time, so nobody is late). Teachers already marked Absent or
+// Leave are left alone. Afterwards just edit the check-in time of anyone who was late -
+// the server still calculates Late and late minutes from each saved time.
+function markAllAtTime() {
     var timeInput = document.getElementById('allTeachersAtTime');
     var value = timeInput ? timeInput.value : '';
     if (!value) { window.SchoolUI.toast('Please choose a time first.', 'warning'); if (timeInput) timeInput.focus(); return; }
     var changed = 0;
-    document.querySelectorAll('input[id^="tp_"]').forEach(function(present) {
-        var id = present.id.replace('tp_', '');
-        if (document.getElementById('ta_' + id)?.checked || document.getElementById('tlv_' + id)?.checked) return;
+    document.querySelectorAll('#attTable tbody tr').forEach(function(row) {
+        var id = row.id.replace('row_', '');
+        if (document.getElementById('a_' + id)?.checked || document.getElementById('lv_' + id)?.checked) return;
+        var present = document.getElementById('p_' + id);
+        if (!present) return;
         present.checked = true;
-        var input = document.getElementById('teacher-checkin-' + id);
+        updateRow(parseInt(id), 'Present');
+        var input = document.getElementById('checkintime_' + id);
         if (input) input.value = value;
         changed++;
     });
-    updateTeacherCounters();
+    updateLiveCounters();
     var note = document.getElementById('allTeachersAtTimeNote');
     if (note) note.textContent = changed + ' teacher(s) set to ' + value + '. Edit the time of anyone who came late.';
 }
 
-function setTeacherCheckinNow(id) {
-    var input = document.getElementById('teacher-checkin-' + id);
-    if (!input) return;
-    var now = new Date();
-    input.value = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+// Reset selection back to the state the page was opened with
+function resetToInitial() {
+    document.querySelectorAll('#attTable tbody tr').forEach(function(row) {
+        var id = row.id.replace('row_', '');
+        var origStatus = initialState['status_' + id] || 'Present';
+        var radio = document.getElementById(
+            origStatus === 'Present' ? 'p_' + id :
+            origStatus === 'Absent'  ? 'a_' + id :
+            origStatus === 'Late'    ? 'l_' + id : 'lv_' + id
+        );
+        if (radio) {
+            radio.checked = true;
+            updateRow(parseInt(id), origStatus);
+        }
+    });
+    updateLiveCounters();
 }
 </script>
 {% endblock %}

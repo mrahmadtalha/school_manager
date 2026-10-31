@@ -1,138 +1,250 @@
 {% extends "base.html" %}
+{#
+    Software License — redesigned for non-technical school staff (same family
+    as Students / Users & Roles): a plain header, one status band that says in
+    one sentence whether everything is fine, the three dates that matter, a
+    3-step "how to renew" and the key box.  Technical details (license ID, key
+    revision) are folded away.  Scoped under .lc- so nothing leaks.
+#}
+{% set tone = {'success': 'ok', 'warning': 'warn', 'danger': 'bad', 'info': 'info', 'secondary': 'off'}.get(real_status.level, 'off') %}
+{% set tone_icon = {'ok': 'fa-circle-check', 'warn': 'fa-triangle-exclamation', 'bad': 'fa-circle-xmark', 'info': 'fa-circle-info', 'off': 'fa-circle-info'}[tone] %}
+{% set groups = (feature_catalog | map(attribute=3) | unique | list) if feature_catalog else [] %}
+{% set n_features = (feature_catalog | length) if feature_catalog else 0 %}
+{% set n_on = namespace(v=0) %}
+{% if real_status.licensee and feature_catalog %}{% for item in feature_catalog %}{% if real_status.feature_enabled(item[0]) %}{% set n_on.v = n_on.v + 1 %}{% endif %}{% endfor %}{% endif %}
+{% set needs_key = fresh_install or real_status.read_only or tone in ('bad', 'off') %}
+
+{% macro meter(used, limit) %}
+{% if limit %}<div class="lc-meter" role="img" aria-label="{{ used }} of {{ limit }} used"><i style="width: {{ [used * 100 / limit, 100] | min | round(1) }}%"></i></div>{% endif %}
+{% endmacro %}
+
 {% block content %}
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
-    <div>
-        <p class="eyebrow mb-2">Configuration</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-id-card text-primary me-2"></i>Software License</h1>
-        <p class="text-muted small mb-0">
-            {% if fresh_install %}Activate your license to begin setting up the school.
-            {% else %}Check your license status, or enter a new key to activate or renew.{% endif %}
-        </p>
-    </div>
+<style>
+    .lc-head { margin: 0.25rem 0 1.1rem; }
+    .lc-head h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; margin: 0; line-height: 1.1; }
+    .lc-head p { margin: 0.35rem 0 0; color: #64748b; font-size: 0.92rem; }
+
+    .lc-tone-ok   { --c-bg: #ecfdf5; --c-bd: #a7f3d0; --c-fg: #047857; --c-bar: #10b981; }
+    .lc-tone-warn { --c-bg: #fff7e6; --c-bd: #fcd34d; --c-fg: #92400e; --c-bar: #f59e0b; }
+    .lc-tone-bad  { --c-bg: #fef2f2; --c-bd: #fecaca; --c-fg: #b91c1c; --c-bar: #ef4444; }
+    .lc-tone-info { --c-bg: #eff6ff; --c-bd: #bfdbfe; --c-fg: #1d4ed8; --c-bar: #3b82f6; }
+    .lc-tone-off  { --c-bg: #f1f5f9; --c-bd: #d8dee7; --c-fg: #475569; --c-bar: #94a3b8; }
+
+    .lc-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 1.1rem 1.25rem; margin-bottom: 1rem; }
+    .lc-card h2 { font-size: 1.05rem; font-weight: 800; color: #0f172a; margin: 0 0 0.25rem; }
+    .lc-card .lc-sub { color: #64748b; font-size: 0.86rem; margin: 0 0 0.9rem; }
+
+    /* status band */
+    .lc-status { border-left: 6px solid var(--c-bar); padding: 0; overflow: hidden; }
+    .lc-status-top { display: flex; gap: 0.9rem; align-items: flex-start; padding: 1.1rem 1.25rem; background: var(--c-bg); border-bottom: 1px solid var(--c-bd); }
+    .lc-status-icon { flex: none; width: 46px; height: 46px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; background: #fff; color: var(--c-fg); border: 1px solid var(--c-bd); }
+    .lc-status-title { font-size: 1.25rem; font-weight: 800; color: var(--c-fg); margin: 0; line-height: 1.2; }
+    .lc-status-msg { margin: 0.25rem 0 0; color: #334155; font-size: 0.93rem; }
+    .lc-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
+    .lc-fact { padding: 0.9rem 1.25rem; min-width: 0; }
+    .lc-fact + .lc-fact { border-left: 1px solid #eef2f7; }
+    .lc-fact-lab { font-size: 0.76rem; color: #64748b; font-weight: 600; }
+    .lc-fact-val { font-size: 1.12rem; font-weight: 800; color: #0f172a; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+    .lc-fact-note { font-size: 0.8rem; color: #64748b; margin-top: 0.1rem; }
+    .lc-fact-note.warn { color: #92400e; font-weight: 700; }
+    .lc-life { height: 8px; border-radius: 99px; background: #eef2f7; overflow: hidden; margin-top: 0.45rem; }
+    .lc-life i { display: block; height: 100%; background: var(--c-bar); border-radius: 99px; }
+    .lc-tech { border-top: 1px solid #eef2f7; padding: 0.55rem 1.25rem; font-size: 0.82rem; color: #64748b; }
+    .lc-tech summary { cursor: pointer; font-weight: 600; }
+    .lc-tech dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 1rem; margin: 0.5rem 0 0.2rem; }
+    .lc-tech dt { font-weight: 600; } .lc-tech dd { margin: 0; }
+
+    .lc-note { display: flex; gap: 0.6rem; align-items: flex-start; border-radius: 14px; padding: 0.7rem 0.95rem; margin-bottom: 0.8rem; font-size: 0.9rem; background: var(--c-bg); border: 1px solid var(--c-bd); color: #334155; }
+    .lc-note > i { color: var(--c-fg); margin-top: 0.15rem; }
+
+    /* steps */
+    .lc-steps { list-style: none; counter-reset: s; padding: 0; margin: 0 0 1rem; display: grid; gap: 0.6rem; }
+    .lc-steps li { counter-increment: s; display: flex; gap: 0.7rem; align-items: flex-start; font-size: 0.9rem; color: #334155; }
+    .lc-steps li::before { content: counter(s); flex: none; width: 1.7rem; height: 1.7rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85rem; background: rgba(var(--bs-primary-rgb), 0.12); color: rgb(var(--bs-primary-rgb)); }
+    .lc-steps b { color: #0f172a; }
+
+    .lc-code { display: flex; gap: 0.5rem; }
+    .lc-code input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 800; letter-spacing: 0.04em; border-radius: 12px; background: #f8fafc; border-color: #e2e8f0; height: 2.8rem; }
+    .lc-code .btn { border-radius: 12px; white-space: nowrap; }
+    .lc-card .form-control { border-radius: 12px; border-color: #dbe3ee; }
+    .lc-card .form-label { font-weight: 700; font-size: 0.85rem; color: #334155; }
+
+    /* features */
+    .lc-group { font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; margin: 0.9rem 0 0.35rem; }
+    .lc-group:first-of-type { margin-top: 0.2rem; }
+    .lc-feat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.35rem 1rem; }
+    .lc-feat { font-size: 0.88rem; display: flex; gap: 0.5rem; align-items: baseline; color: #0f172a; font-weight: 600; }
+    .lc-feat.off { color: #94a3b8; font-weight: 500; }
+    .lc-feat .fa-circle-check { color: #10b981; } .lc-feat .fa-lock { color: #cbd5e1; }
+
+    .lc-wa { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.9rem; }
+    .lc-wa-lab { font-size: 0.78rem; color: #64748b; font-weight: 600; }
+    .lc-wa-val { font-size: 1.15rem; font-weight: 800; color: #0f172a; font-variant-numeric: tabular-nums; }
+    .lc-wa-val small { font-weight: 600; color: #64748b; font-size: 0.8rem; }
+    .lc-meter { height: 8px; border-radius: 99px; background: #eef2f7; overflow: hidden; margin-top: 0.3rem; }
+    .lc-meter i { display: block; height: 100%; background: #10b981; border-radius: 99px; }
+
+    .lc-insp { border-left: 6px solid #3b82f6; }
+
+    @media (max-width: 575.98px) {
+        .lc-fact + .lc-fact { border-left: 0; border-top: 1px solid #eef2f7; }
+        .lc-code { flex-direction: column; }
+    }
+</style>
+
+<div class="lc-head">
+    <h1>Software License</h1>
+    <p>{% if fresh_install %}Activate your license to begin setting up the school.
+       {% else %}See whether your program is up to date, and enter a new key to renew.{% endif %}</p>
 </div>
 
-<div class="row g-4">
-    <div class="col-lg-6">
-        <div class="card shadow-sm border-0 h-100">
-            <div class="card-body">
-                <h2 class="h5 fw-bold mb-3">Status</h2>
-                <div class="alert alert-{{ real_status.level }} mb-3">
-                    <strong>{{ real_status.title }}.</strong> {{ real_status.message }}
-                </div>
-                {% if real_status.notice %}
-                <div class="alert alert-info mb-3"><i class="fas fa-bullhorn me-1"></i>
-                    <strong>Notice from your software provider:</strong> {{ real_status.notice }}</div>
-                {% endif %}
-                {% if real_status.reminder_stage %}
-                <div class="alert alert-warning mb-3"><i class="fas fa-bell me-1"></i>
-                    Renewal reminder: {{ real_status.days_left }} day{{ '' if real_status.days_left == 1 else 's' }} left.
-                    Reminders appear 30, 14, 7, 3 and 1 day before the end.</div>
-                {% endif %}
-
-                {% if real_status.licensee %}
-                <dl class="row mb-0 small">
-                    <dt class="col-sm-4">Licensed to</dt>
-                    <dd class="col-sm-8">{{ real_status.licensee }}</dd>
-                    <dt class="col-sm-4">License ID</dt>
-                    <dd class="col-sm-8"><code>{{ real_status.license_id }}</code></dd>
-                    <dt class="col-sm-4">Issued</dt>
-                    <dd class="col-sm-8">{{ real_status.issued.strftime('%d %b %Y') }}</dd>
-                    <dt class="col-sm-4">Expires</dt>
-                    <dd class="col-sm-8">{{ real_status.expires.strftime('%d %b %Y') }}
-                        {% if real_status.days_left is not none and real_status.days_left >= 0 %}
-                        <span class="text-muted">({{ real_status.days_left }} day{{ '' if real_status.days_left == 1 else 's' }} left)</span>
-                        {% endif %}
-                    </dd>
-                    <dt class="col-sm-4">Read-only after</dt>
-                    <dd class="col-sm-8">{{ real_status.grace_ends.strftime('%d %b %Y') }}</dd>
-                    {% if real_status.plan %}
-                    <dt class="col-sm-4">Plan</dt>
-                    <dd class="col-sm-8">{{ real_status.plan|title }}</dd>
-                    {% endif %}
-                    {% if real_status.rev %}
-                    <dt class="col-sm-4">Key revision</dt>
-                    <dd class="col-sm-8">{{ real_status.rev }}</dd>
-                    {% endif %}
-                </dl>
-                {% endif %}
-
-                {% if real_status.licensee and feature_catalog %}
-                <hr>
-                <h3 class="h6 fw-bold mb-2">Included features</h3>
-                <div class="row row-cols-1 row-cols-sm-2 g-1 small mb-3">
-                    {% for item in feature_catalog %}
-                    <div class="col">
-                        {% if real_status.feature_enabled(item[0]) %}
-                        <i class="fas fa-check-circle text-success me-1"></i>{{ item[1] }}
-                        {% else %}
-                        <i class="fas fa-lock text-muted me-1"></i><span class="text-muted">{{ item[1] }}</span>
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                </div>
-                {% if wa_usage and wa_usage.enabled %}
-                <h3 class="h6 fw-bold mb-1">WhatsApp messages</h3>
-                {% if wa_usage.limited %}
-                <div class="small text-muted">
-                    Today: <strong>{{ wa_usage.day_used }}{% if wa_usage.day_limit is not none %} / {{ wa_usage.day_limit }}{% endif %}</strong>
-                    &nbsp;·&nbsp; This month: <strong>{{ wa_usage.month_used }}{% if wa_usage.month_limit is not none %} / {{ wa_usage.month_limit }}{% endif %}</strong>
-                </div>
-                {% else %}
-                <div class="small text-muted">No message limit on this license.</div>
-                {% endif %}
-                {% endif %}
-                {% endif %}
-            </div>
+{# ---------- one status band ---------- #}
+<section class="lc-card lc-status lc-tone-{{ tone }}" aria-label="License status">
+    <div class="lc-status-top">
+        <span class="lc-status-icon"><i class="fas {{ tone_icon }}"></i></span>
+        <div>
+            <h2 class="lc-status-title">{{ real_status.title }}</h2>
+            <p class="lc-status-msg">{{ real_status.message }}</p>
         </div>
     </div>
+    {% if real_status.licensee %}
+    <div class="lc-facts">
+        <div class="lc-fact">
+            <div class="lc-fact-lab">Licensed to</div>
+            <div class="lc-fact-val">{{ real_status.licensee }}</div>
+            {% if real_status.plan %}<div class="lc-fact-note">{{ real_status.plan | title }} plan</div>{% endif %}
+        </div>
+        <div class="lc-fact">
+            <div class="lc-fact-lab">Valid until</div>
+            <div class="lc-fact-val">{{ real_status.expires.strftime('%d %b %Y') }}</div>
+            {% if real_status.days_left is not none and real_status.days_left >= 0 %}
+            <div class="lc-fact-note{% if real_status.days_left <= 30 %} warn{% endif %}">{{ real_status.days_left }} day{{ '' if real_status.days_left == 1 else 's' }} left</div>
+            {% set span = (real_status.expires - real_status.issued).days %}
+            {% if span > 0 %}
+            <div class="lc-life" role="img" aria-label="{{ real_status.days_left }} days left"><i style="width: {{ [[(span - real_status.days_left) * 100 / span, 0] | max, 100] | min | round(1) }}%"></i></div>
+            {% endif %}
+            {% else %}
+            <div class="lc-fact-note warn">Ended</div>
+            {% endif %}
+        </div>
+        <div class="lc-fact">
+            <div class="lc-fact-lab">After this date the program only opens</div>
+            <div class="lc-fact-val">{{ real_status.grace_ends.strftime('%d %b %Y') }}</div>
+            <div class="lc-fact-note">You can still look at everything, but nothing can be changed.</div>
+        </div>
+    </div>
+    <details class="lc-tech">
+        <summary>Technical details (for your software provider)</summary>
+        <dl>
+            <dt>License ID</dt><dd><code>{{ real_status.license_id }}</code></dd>
+            <dt>Issued</dt><dd>{{ real_status.issued.strftime('%d %b %Y') }}</dd>
+            {% if real_status.rev %}<dt>Key revision</dt><dd>{{ real_status.rev }}</dd>{% endif %}
+        </dl>
+    </details>
+    {% endif %}
+</section>
 
-    <div class="col-lg-6">
-        <div class="card shadow-sm border-0 mb-4">
-            <div class="card-body">
-                <h2 class="h5 fw-bold mb-2">This computer's machine code</h2>
-                <p class="text-muted small">Send this code to your vendor to receive a license key for this computer.</p>
-                <div class="input-group">
-                    <input type="text" id="machineCode" class="form-control font-monospace fw-bold"
-                           value="{{ license_status.machine_code }}" readonly>
-                    <button type="button" class="btn btn-outline-secondary" id="copyMachineCode">
-                        <i class="fas fa-copy me-1"></i> Copy
-                    </button>
+{% if real_status.notice %}
+<div class="lc-note lc-tone-info"><i class="fas fa-bullhorn"></i>
+    <div><strong>Message from your software provider:</strong> {{ real_status.notice }}</div></div>
+{% endif %}
+{% if real_status.reminder_stage %}
+<div class="lc-note lc-tone-warn"><i class="fas fa-bell"></i>
+    <div><strong>Time to renew:</strong> {{ real_status.days_left }} day{{ '' if real_status.days_left == 1 else 's' }} left.
+    Contact your software provider and enter the new key below.
+    <span class="text-muted">(Reminders appear 30, 14, 7, 3 and 1 day before the end.)</span></div></div>
+{% endif %}
+
+{% if license_status.inspection %}
+<section class="lc-card lc-insp">
+    <h2><i class="fas fa-magnifying-glass text-primary me-2"></i>Inspection mode is on</h2>
+    <p class="lc-sub mb-2">Everything can be viewed, but nothing can be changed. It ends by itself on
+        <strong>{{ license_status.inspection_until.strftime('%d %b %Y, %H:%M') }} UTC</strong>.
+        Key: <code>{{ license_status.inspection_id }}</code></p>
+    <form method="post">
+        <input type="hidden" name="action" value="end_inspection">
+        <button type="submit" class="btn btn-outline-secondary btn-sm"><i class="fas fa-stop me-1"></i>End inspection now</button>
+    </form>
+</section>
+{% endif %}
+
+<div class="row g-3">
+    {# When the license needs action the key box comes first on a phone as well. #}
+    <div class="col-lg-6 {% if needs_key %}order-1{% else %}order-2{% endif %}">
+        <section class="lc-card">
+            <h2>{{ 'Activate your license' if fresh_install or real_status.read_only else 'Renew or enter a new key' }}</h2>
+            <p class="lc-sub">Three simple steps. The key comes from your software provider.</p>
+            <ol class="lc-steps">
+                <li><div><b>Copy this computer's code</b> (the box below) and send it to your software provider.</div></li>
+                <li><div>They send you back a <b>license key</b> (a long text) or a key file.</div></li>
+                <li><div><b>Paste the key</b> in the box, or choose the file, then press <b>Activate</b>.</div></li>
+            </ol>
+
+            <label class="form-label" for="machineCode">This computer's code</label>
+            <div class="lc-code mb-3">
+                <input type="text" id="machineCode" class="form-control" value="{{ license_status.machine_code }}" readonly>
+                <button type="button" class="btn btn-outline-secondary" id="copyMachineCode"><i class="fas fa-copy me-1"></i> Copy</button>
+            </div>
+
+            <form method="post" enctype="multipart/form-data" autocomplete="off">
+                <div class="mb-3">
+                    <label for="license_key" class="form-label">License key <span class="text-muted fw-normal">(or an inspection key)</span></label>
+                    <textarea class="form-control font-monospace small" id="license_key" name="license_key"
+                              rows="4" placeholder="Paste the key here. It starts with SM1."></textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="license_file" class="form-label">…or choose the key file</label>
+                    <input class="form-control" type="file" id="license_file" name="license_file" accept=".key,.txt">
+                </div>
+                <button type="submit" class="btn btn-primary fw-bold px-4"><i class="fas fa-key me-1"></i> Activate</button>
+            </form>
+        </section>
+    </div>
+
+    <div class="col-lg-6 {% if needs_key %}order-2{% else %}order-1{% endif %}">
+        {% if real_status.licensee and feature_catalog %}
+        <section class="lc-card">
+            <h2>Included features</h2>
+            <div class="row row-cols-1 row-cols-sm-2 g-1 small mt-2">
+                {% for item in feature_catalog %}
+                <div class="col">
+                    {% if real_status.feature_enabled(item[0]) %}
+                    <i class="fas fa-check-circle text-success me-1"></i>{{ item[1] }}
+                    {% else %}
+                    <i class="fas fa-lock text-muted me-1"></i><span class="text-muted">{{ item[1] }}</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% if wa_usage and wa_usage.enabled %}
+        <section class="lc-card">
+            <h2>WhatsApp messages</h2>
+            {% if wa_usage.limited %}
+            <p class="lc-sub">How many messages you have sent against your plan's limit.</p>
+            <div class="lc-wa">
+                <div>
+                    <div class="lc-wa-lab">Today</div>
+                    <div class="lc-wa-val">{{ wa_usage.day_used }}{% if wa_usage.day_limit is not none %} <small>of {{ wa_usage.day_limit }}</small>{% endif %}</div>
+                    {{ meter(wa_usage.day_used, wa_usage.day_limit) }}
+                </div>
+                <div>
+                    <div class="lc-wa-lab">This month</div>
+                    <div class="lc-wa-val">{{ wa_usage.month_used }}{% if wa_usage.month_limit is not none %} <small>of {{ wa_usage.month_limit }}</small>{% endif %}</div>
+                    {{ meter(wa_usage.month_used, wa_usage.month_limit) }}
                 </div>
             </div>
-        </div>
-
-        {% if license_status.inspection %}
-        <div class="card shadow-sm border-0 border-start border-info border-4 mb-4">
-            <div class="card-body">
-                <h2 class="h5 fw-bold mb-2"><i class="fas fa-magnifying-glass text-info me-2"></i>Inspection mode is on</h2>
-                <p class="small text-muted mb-2">View-only: every module and the audit log can be opened, but nothing can be
-                    changed. It ends by itself on <strong>{{ license_status.inspection_until.strftime('%d %b %Y, %H:%M') }} UTC</strong>.
-                    Key: <code>{{ license_status.inspection_id }}</code></p>
-                <form method="post">
-                    <input type="hidden" name="action" value="end_inspection">
-                    <button type="submit" class="btn btn-outline-dark btn-sm"><i class="fas fa-stop me-1"></i>End inspection now</button>
-                </form>
-            </div>
-        </div>
+            {% else %}
+            <p class="lc-sub mb-0">No message limit on this license.</p>
+            {% endif %}
+        </section>
         {% endif %}
-
-        <div class="card shadow-sm border-0">
-            <div class="card-body">
-                <h2 class="h5 fw-bold mb-3">{{ 'Activate license' if fresh_install or real_status.read_only else 'Enter a new license key' }}</h2>
-                <form method="post" enctype="multipart/form-data" autocomplete="off">
-                    <div class="mb-3">
-                        <label for="license_key" class="form-label">License key <span class="text-muted small">(or an inspection key)</span></label>
-                        <textarea class="form-control font-monospace small" id="license_key" name="license_key"
-                                  rows="4" placeholder="SM1.…"></textarea>
-                    </div>
-                    <div class="mb-3">
-                        <label for="license_file" class="form-label">…or upload the key file</label>
-                        <input class="form-control" type="file" id="license_file" name="license_file" accept=".key,.txt">
-                    </div>
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-key me-1"></i> Activate</button>
-                </form>
-            </div>
-        </div>
+        {% else %}
+        <section class="lc-card">
+            <h2>Included features</h2>
+            <p class="lc-sub mb-0">Your features will be listed here once a license is activated.</p>
+        </section>
+        {% endif %}
     </div>
 </div>
 

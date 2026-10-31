@@ -3,6 +3,7 @@ Automation models — WhatsApp settings and message queue.
 Ported from Project1's automation feature, adapted to Project2's model naming.
 """
 from datetime import datetime
+from app.timeutil import utcnow
 from app.database import db
 
 
@@ -56,6 +57,9 @@ class AutomationSettings(db.Model):
         "Regards,\nSchool Management"
     ))
 
+    # Class-test result summary (NULL/empty = built-in wording)
+    template_test_result = db.Column(db.Text, nullable=True)
+
     # WhatsApp session state (written by Node service)
     wa_status       = db.Column(db.String(30), default="disconnected")
     # disconnected | connecting | qr_ready | connected
@@ -63,8 +67,8 @@ class AutomationSettings(db.Model):
     # Latest successful delivery for staff visibility
     last_successful_send_at = db.Column(db.DateTime, nullable=True)
 
-    updated_at      = db.Column(db.DateTime, default=datetime.utcnow,
-                                onupdate=datetime.utcnow)
+    updated_at      = db.Column(db.DateTime, default=utcnow,
+                                onupdate=utcnow)
 
     @staticmethod
     def get():
@@ -93,7 +97,7 @@ class MessageQueue(db.Model):
 
     # Context (for display)
     trigger     = db.Column(db.String(50),  nullable=True)
-    # 'attendance_absent' | 'attendance_late' | 'attendance_correction' | 'result'
+    # 'attendance_absent' | 'attendance_late' | 'attendance_correction' | 'result' | 'test_result'
     student_id  = db.Column(db.Integer, db.ForeignKey("students.id"), nullable=True)
     ref_date    = db.Column(db.Date,    nullable=True)   # attendance date / test date
     retry_count = db.Column(db.Integer, default=0)
@@ -101,9 +105,9 @@ class MessageQueue(db.Model):
     send_after  = db.Column(db.DateTime, nullable=True)
 
     # Timing
-    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at  = db.Column(db.DateTime, default=datetime.utcnow,
-                            onupdate=datetime.utcnow)
+    created_at  = db.Column(db.DateTime, default=utcnow)
+    updated_at  = db.Column(db.DateTime, default=utcnow,
+                            onupdate=utcnow)
     sent_at     = db.Column(db.DateTime, nullable=True)
 
     # Error info (if failed)
@@ -125,7 +129,7 @@ class DeliveryLog(db.Model):
     status      = db.Column(db.String(20), nullable=False)
     error_msg   = db.Column(db.Text, nullable=True)
     details     = db.Column(db.Text, nullable=True)
-    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at  = db.Column(db.DateTime, default=utcnow)
 
     message = db.relationship("MessageQueue", back_populates="delivery_logs")
 

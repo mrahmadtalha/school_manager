@@ -196,12 +196,13 @@ def financials_summary():
 def financials_insights():
     """Phase 4: rule-based insights, metrics and recommendations."""
     month = _requested_month()
+    metrics = report_insights.period_metrics(month)      # computed once, shared
     return render_template(
         'financial_insights.html',
         month=month,
-        metrics=report_insights.period_metrics(month),
-        insights=report_insights.insight_lines(month),
-        recommendations=report_insights.recommendations(month),
+        metrics=metrics,
+        insights=report_insights.insight_lines(month, metrics),
+        recommendations=report_insights.recommendation_items(month, metrics),
         prev_month=payroll_service.shift_month(month, -1),
         next_month=payroll_service.shift_month(month, 1),
     )

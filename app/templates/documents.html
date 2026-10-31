@@ -1,189 +1,279 @@
 {% extends "base.html" %}
+{#
+    Documents — redesigned for non-technical school staff (same family as
+    Students / Users & Roles).  One question at a time: "What do you want to
+    print?" (three big buttons) then "Who is it for?" (Everyone / A whole class
+    / One student).  The form field names and URLs are unchanged.
+#}
+{% set cert_tab = request.args.get('cert_type') %}
+{% set start_tab = 'staff' if preselect_teacher_id else ('cert' if cert_tab else 'student') %}
+{% set start_who_student = 'one' if preselect_student_id else ('class' if preselect_class_id else 'all') %}
+{% set start_who_cert = 'one' if preselect_student_id else ('class' if preselect_class_id else 'one') %}
 {% block content %}
 <style>
-.document-card { height: 100%; border-radius: .5rem; }
-.document-card .card-header { min-height: 3.25rem; display: flex; align-items: center; }
-.document-summary { display: flex; flex-wrap: wrap; gap: .5rem; }
-.document-summary .badge { font-weight: 600; }
+    .dc-head { margin: 0.25rem 0 1.1rem; }
+    .dc-head h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; margin: 0; line-height: 1.1; }
+    .dc-head p { margin: 0.35rem 0 0; color: #64748b; font-size: 0.92rem; }
+    .dc-hint { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid rgb(var(--bs-primary-rgb)); border-radius: 14px; color: #475569; font-size: 0.88rem; }
+    .dc-hint b { color: #0f172a; }
+
+    .dc-ribbon { display: grid; grid-template-columns: repeat(3, 1fr); background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .dc-stat { padding: 0.8rem 1.2rem; }
+    .dc-stat + .dc-stat { border-left: 1px solid #eef2f7; }
+    .dc-num { font-size: 1.55rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; color: #0f172a; font-variant-numeric: tabular-nums; }
+    .dc-lab { font-size: 0.78rem; color: #64748b; }
+
+    /* "What do you want to print?" */
+    .dc-q { font-size: 0.8rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #64748b; margin: 1.1rem 0 0.5rem; }
+    .dc-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.7rem; margin-bottom: 0.9rem; }
+    .dc-tile { text-align: left; background: #fff; border: 2px solid #e2e8f0; border-radius: 16px; padding: 0.9rem 1rem; display: flex; gap: 0.8rem; align-items: center; cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease; color: inherit; }
+    .dc-tile:hover { border-color: rgba(var(--bs-primary-rgb), 0.5); }
+    .dc-tile:focus-visible { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 2px; }
+    .dc-tile[aria-selected="true"] { border-color: rgb(var(--bs-primary-rgb)); background: rgba(var(--bs-primary-rgb), 0.05); box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06); }
+    .dc-tile-ico { flex: none; width: 46px; height: 46px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; background: #f1f5f9; color: #475569; }
+    .dc-tile[aria-selected="true"] .dc-tile-ico { background: rgb(var(--bs-primary-rgb)); color: #fff; }
+    .dc-tile b { display: block; color: #0f172a; font-size: 1rem; line-height: 1.2; }
+    .dc-tile small { color: #64748b; font-size: 0.8rem; }
+
+    .dc-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 1.2rem 1.3rem; margin-bottom: 1rem; }
+    .dc-panel[hidden] { display: none; }
+    .dc-panel h2 { font-size: 1.1rem; font-weight: 800; color: #0f172a; margin: 0 0 0.2rem; }
+    .dc-panel .dc-sub { color: #64748b; font-size: 0.88rem; margin: 0 0 1rem; }
+    .dc-panel .form-label { font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 0.3rem; }
+    .dc-panel .form-control, .dc-panel .form-select { border-radius: 12px; border-color: #dbe3ee; height: 2.7rem; }
+    .dc-panel textarea.form-control { height: auto; }
+    .dc-fee { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; color: #1e3a8a; font-size: 0.86rem; padding: 0.6rem 0.85rem; margin-bottom: 1rem; }
+
+    .dc-seg { display: inline-flex; flex-wrap: wrap; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; }
+    .dc-seg input { position: absolute; opacity: 0; pointer-events: none; }
+    .dc-seg label { margin: 0; padding: 0.45rem 0.95rem; border-radius: 9px; font-size: 0.88rem; font-weight: 600; color: #475569; cursor: pointer; }
+    .dc-seg input:checked + label { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+    .dc-seg input:focus-visible + label { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 1px; }
+
+    .dc-types { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0.5rem; }
+    .dc-type input { position: absolute; opacity: 0; pointer-events: none; }
+    .dc-type label { display: flex; align-items: center; gap: 0.55rem; margin: 0; padding: 0.6rem 0.8rem; border: 2px solid #e2e8f0; border-radius: 12px; font-weight: 700; font-size: 0.88rem; color: #334155; cursor: pointer; background: #fff; }
+    .dc-type label i { color: #94a3b8; }
+    .dc-type input:checked + label { border-color: rgb(var(--bs-primary-rgb)); background: rgba(var(--bs-primary-rgb), 0.05); color: #0f172a; }
+    .dc-type input:checked + label i { color: rgb(var(--bs-primary-rgb)); }
+    .dc-type input:focus-visible + label { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 2px; }
+
+    .dc-result { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.8rem; border-radius: 12px; background: #f8fafc; border: 1px dashed #cbd5e1; font-size: 0.88rem; color: #334155; margin: 1rem 0; }
+    .dc-result b { color: #0f172a; }
+    .dc-go { display: flex; justify-content: flex-end; }
+    .dc-more { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 1rem; }
+    .dc-more > summary { cursor: pointer; padding: 0.85rem 1.1rem; font-weight: 700; color: #0f172a; list-style: none; display: flex; gap: 0.5rem; align-items: center; }
+    .dc-more > summary::-webkit-details-marker { display: none; }
+    .dc-more > summary .dc-chev { margin-left: auto; color: #94a3b8; transition: transform 0.15s ease; }
+    .dc-more[open] > summary .dc-chev { transform: rotate(180deg); }
+    .dc-more-body { padding: 0 1.1rem 1.1rem; }
+    .dc-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; overflow: hidden; margin-bottom: 1rem; }
+    .dc-card h3 { font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0; padding: 0.85rem 1.1rem; border-bottom: 1px solid #eef2f7; }
+
+    @media (max-width: 767.98px) {
+        .dc-tiles { grid-template-columns: 1fr; }
+        .dc-ribbon { grid-template-columns: 1fr 1fr 1fr; }
+        .dc-stat { padding: 0.7rem 0.8rem; }
+        .dc-go .btn { width: 100%; }
+        .dc-seg { display: flex; width: 100%; }
+        .dc-seg label { flex: 1; text-align: center; padding-left: 0.4rem; padding-right: 0.4rem; }
+    }
+    @media (prefers-reduced-motion: reduce) { .dc-tile, .dc-more > summary .dc-chev { transition: none; } }
 </style>
-<div class="dashboard-header d-flex justify-content-between align-items-center flex-wrap gap-3 pt-3 pb-3 mb-4">
-    <div>
-        <p class="eyebrow mb-2">Print &amp; export</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-file-circle-check text-primary me-2"></i>Documents</h1>
-        <p class="text-muted small mb-0">Create ready-to-print ID cards and certificates.</p>
-    </div>
-    <div class="document-summary" aria-label="Available records">
-        <span class="badge bg-primary-subtle text-primary"><i class="fas fa-user-graduate me-1"></i>{{ students|length }} students</span>
-        <span class="badge bg-success-subtle text-success"><i class="fas fa-chalkboard-teacher me-1"></i>{{ teachers|length }} staff</span>
-        <span class="badge bg-light text-dark border"><i class="fas fa-school me-1"></i>{{ classes|length }} classes</span>
-    </div>
+
+<div class="dc-head">
+    <h1>Documents</h1>
+    <p>Print ID cards and certificates for your students and staff.</p>
 </div>
 
-<div class="row g-4">
-    <div class="col-lg-6">
-        <div class="card shadow-sm border-0 analytics-panel document-card">
-            <div class="card-header bg-primary-subtle text-primary fw-bold border-0">
-                <i class="fas fa-id-badge me-2"></i>Student ID Cards
-            </div>
-            <div class="card-body">
-                <p class="text-muted small">Choose a student or class. Leave both blank to print cards for all active students.</p>
-                {% if id_card_fee or id_card_dup_fee %}
-                <div class="alert alert-info py-2 small">
-                    <i class="fas fa-coins me-1"></i>
-                    A <strong>single student's</strong> card is issued with a receipt:
-                    first time <strong>{{ fee_money(id_card_fee) if id_card_fee else 'free' }}</strong>,
-                    duplicate <strong>{{ fee_money(id_card_dup_fee) if id_card_dup_fee else 'free' }}</strong>.
-                    Printing a whole class has no fee.
-                </div>
-                {% endif %}
-                <form method="GET" action="{{ url_for('main.export_student_id_cards') }}" data-class-student-form>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Class <span class="text-muted fw-normal" title="Leave blank to include every class." data-bs-toggle="tooltip"><i class="fas fa-circle-info"></i></span></label>
-                        <select class="form-select" name="class_id" data-role="class">
-                            <option value="">— All classes —</option>
-                            {% for class_obj in classes %}
-                            <option value="{{ class_obj.id }}" {% if preselect_class_id == class_obj.id %}selected{% endif %}>{{ class_obj.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" id="idWholeClass" data-role="whole">
-                            <label class="form-check-label fw-bold" for="idWholeClass">Whole Class <span class="text-muted fw-normal small" data-role="count"></span></label>
-                        </div>
-                        <label class="form-label fw-bold">Single student <span class="text-muted fw-normal">(optional)</span></label>
-                        <select class="form-select" name="student_id" data-role="student">
-                            <option value="">— All students —</option>
-                            {% for student in students %}
-                            <option value="{{ student.id }}" data-class-id="{{ student.class_id or '' }}" {% if preselect_student_id == student.id %}selected{% endif %}>
-                                {{ student.roll_number }} — {{ student.student_name }}
-                                {% if student.class_info %} ({{ student.class_info.name }}){% endif %}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Academic session</label>
-                        <input type="text" class="form-control" name="session" value="{{ default_session }}">
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="fas fa-download me-1"></i> Download student cards
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-lg-6">
-        <div class="card shadow-sm border-0 analytics-panel document-card">
-            <div class="card-header bg-success-subtle text-success fw-bold border-0">
-                <i class="fas fa-chalkboard-teacher me-2"></i>Staff ID Cards
-            </div>
-            <div class="card-body">
-                <p class="text-muted small">Export a single teacher card or the full staff set.</p>
-                <form method="GET" action="{{ url_for('main.export_teacher_id_cards') }}">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Teacher</label>
-                        <select class="form-select" name="teacher_id">
-                            <option value="">— All active teachers —</option>
-                            {% for teacher in teachers %}
-                            <option value="{{ teacher.id }}" {% if preselect_teacher_id == teacher.id %}selected{% endif %}>
-                                {{ teacher.teacher_id_str }} — {{ teacher.teacher_name }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Academic session</label>
-                        <input type="text" class="form-control" name="session" value="{{ default_session }}">
-                    </div>
-                    <button type="submit" class="btn btn-success w-100">
-                        <i class="fas fa-download me-1"></i> Download staff cards
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-12">
-        <div class="card shadow-sm border-0 analytics-panel document-card">
-            <div class="card-header bg-warning-subtle text-dark fw-bold border-0">
-                <i class="fas fa-certificate me-2"></i>Certificates
-            </div>
-            <div class="card-body">
-                <p class="text-muted small mb-3">
-                    Choose a certificate type, then a student or a whole class. School name, logo, address, and phone from Settings are printed automatically.
-                </p>
-                {% if cert_fees.values()|map('sum')|select|list %}
-                <div class="alert alert-info py-2 small">
-                    <i class="fas fa-coins me-1"></i>
-                    A <strong>single student's</strong> certificate is issued with a receipt.
-                    {% for key, label in certificate_types.items() %}{% set f = cert_fees[key] %}{% if f[0] or f[1] %}
-                    <span class="d-inline-block me-3">{{ label }}: {{ fee_money(f[0]) if f[0] else 'free' }} (duplicate {{ fee_money(f[1]) if f[1] else 'free' }})</span>{% endif %}{% endfor %}
-                    Printing a whole class has no fee.
-                </div>
-                {% endif %}
-                <form method="GET" action="{{ url_for('main.export_certificates') }}" class="row g-3" data-class-student-form>
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">Certificate type</label>
-                        <select class="form-select" name="cert_type">
-                            {% for key, label in certificate_types.items() %}
-                            <option value="{{ key }}" {% if preselect_cert == key %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">Class</label>
-                        <select class="form-select" name="class_id" data-role="class">
-                            <option value="">— Optional class filter —</option>
-                            {% for class_obj in classes %}
-                            <option value="{{ class_obj.id }}" {% if preselect_class_id == class_obj.id %}selected{% endif %}>{{ class_obj.name }}</option>
-                            {% endfor %}
-                        </select>
-                        <div class="form-check mt-2">
-                            <input class="form-check-input" type="checkbox" id="certWholeClass" data-role="whole">
-                            <label class="form-check-label fw-bold" for="certWholeClass">Whole Class <span class="text-muted fw-normal small" data-role="count"></span></label>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">Student</label>
-                        <select class="form-select" name="student_id" data-role="student">
-                            <option value="">— Select a student —</option>
-                            {% for student in students %}
-                            <option value="{{ student.id }}" data-class-id="{{ student.class_id or '' }}" {% if preselect_student_id == student.id %}selected{% endif %}>
-                                {{ student.roll_number }} — {{ student.student_name }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">Issue date</label>
-                        <input type="date" class="form-control" name="issue_date" value="{{ today }}">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-bold">Academic session</label>
-                        <input type="text" class="form-control" name="session" value="{{ default_session }}">
-                    </div>
-                    <div class="col-md-9">
-                        <label class="form-label fw-bold">Remarks / achievement <span class="text-muted fw-normal">(optional)</span></label>
-                        <input type="text" class="form-control" name="remarks" placeholder="e.g. 1st position in Class 8 annual exams, 92%">
-                    </div>
-                    <div class="col-12 d-flex justify-content-end">
-                        <button type="submit" class="btn btn-warning">
-                            <i class="fas fa-file-pdf me-1"></i> Download certificates PDF
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
+<div class="alert alert-info dc-hint py-2 px-3 no-print" role="status">
+    <b><i class="fas fa-circle-info me-1"></i>What to do now:</b>
+    Pick what you want to print, say who it is for, then press the download button.
+    You get a PDF that is ready to print. School name, logo and address from Settings are added for you.
 </div>
+
+<section class="dc-ribbon no-print" aria-label="Available records">
+    <div class="dc-stat"><div class="dc-num">{{ students|length }}</div><div class="dc-lab">Students</div></div>
+    <div class="dc-stat"><div class="dc-num">{{ teachers|length }}</div><div class="dc-lab">Staff</div></div>
+    <div class="dc-stat"><div class="dc-num">{{ classes|length }}</div><div class="dc-lab">Classes</div></div>
+</section>
+
+<div class="dc-q" id="dcQ1">1. What do you want to print?</div>
+<div class="dc-tiles" role="tablist" aria-labelledby="dcQ1">
+    <button type="button" class="dc-tile" role="tab" id="tab-student" aria-controls="panel-student" data-dc-tab="student" aria-selected="{{ 'true' if start_tab == 'student' else 'false' }}">
+        <span class="dc-tile-ico"><i class="fas fa-id-badge"></i></span>
+        <span><b>Student ID Cards</b><small>For one student, a class or everyone</small></span>
+    </button>
+    <button type="button" class="dc-tile" role="tab" id="tab-staff" aria-controls="panel-staff" data-dc-tab="staff" aria-selected="{{ 'true' if start_tab == 'staff' else 'false' }}">
+        <span class="dc-tile-ico"><i class="fas fa-chalkboard-teacher"></i></span>
+        <span><b>Staff ID Cards</b><small>For one teacher or all staff</small></span>
+    </button>
+    <button type="button" class="dc-tile" role="tab" id="tab-cert" aria-controls="panel-cert" data-dc-tab="cert" aria-selected="{{ 'true' if start_tab == 'cert' else 'false' }}">
+        <span class="dc-tile-ico"><i class="fas fa-certificate"></i></span>
+        <span><b>Certificates</b><small>Bonafide, character, leaving, merit</small></span>
+    </button>
+</div>
+
+{# ================= Student ID cards ================= #}
+<section class="dc-panel" role="tabpanel" id="panel-student" aria-labelledby="tab-student" {% if start_tab != 'student' %}hidden{% endif %}>
+    <h2>Student ID Cards</h2>
+    <p class="dc-sub">Choose who the cards are for. Each card carries the student's photo, name, class and roll number.</p>
+    {% if id_card_fee or id_card_dup_fee %}
+    <div class="dc-fee"><i class="fas fa-coins me-1"></i>
+        A <strong>single student's</strong> card is issued with a receipt:
+        first time <strong>{{ fee_money(id_card_fee) if id_card_fee else 'free' }}</strong>,
+        duplicate <strong>{{ fee_money(id_card_dup_fee) if id_card_dup_fee else 'free' }}</strong>.
+        Printing a whole class has no fee.
+    </div>
+    {% endif %}
+    <form method="GET" action="{{ url_for('main.export_student_id_cards') }}" data-who-form data-start="{{ start_who_student }}" data-noun="card">
+        <div class="mb-3">
+            <div class="form-label">Who is it for?</div>
+            <div class="dc-seg" role="radiogroup" aria-label="Who is it for?">
+                <input type="radio" name="_who" id="sWhoAll" value="all" {% if start_who_student == 'all' %}checked{% endif %}><label for="sWhoAll">Everyone</label>
+                <input type="radio" name="_who" id="sWhoClass" value="class" {% if start_who_student == 'class' %}checked{% endif %}><label for="sWhoClass">A whole class</label>
+                <input type="radio" name="_who" id="sWhoOne" value="one" {% if start_who_student == 'one' %}checked{% endif %}><label for="sWhoOne">One student</label>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-md-6" data-show-for="class one">
+                <label class="form-label" for="sClass"><span data-label-class>Class</span><span data-label-one class="text-muted fw-normal"> (helps you find the student)</span></label>
+                <select class="form-select" id="sClass" name="class_id" data-role="class">
+                    <option value="">— All classes —</option>
+                    {% for class_obj in classes %}
+                    <option value="{{ class_obj.id }}" {% if preselect_class_id == class_obj.id %}selected{% endif %}>{{ class_obj.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6" data-show-for="one">
+                <label class="form-label" for="sStudent">Student</label>
+                <select class="form-select" id="sStudent" name="student_id" data-role="student">
+                    <option value="">— Choose a student —</option>
+                    {% for student in students %}
+                    <option value="{{ student.id }}" data-class-id="{{ student.class_id or '' }}" {% if preselect_student_id == student.id %}selected{% endif %}>
+                        {{ student.roll_number }} — {{ student.student_name }}{% if student.class_info %} ({{ student.class_info.name }}){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="sSession">Academic session</label>
+                <input type="text" class="form-control" id="sSession" name="session" value="{{ default_session }}">
+            </div>
+        </div>
+        <div class="dc-result" data-result><i class="fas fa-print text-primary"></i><span data-result-text></span></div>
+        <div class="dc-go"><button type="submit" class="btn btn-primary px-4"><i class="fas fa-download me-1"></i> Download student cards</button></div>
+    </form>
+</section>
+
+{# ================= Staff ID cards ================= #}
+<section class="dc-panel" role="tabpanel" id="panel-staff" aria-labelledby="tab-staff" {% if start_tab != 'staff' %}hidden{% endif %}>
+    <h2>Staff ID Cards</h2>
+    <p class="dc-sub">Print one teacher's card, or the cards of all active staff at once.</p>
+    <form method="GET" action="{{ url_for('main.export_teacher_id_cards') }}" data-who-form data-start="{{ 'one' if preselect_teacher_id else 'all' }}" data-noun="card" data-total="{{ teachers|length }}">
+        <div class="mb-3">
+            <div class="form-label">Who is it for?</div>
+            <div class="dc-seg" role="radiogroup" aria-label="Who is it for?">
+                <input type="radio" name="_who" id="tWhoAll" value="all" {% if not preselect_teacher_id %}checked{% endif %}><label for="tWhoAll">All staff</label>
+                <input type="radio" name="_who" id="tWhoOne" value="one" {% if preselect_teacher_id %}checked{% endif %}><label for="tWhoOne">One teacher</label>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-md-6" data-show-for="one">
+                <label class="form-label" for="tTeacher">Teacher</label>
+                <select class="form-select" id="tTeacher" name="teacher_id" data-role="teacher">
+                    <option value="">— Choose a teacher —</option>
+                    {% for teacher in teachers %}
+                    <option value="{{ teacher.id }}" {% if preselect_teacher_id == teacher.id %}selected{% endif %}>{{ teacher.teacher_id_str }} — {{ teacher.teacher_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="tSession">Academic session</label>
+                <input type="text" class="form-control" id="tSession" name="session" value="{{ default_session }}">
+            </div>
+        </div>
+        <div class="dc-result" data-result><i class="fas fa-print text-primary"></i><span data-result-text></span></div>
+        <div class="dc-go"><button type="submit" class="btn btn-primary px-4"><i class="fas fa-download me-1"></i> Download staff cards</button></div>
+    </form>
+</section>
+
+{# ================= Certificates ================= #}
+<section class="dc-panel" role="tabpanel" id="panel-cert" aria-labelledby="tab-cert" {% if start_tab != 'cert' %}hidden{% endif %}>
+    <h2>Certificates</h2>
+    <p class="dc-sub">Pick the kind of certificate, then who it is for. School name, logo, address and phone from Settings are printed automatically.</p>
+    {% if cert_fees.values()|map('sum')|select|list %}
+    <div class="dc-fee"><i class="fas fa-coins me-1"></i>
+        A <strong>single student's</strong> certificate is issued with a receipt.
+        {% for key, label in certificate_types.items() %}{% set f = cert_fees[key] %}{% if f[0] or f[1] %}
+        <span class="d-inline-block me-3">{{ label }}: {{ fee_money(f[0]) if f[0] else 'free' }} (duplicate {{ fee_money(f[1]) if f[1] else 'free' }})</span>{% endif %}{% endfor %}
+        Printing a whole class has no fee.
+    </div>
+    {% endif %}
+    <form method="GET" action="{{ url_for('main.export_certificates') }}" data-who-form data-start="{{ start_who_cert }}" data-noun="certificate" data-required="1">
+        <div class="mb-3">
+            <div class="form-label">Certificate type</div>
+            <div class="dc-types" role="radiogroup" aria-label="Certificate type">
+                {% for key, label in certificate_types.items() %}
+                <div class="dc-type">
+                    <input type="radio" name="cert_type" id="ct_{{ key }}" value="{{ key }}" {% if preselect_cert == key %}checked{% endif %}>
+                    <label for="ct_{{ key }}"><i class="fas fa-award"></i>{{ label }}</label>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="mb-3">
+            <div class="form-label">Who is it for?</div>
+            <div class="dc-seg" role="radiogroup" aria-label="Who is it for?">
+                <input type="radio" name="_who" id="cWhoOne" value="one" {% if start_who_cert == 'one' %}checked{% endif %}><label for="cWhoOne">One student</label>
+                <input type="radio" name="_who" id="cWhoClass" value="class" {% if start_who_cert == 'class' %}checked{% endif %}><label for="cWhoClass">A whole class</label>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-md-6" data-show-for="class one">
+                <label class="form-label" for="cClass"><span data-label-class>Class</span><span data-label-one class="text-muted fw-normal"> (helps you find the student)</span></label>
+                <select class="form-select" id="cClass" name="class_id" data-role="class">
+                    <option value="">— Choose a class —</option>
+                    {% for class_obj in classes %}
+                    <option value="{{ class_obj.id }}" {% if preselect_class_id == class_obj.id %}selected{% endif %}>{{ class_obj.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6" data-show-for="one">
+                <label class="form-label" for="cStudent">Student</label>
+                <select class="form-select" id="cStudent" name="student_id" data-role="student">
+                    <option value="">— Choose a student —</option>
+                    {% for student in students %}
+                    <option value="{{ student.id }}" data-class-id="{{ student.class_id or '' }}" {% if preselect_student_id == student.id %}selected{% endif %}>
+                        {{ student.roll_number }} — {{ student.student_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="cDate">Issue date</label>
+                <input type="date" class="form-control" id="cDate" name="issue_date" value="{{ today }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="cSession">Academic session</label>
+                <input type="text" class="form-control" id="cSession" name="session" value="{{ default_session }}">
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="cRemarks">Remarks / achievement <span class="text-muted fw-normal">(optional)</span></label>
+                <input type="text" class="form-control" id="cRemarks" name="remarks" placeholder="e.g. 1st position in Class 8 annual exams, 92%">
+            </div>
+        </div>
+        <div class="dc-result" data-result><i class="fas fa-print text-primary"></i><span data-result-text></span></div>
+        <div class="dc-go"><button type="submit" class="btn btn-primary px-4"><i class="fas fa-file-pdf me-1"></i> Download certificates PDF</button></div>
+    </form>
+</section>
 {% if is_admin %}
-<div class="row g-4 mt-1">
+<div class="dc-q">For the school office</div>
+<div class="row g-3">
     <div class="col-lg-6" id="doc-fees">
-        <div class="card shadow-sm border-0 document-card">
-            <div class="card-header bg-light fw-bold border-0"><i class="fas fa-coins me-2"></i>Fees for ID cards &amp; certificates</div>
-            <div class="card-body">
+        <details class="dc-more" id="dcFees">
+            <summary><i class="fas fa-coins text-warning"></i>Fees for ID cards &amp; certificates<i class="fas fa-chevron-down dc-chev"></i></summary>
+            <div class="dc-more-body">
                 <p class="text-muted small">Most schools charge the same fee for everyone. Leave a box empty or write 0 for <strong>free</strong>. The fee is taken the first time; if the same document is printed again, you choose <strong>free</strong> or the duplicate fee.</p>
                 <form method="post" action="{{ url_for('main.document_fees_save') }}">
                     <div class="row g-2 mb-2">
@@ -218,11 +308,11 @@
                     <button class="btn btn-primary btn-sm" type="submit"><i class="fas fa-floppy-disk me-1"></i>Save fees</button>
                 </form>
             </div>
-        </div>
+        </details>
     </div>
     <div class="col-lg-6">
-        <div class="card shadow-sm border-0 document-card">
-            <div class="card-header bg-light fw-bold border-0"><i class="fas fa-clock-rotate-left me-2"></i>Recently issued (with fee setting on)</div>
+        <div class="dc-card">
+            <h3><i class="fas fa-clock-rotate-left me-2"></i>Recently issued (with fee setting on)</h3>
             <div class="card-body p-0">
                 {% if recent_issues %}
                 <div class="table-responsive">
@@ -250,59 +340,99 @@
 </div>
 {% endif %}
 <script>
-// Class -> student filtering and the "Whole Class" switch (student ID cards + certificates).
+// Tabs + "Who is it for?" — only the choices that matter are shown, and a field that is hidden is not sent.
 document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('[data-class-student-form]').forEach(function (form) {
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('[data-dc-tab]'));
+    function openTab(name, focus) {
+        tabs.forEach(function (t) {
+            var on = t.getAttribute('data-dc-tab') === name;
+            t.setAttribute('aria-selected', on ? 'true' : 'false');
+            t.tabIndex = on ? 0 : -1;
+            document.getElementById('panel-' + t.getAttribute('data-dc-tab')).hidden = !on;
+            if (on && focus) { t.focus(); }
+        });
+        try { history.replaceState(null, '', '#' + name); } catch (e) {}
+    }
+    tabs.forEach(function (t, i) {
+        t.addEventListener('click', function () { openTab(t.getAttribute('data-dc-tab')); });
+        t.addEventListener('keydown', function (e) {
+            var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+            if (d) { e.preventDefault(); openTab(tabs[(i + d + tabs.length) % tabs.length].getAttribute('data-dc-tab'), true); }
+        });
+    });
+    var hash = (location.hash || '').replace('#', '');
+    if (hash && tabs.some(function (t) { return t.getAttribute('data-dc-tab') === hash; })) { openTab(hash); }
+    else { tabs.forEach(function (t) { t.tabIndex = t.getAttribute('aria-selected') === 'true' ? 0 : -1; }); }
+    if (hash === 'doc-fees') { var d = document.getElementById('dcFees'); if (d) { d.open = true; d.scrollIntoView(); } }
+
+    function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+    function toast(msg) { if (window.SchoolUI && window.SchoolUI.toast) { window.SchoolUI.toast(msg, 'warning'); } else { alert(msg); } }
+
+    document.querySelectorAll('[data-who-form]').forEach(function (form) {
         var classSel = form.querySelector('[data-role="class"]');
         var studentSel = form.querySelector('[data-role="student"]');
-        var whole = form.querySelector('[data-role="whole"]');
-        var count = form.querySelector('[data-role="count"]');
-        if (!classSel || !studentSel || !whole) return;
+        var teacherSel = form.querySelector('[data-role="teacher"]');
+        var result = form.querySelector('[data-result-text]');
+        var noun = form.getAttribute('data-noun') || 'card';
+        var required = form.getAttribute('data-required') === '1';
+        var allStudents = studentSel ? studentSel.options.length - 1 : 0;
+        var allTeachers = teacherSel ? teacherSel.options.length - 1 : 0;
+        function who() { var r = form.querySelector('input[name="_who"]:checked'); return r ? r.value : 'all'; }
 
-        function refresh(classChanged) {
-            var cid = classSel.value;
-            var visible = 0;
-
-            // Only the chosen class's students are selectable.
-            Array.prototype.forEach.call(studentSel.options, function (opt) {
-                if (!opt.value) return;
-                var other = cid && opt.getAttribute('data-class-id') !== cid;
-                opt.hidden = !!other;
-                opt.disabled = !!other;
-                if (!other) visible++;
-            });
-            if (studentSel.selectedOptions.length && studentSel.selectedOptions[0].disabled) {
-                studentSel.value = '';
-            }
-
-            // "Whole Class" only makes sense once a class is chosen.
-            whole.disabled = !cid;
-            if (!cid) {
-                whole.checked = false;
-            } else if (classChanged || whole.dataset.ready !== '1') {
-                // Choosing a class selects the whole class, unless a single student was opened directly.
-                whole.checked = !studentSel.value;
-            }
-            whole.dataset.ready = '1';
-
-            if (whole.checked) studentSel.value = '';
-            studentSel.disabled = whole.checked;
-            if (count) {
-                count.textContent = cid ? '(' + visible + ' student' + (visible === 1 ? '' : 's') + ')' : '';
-            }
+        function inClass(cid) {
+            if (!studentSel) { return 0; }
+            var n = 0;
+            Array.prototype.forEach.call(studentSel.options, function (o) { if (o.value && (!cid || o.getAttribute('data-class-id') === cid)) { n++; } });
+            return n;
         }
-
-        classSel.addEventListener('change', function () { refresh(true); });
-        whole.addEventListener('change', function () { refresh(false); });
+        function refresh() {
+            var w = who(), cid = classSel ? classSel.value : '';
+            // show only the fields this choice needs; hidden fields are disabled so they are not sent
+            form.querySelectorAll('[data-show-for]').forEach(function (box) {
+                var on = box.getAttribute('data-show-for').split(' ').indexOf(w) !== -1;
+                box.classList.toggle('d-none', !on);
+                box.querySelectorAll('select, input').forEach(function (el) { el.disabled = !on; });
+                var lo = box.querySelector('[data-label-one]');
+                if (lo) { lo.classList.toggle('d-none', w !== 'one'); }
+            });
+            // only the chosen class's students are selectable
+            if (studentSel) {
+                Array.prototype.forEach.call(studentSel.options, function (o) {
+                    if (!o.value) { return; }
+                    var other = cid && o.getAttribute('data-class-id') !== cid;
+                    o.hidden = !!other; o.disabled = !!other;
+                });
+                if (studentSel.selectedOptions.length && studentSel.selectedOptions[0].disabled) { studentSel.value = ''; }
+            }
+            var text = '';
+            if (w === 'all') {
+                var total = teacherSel ? allTeachers : allStudents;
+                text = 'Prints ' + plural(total, noun) + ' for ' + (teacherSel ? 'all active staff.' : 'all active students.');
+            } else if (w === 'class') {
+                text = cid ? 'Prints ' + plural(inClass(cid), noun) + ' for the whole class.' : 'Choose a class to see how many ' + noun + 's will print.';
+            } else {
+                var chosen = (studentSel && studentSel.value) || (teacherSel && teacherSel.value);
+                text = chosen ? 'Prints 1 ' + noun + '.' : 'Choose ' + (teacherSel ? 'a teacher' : 'a student') + ' above.';
+            }
+            if (result) { result.textContent = text; }
+        }
+        form.querySelectorAll('input[name="_who"]').forEach(function (r) { r.addEventListener('change', refresh); });
+        [classSel, studentSel, teacherSel].forEach(function (el) { if (el) { el.addEventListener('change', refresh); } });
 
         form.addEventListener('submit', function (event) {
-            if (classSel.value && !whole.checked && !studentSel.value) {
-                event.preventDefault();
-                window.SchoolUI.toast('Tick "Whole Class" or choose a student from this class.', 'warning');
-            }
+            var w = who();
+            if (w === 'class' && classSel && !classSel.value) { event.preventDefault(); toast('Please choose a class.'); return; }
+            if (w === 'one' && studentSel && !studentSel.value) { event.preventDefault(); toast('Please choose a student.'); return; }
+            if (w === 'one' && teacherSel && !teacherSel.value) { event.preventDefault(); toast('Please choose a teacher.'); return; }
         });
-
-        refresh(false);
+        form.addEventListener('submit', function (event) {
+            if (event.defaultPrevented) { return; }
+            // the "Who is it for?" buttons are only for this page: keep them out of the download link
+            var radios = form.querySelectorAll('input[name="_who"]');
+            radios.forEach(function (r) { r.disabled = true; });
+            setTimeout(function () { radios.forEach(function (r) { r.disabled = false; }); }, 100);
+        });
+        refresh();
     });
 });
 </script>

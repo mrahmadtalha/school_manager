@@ -30,6 +30,24 @@ from app.models import (  # noqa: E402
     AdminUser, ClassModel, SectionModel, StudentModel, SubjectModel,
 )
 
+# Test databases are throw-away temp files: skipping fsync makes the many
+# create_all()/drop_all() calls (one per test) several times faster. Production
+# connections are not affected - this listener only exists in the test process.
+from sqlalchemy import event  # noqa: E402
+from sqlalchemy.engine import Engine  # noqa: E402
+
+
+@event.listens_for(Engine, 'connect')
+def _fast_sqlite_for_tests(dbapi_connection, _record):
+    try:
+        cursor = dbapi_connection.cursor()
+        cursor.execute('PRAGMA synchronous=OFF')
+        cursor.execute('PRAGMA journal_mode=MEMORY')
+        cursor.close()
+    except Exception:  # non-SQLite engines
+        pass
+
+
 ADMIN_PASSWORD = 'adminpass123'
 TEACHER_PASSWORD = 'teacherpass123'
 PARENT_PASSWORD = 'parentpass123'
@@ -167,3 +185,15 @@ def fresh_app_factory():
         return application
 
     yield _make
+
+
+_SLOW_FILES = {'test_assistant.py', 'test_admission_fee.py', 'test_visual_smoke.py',
+               'test_financial_comparison.py'}
+
+
+def pytest_collection_modifyitems(items):
+    """Tag the heaviest files ``slow`` so a quick run is ``pytest -m "not slow"``."""
+    slow = pytest.mark.slow
+    for item in items:
+        if pathlib.Path(str(item.fspath)).name in _SLOW_FILES:
+            item.add_marker(slow)

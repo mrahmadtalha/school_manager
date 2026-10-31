@@ -2,6 +2,7 @@
 import csv
 import io
 from datetime import date
+from app.timeutil import utcnow
 
 from app.database import db
 from app.models import (Expense, ExpenseCategory, DEFAULT_EXPENSE_CATEGORIES,
@@ -39,7 +40,7 @@ def void_expense(expense, reason, actor_name=None):
         return expense
     expense.is_void = True
     expense.void_reason = (reason or 'No reason recorded')[:255]
-    expense.voided_at = datetime.utcnow()
+    expense.voided_at = utcnow()
     expense.voided_by_name = actor_name or 'system'
     return expense
 

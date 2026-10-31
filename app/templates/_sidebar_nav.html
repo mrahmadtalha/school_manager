@@ -1,0 +1,186 @@
+{#- Sidebar menu (included by base.html).
+
+   * Links are grouped under small headings (Academics, Attendance, Assessment ...).
+     A heading is printed only when at least one link under it is allowed for the
+     person's role / license, so there are never empty headings.
+   * The finance links are written once (`finance_links`) and shared by the
+     administrator and the accountant.
+   * `cur` holds the ONE menu entry that is open right now, so exactly one link is
+     highlighted (before, some links never lit up and some lit up together).
+   * Every link keeps `<span class="nav-label">...</span>` - the tests, the Urdu
+     switch and the icon-only (collapsed) tooltips all rely on that markup. -#}
+
+{% macro nav_item(href, icon, label, kind, active=False) -%}
+<li class="nav-item in-group mb-1">
+    <a href="{{ href }}" class="nav-link text-white{% if active %} active{% endif %}"{% if active %} aria-current="page"{% endif %} aria-label="{{ label }}">
+        <span class="nav-icon nav-icon-{{ kind }}"><i class="{{ icon }}"></i></span> <span class="nav-label">{{ label }}</span>
+    </a>
+</li>
+{%- endmacro %}
+
+{% macro nav_section(title, key) -%}
+<li class="nav-item nav-section" role="presentation">
+    <button type="button" class="nav-section-title" data-group="{{ key }}" aria-expanded="true">
+        <span class="nav-section-text">{{ title }}</span><i class="fas fa-chevron-down nav-section-chevron" aria-hidden="true"></i>
+    </button>
+</li>
+{%- endmacro %}
+
+{% macro finance_links(cur) -%}
+{{ nav_item(url_for('main.fees_list'), 'fas fa-wallet', 'Fees Management', 'finance', cur == 'fees') }}
+{% if has_feature('expenses') %}{{ nav_item(url_for('main.expenses_list'), 'fas fa-file-invoice-dollar', 'Expenses', 'finance', cur == 'expenses') }}{% endif %}
+{% if has_feature('payroll') %}{{ nav_item(url_for('main.payroll_page'), 'fas fa-money-check-dollar', 'Payroll', 'finance', cur == 'payroll') }}{% endif %}
+{% if has_feature('financial_reports') %}{{ nav_item(url_for('main.financials_summary'), 'fas fa-chart-line', 'Financial Overview', 'finance', cur == 'overview') }}{% endif %}
+{% if has_feature('inventory_other_income') %}{{ nav_item(url_for('main.other_income_page'), 'fas fa-hand-holding-dollar', 'Other Income', 'finance', cur == 'other_income') }}{% endif %}
+{% if has_feature('admission_fees') %}{{ nav_item(url_for('main.admission_register'), 'fas fa-door-open', 'Admission Fees', 'finance', cur == 'admission') }}{% endif %}
+{% if config.get('FEATURE_INVENTORY_SALES') and has_feature('inventory_other_income') %}{{ nav_item(url_for('main.inventory_page'), 'fas fa-boxes-stacked', 'Inventory & Sales', 'finance', cur == 'inventory') }}{% endif %}
+{% if has_feature('financial_reports') %}{{ nav_item(url_for('main.financials_insights'), 'fas fa-lightbulb', 'Financial Insights', 'finance', cur == 'insights') }}{% endif %}
+{%- endmacro %}
+
+{% set role = current_user.role if current_user and current_user.is_authenticated else 'anonymous' %}
+{% set ep = request.endpoint or '' %}
+
+{#- Quick find: type a few letters to narrow the menu, Enter opens the first match,
+    Esc clears.  Ctrl+K (or Cmd+K) jumps to the box.  Hidden for roles with one link. -#}
+{% if role not in ('parent', 'owner', 'anonymous') %}
+<div class="sidebar-find" role="search">
+    <i class="fas fa-search sidebar-find-icon" aria-hidden="true"></i>
+    <input type="search" id="sidebarFind" class="sidebar-find-input" placeholder="Find a page"
+           aria-label="Find a page in the menu" autocomplete="off" spellcheck="false">
+    <kbd class="sidebar-find-key d-none d-lg-inline" aria-hidden="true">Ctrl K</kbd>
+</div>
+<p class="sidebar-find-empty" id="sidebarFindEmpty" hidden>No page found</p>
+{% endif %}
+
+
+{#- Which single menu entry is open?  The first rule that matches wins, so the
+    money pages (which have words like "student" or "summary" in their names)
+    are decided before the school pages. -#}
+{% set cur = '' %}
+{% if ep == 'main.portal' %}{% set cur = 'portal' %}
+{% elif 'executive' in ep %}{% set cur = 'executive' %}
+{% elif ep == 'main.dashboard' %}{% set cur = 'dashboard' %}
+{% elif 'insights' in ep %}{% set cur = 'insights' %}
+{% elif 'financials' in ep %}{% set cur = 'overview' %}
+{% elif 'other_income' in ep %}{% set cur = 'other_income' %}
+{% elif 'admission' in ep %}{% set cur = 'admission' %}
+{% elif 'inventory' in ep %}{% set cur = 'inventory' %}
+{% elif 'expense' in ep %}{% set cur = 'expenses' %}
+{% elif 'payroll' in ep %}{% set cur = 'payroll' %}
+{% elif 'fee' in ep %}{% set cur = 'fees' %}
+{% elif 'reports_hub' in ep %}{% set cur = 'reports' %}
+{% elif 'results' in ep %}{% set cur = 'results' %}
+{% elif 'attendance' in ep and 'report' not in ep %}{% set cur = ('attendance_summary' if 'summary' in ep else 'attendance') %}
+{% elif 'student' in ep %}{% set cur = 'students' %}
+{% elif 'teacher' in ep %}{% set cur = 'teachers' %}
+{% elif ('class' in ep or 'section' in ep or 'subject' in ep or 'timetable' in ep) and 'report' not in ep %}{% set cur = 'classes' %}
+{% elif 'test' in ep and 'report' not in ep %}{% set cur = 'tests' %}
+{% elif 'documents' in ep %}{% set cur = 'documents' %}
+{% elif ep == 'main.automation_panel' %}{% set cur = 'whatsapp' %}
+{% elif 'audit' in ep %}{% set cur = 'audit' %}
+{% elif ep == 'main.license_page' %}{% set cur = 'license' %}
+{% elif 'settings' in ep %}{% set cur = 'settings' %}
+{% elif 'user' in ep %}{% set cur = 'users' %}
+{% elif ep == 'auth.change_password' %}{% set cur = 'password' %}
+{% endif %}
+
+<ul class="nav flex-column mt-3">
+    {% if role == 'parent' %}
+    {% if has_feature('parent_portal') %}{{ nav_item(url_for('main.portal'), 'fas fa-child', 'My Child', 'overview', cur == 'portal') }}{% endif %}
+
+    {% elif role == 'owner' %}
+    {% if has_feature('executive') %}{{ nav_item(url_for('main.executive_dashboard'), 'fas fa-crown', 'Executive Dashboard', 'overview', cur == 'executive') }}{% endif %}
+
+    {% elif role == 'accountant' %}
+    {{ nav_section('Finance', 'finance') }}
+    {{ finance_links(cur) }}
+    {{ nav_item(url_for('main.reports_hub', tab='finance'), 'fas fa-chart-bar', 'Finance & Exports', 'assess', cur == 'reports') }}
+
+    {% else %}
+    {{ nav_item(url_for('main.dashboard'), 'fas fa-tachometer-alt', 'Dashboard', 'overview', cur == 'dashboard') }}
+
+    {{ nav_section('Academics', 'academics') }}
+    {{ nav_item(url_for('main.students_list'), 'fas fa-user-graduate', 'Students', 'academics', cur == 'students') }}
+    {{ nav_item(url_for('main.teachers_list'), 'fas fa-chalkboard-teacher', 'Teachers', 'academics', cur == 'teachers') }}
+    {{ nav_item(url_for('main.classes_list'), 'fas fa-book', 'Classes & Subjects', 'academics', cur == 'classes') }}
+
+    {% if has_feature('attendance') %}
+    {{ nav_section('Attendance', 'attendance') }}
+    {{ nav_item(url_for('main.student_attendance'), 'fas fa-clipboard-check', 'Daily Attendance', 'attendance', cur == 'attendance') }}
+    {{ nav_item(url_for('main.attendance_summary'), 'fas fa-calendar-alt', 'Attendance Summary', 'attendance', cur == 'attendance_summary') }}
+    {% endif %}
+
+    {{ nav_section('Assessment', 'assessment') }}
+    {% if has_feature('exams') %}
+    {{ nav_item(url_for('main.tests_list'), 'fas fa-file-alt', 'Testing & Marks Hub', 'assess', cur == 'tests') }}
+    {{ nav_item(url_for('main.class_results_matrix'), 'fas fa-chart-line', 'Class Results & Reports', 'assess', cur == 'results') }}
+    {% endif %}
+    {{ nav_item(url_for('main.reports_hub'), 'fas fa-chart-bar', 'Analytics & Exports', 'assess', cur == 'reports') }}
+
+    {% if has_feature('documents') or (role == 'admin' and has_feature('whatsapp')) %}
+    {{ nav_section('Documents & Messages', 'documents') }}
+    {% if has_feature('documents') %}{{ nav_item(url_for('main.documents_hub'), 'fas fa-id-card', 'ID Cards & Certificates', 'docs', cur == 'documents') }}{% endif %}
+    {# The School Assistant is a floating button in the bottom corner now (_assistant_widget.html). #}
+    {% if role == 'admin' and has_feature('whatsapp') %}{{ nav_item(url_for('main.automation_panel'), 'fab fa-whatsapp', 'WhatsApp Automation', 'automation', cur == 'whatsapp') }}{% endif %}
+    {% endif %}
+
+    {% if role == 'admin' %}
+    {{ nav_section('Finance', 'finance') }}
+    {{ finance_links(cur) }}
+    {% endif %}
+    {% endif %}
+
+    <!-- Language: English / Urdu -->
+    {% if has_feature('language_switch') %}
+    <li class="nav-item mt-3">
+        <a class="nav-link" href="{{ url_for('main.set_language', code=('en' if ui_lang == 'ur' else 'ur')) }}"
+           title="{{ 'English' if ui_lang == 'ur' else 'اردو' }}">
+            <span class="nav-icon"><i class="fas fa-language"></i></span>
+            <span class="nav-label">{{ 'English' if ui_lang == 'ur' else 'اردو' }}</span>
+        </a>
+    </li>
+    {% endif %}
+
+    <!-- Bottom system section -->
+    <li class="nav-item mt-3"><div class="nav-divider sidebar-footer-divider"></div></li>
+    <li class="nav-item">
+        <div class="sidebar-profile" title="Signed in as {{ current_user.username if current_user and current_user.is_authenticated else '' }}">
+            <span class="nav-icon nav-icon-system"><i class="fas fa-user-shield"></i></span>
+            <div class="sidebar-profile-meta">
+                <span class="username-text">{{ current_user.username if current_user and current_user.is_authenticated else '' }}</span>
+                {% if current_user and current_user.is_authenticated %}
+                <span class="badge sidebar-role-badge">{{ current_user.role_label }}</span>
+                {% endif %}
+            </div>
+        </div>
+    </li>
+    {# Users, settings and the License page must always be reachable by the administrator,
+       whatever features the license switches on or off. #}
+    {% if role == 'admin' %}
+    {{ nav_section('System', 'system') }}
+    {% if has_feature('audit_log_view') %}{{ nav_item(url_for('main.audit_log'), 'fas fa-clipboard-list', 'Audit Log', 'system', cur == 'audit') }}{% endif %}
+    {{ nav_item(url_for('main.users_list'), 'fas fa-users-cog', 'Users & Roles', 'system', cur == 'users') }}
+    {{ nav_item(url_for('main.school_settings'), 'fas fa-cog', 'School Settings', 'system', cur == 'settings') }}
+    {{ nav_item(url_for('main.license_page'), 'fas fa-id-card', 'License', 'system', cur == 'license') }}
+    {% endif %}
+
+    <li class="nav-item mb-1">
+        <a href="#" class="nav-link text-white{% if cur == 'password' %} active{% endif %}" data-bs-toggle="modal" data-bs-target="#changePwModal" aria-label="Change Password">
+            <span class="nav-icon nav-icon-system"><i class="fas fa-key"></i></span> <span class="nav-label">Change Password</span>
+        </a>
+    </li>
+    <li class="nav-item mb-2 mt-2">
+        <a href="{{ url_for('auth.logout') }}" class="nav-link text-danger sidebar-logout" aria-label="Logout">
+            <span class="nav-icon nav-icon-logout"><i class="fas fa-sign-out-alt"></i></span> <span class="nav-label">Logout</span>
+        </a>
+    </li>
+    {% if current_user.is_authenticated and current_user.role == 'admin' %}
+    <li class="nav-item mb-2">
+        <button type="button" class="btn btn-link nav-link text-danger ps-2 text-start w-100"
+                data-bs-toggle="modal" data-bs-target="#exitSoftwareModal"
+                title="Close School Manager completely" aria-label="Exit Software">
+            <span class="nav-icon nav-icon-logout"><i class="fas fa-power-off"></i></span> <span class="nav-label">Exit Software</span>
+        </button>
+    </li>
+    {% endif %}
+</ul>

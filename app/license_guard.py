@@ -41,6 +41,7 @@ ALWAYS_OPEN_ENDPOINTS = {
     'auth.shutdown',        # closing the software must always stay possible
     'auth.recover',         # forgotten-password recovery must work even when locked
     'auth.recover_reset',
+    'main.brand_logo',      # the school logo on the login page must always load
 }
 
 # Non-read requests that are still allowed while the system is read-only.

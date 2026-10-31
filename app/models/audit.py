@@ -7,6 +7,7 @@ as login, payment, settings change or export.
 
 import json
 from datetime import datetime
+from app.timeutil import utcnow
 
 from app.database import db
 
@@ -40,7 +41,7 @@ class AuditLog(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     user_id = db.Column(db.Integer, nullable=True)
     username = db.Column(db.String(80), nullable=False, default='system')
     role = db.Column(db.String(20), nullable=False, default='system')

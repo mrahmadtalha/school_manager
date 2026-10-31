@@ -15,6 +15,7 @@
   admission-fee balance.
 """
 from datetime import date
+from app.timeutil import utcnow
 
 from sqlalchemy import Integer, cast, func
 
@@ -255,7 +256,7 @@ def void_issue(row, reason, actor=None):
     row.is_void = True
     row.void_reason = reason[:255]
     from datetime import datetime
-    row.voided_at = datetime.utcnow()
+    row.voided_at = utcnow()
     row.voided_by_name = getattr(actor, 'username', None) or 'system'
     log_action('void', entity_type='IssuedDocument', entity_id=row.id,
                summary='%s voided: %s' % (title_for(row.doc_kind, row.cert_type),

@@ -21,6 +21,7 @@ remaining payments re-allocate.
 """
 
 from datetime import date, datetime
+from app.timeutil import utcnow
 
 from flask import current_app
 from sqlalchemy import func
@@ -470,7 +471,7 @@ def void_transaction(txn, reason=None, actor_name=None):
         return set()
     txn.is_void = True
     txn.void_reason = (reason or 'No reason recorded')[:255]
-    txn.voided_at = datetime.utcnow()
+    txn.voided_at = utcnow()
     txn.voided_by_name = actor_name or (current_actor()[1] or 'system')
     if reason:
         txn.note = (txn.note or '') + f' | voided: {reason}'
@@ -491,7 +492,7 @@ def void_transaction(txn, reason=None, actor_name=None):
                                                      is_void=False).all():
             refund.is_void = True
             refund.void_reason = 'Original payment voided'
-            refund.voided_at = datetime.utcnow()
+            refund.voided_at = utcnow()
             refund.voided_by_name = txn.voided_by_name
             affected.add(refund.month_year)
     elif txn.txn_type == TXN_REFUND:

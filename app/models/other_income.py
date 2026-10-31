@@ -5,6 +5,7 @@ integer paisa like every other financial table.  Records are append-only:
 corrections void a row (mandatory reason); voided rows appear in no total.
 """
 from datetime import datetime
+from app.timeutil import utcnow
 
 from app.database import db
 from app.models.fees import to_paisa, to_rupees
@@ -50,11 +51,11 @@ class OtherIncome(db.Model):
 
     created_by_id = db.Column(db.Integer, nullable=True)
     created_by_name = db.Column(db.String(80), nullable=True, default='system')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     updated_by_id = db.Column(db.Integer, nullable=True)
     updated_by_name = db.Column(db.String(80), nullable=True)
     updated_at = db.Column(db.DateTime, nullable=True,
-                           onupdate=datetime.utcnow)
+                           onupdate=utcnow)
 
     category = db.relationship('OtherIncomeCategory', backref='incomes')
     student = db.relationship('StudentModel', lazy=True)

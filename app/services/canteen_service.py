@@ -17,6 +17,7 @@ box on the Other Income page is closed once a mode is chosen, so the same money
 cannot be typed in two places.
 """
 from datetime import date, datetime
+from app.timeutil import utcnow
 
 from app.database import db
 from app.models import (CanteenEntry, CanteenPayment, ClassModel, Expense, ExpenseCategory,
@@ -315,7 +316,7 @@ def void_payment(payment, reason, actor=None):
     from app.services.expense_service import void_expense
     payment.is_void = True
     payment.void_reason = reason[:255]
-    payment.voided_at = datetime.utcnow()
+    payment.voided_at = utcnow()
     payment.voided_by_name = _actor_name(actor)
     if payment.expense is not None:
         void_expense(payment.expense, reason, _actor_name(actor))

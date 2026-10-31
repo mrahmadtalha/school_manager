@@ -10,6 +10,7 @@ category, so Cash Out and the expense breakdown never double-count and never
 miss salaries.
 """
 from datetime import datetime
+from app.timeutil import utcnow
 
 from app.database import db
 from app.models.fees import to_paisa, to_rupees
@@ -53,9 +54,9 @@ class StaffPayroll(db.Model):
     late_days = db.Column(db.Integer, nullable=True)
     leave_days = db.Column(db.Integer, nullable=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
-                           onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow,
+                           onupdate=utcnow, nullable=False)
 
     teacher = db.relationship('TeacherModel',
                               backref=db.backref('payroll_records', lazy='dynamic'))
@@ -137,7 +138,7 @@ class SalaryPayment(db.Model):
     voided_at = db.Column(db.DateTime, nullable=True)
     voided_by_name = db.Column(db.String(80), nullable=True)
     expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id'), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     created_by_id = db.Column(db.Integer, nullable=True)
     created_by_name = db.Column(db.String(80), nullable=True, default='system')
 

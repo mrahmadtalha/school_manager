@@ -136,42 +136,59 @@ def period_metrics(month_year):
 
 # Wording rules (owner requirement): Net Position is never called "profit",
 # the Estimated Net Operating Position is never called "cash", and no line
-# claims AI or prediction — these are comparisons of recorded data only.
+# claims AI or prediction - these are comparisons of recorded data only.
+#
+# Plain-language rule (non-technical owners): short sentences, everyday words
+# ("money received" / "paid out", "went up" / "went down"), one fact per line.
 
-def insight_lines(month_year):
-    """Generated text from real data — one fact per line, or a silence guard."""
-    m = period_metrics(month_year)
+def _money(value):
+    return '{:,.2f}'.format(value)
+
+
+def _pct_text(value):
+    return '{:,.1f}'.format(value)
+
+
+def insight_lines(month_year, metrics=None):
+    """Generated text from real data - one fact per line, or a silence guard."""
+    m = metrics if metrics is not None else period_metrics(month_year)
     if not m['enough_history']:
         return {'enough_history': False, 'lines': ['Not enough history yet.']}
 
-    money = lambda v: '{:,.2f}'.format(v)
+    money = _money
     lines = []
 
     fee = m['fees']
     if fee['rate'] is not None and fee['prev_rate'] is not None:
         points = round(fee['rate'] - fee['prev_rate'], 1)
-        word = 'improved' if points >= 0 else 'dropped'
-        lines.append('Fee collection rate %s by %s percentage points '
-                     '(this month %s%%, last month %s%%).'
-                     % (word, '{:,.1f}'.format(abs(points)),
-                        '{:,.1f}'.format(fee['rate']),
-                        '{:,.1f}'.format(fee['prev_rate'])))
+        if points > 0:
+            lines.append('Fee collection is better than last month: '
+                         '%s%% paid now, %s%% last month.'
+                         % (_pct_text(fee['rate']), _pct_text(fee['prev_rate'])))
+        elif points < 0:
+            lines.append('Fee collection is weaker than last month: '
+                         '%s%% paid now, %s%% last month.'
+                         % (_pct_text(fee['rate']), _pct_text(fee['prev_rate'])))
+        else:
+            lines.append('Fee collection is the same as last month: %s%% paid.'
+                         % _pct_text(fee['rate']))
 
     if m['arrears']['recovered'] > 0:
-        lines.append('Rs %s of older arrears was recovered this month.'
+        lines.append('Rs %s of old unpaid fees was paid this month.'
                      % money(m['arrears']['recovered']))
 
     cash = m['cash']
     if cash['cash_in_pct'] is not None:
-        word = 'higher' if cash['cash_in'] >= cash['prev_cash_in'] else 'lower'
-        lines.append('Cash In was %s%% %s than last month (Rs %s vs Rs %s).'
-                     % ('{:,.1f}'.format(abs(cash['cash_in_pct'])), word,
+        word = 'more' if cash['cash_in'] >= cash['prev_cash_in'] else 'less'
+        lines.append('You received %s%% %s money than last month '
+                     '(Rs %s now, Rs %s last month).'
+                     % (_pct_text(abs(cash['cash_in_pct'])), word,
                         money(cash['cash_in']), money(cash['prev_cash_in'])))
     if cash['net_change'] >= 0:
-        lines.append('Net Position improved by Rs %s (cash basis).'
+        lines.append('Net Position is Rs %s better than last month.'
                      % money(cash['net_change']))
     else:
-        lines.append('Net Position fell by Rs %s (cash basis).'
+        lines.append('Net Position is Rs %s lower than last month.'
                      % money(-cash['net_change']))
 
     biggest = None
@@ -180,58 +197,65 @@ def insight_lines(month_year):
                 (biggest is None or trend['pct'] > biggest['pct']):
             biggest = trend
     if biggest:
-        lines.append('%s expenses rose %s%% vs last month (+Rs %s).'
-                     % (biggest['name'], '{:,.1f}'.format(biggest['pct']),
+        lines.append('%s spending went up %s%% since last month (Rs %s more).'
+                     % (biggest['name'], _pct_text(biggest['pct']),
                         money(biggest['change'])))
 
     if m['sales'] is not None:
         sales = m['sales']
         if sales['revenue'] > 0 or sales['prev_revenue'] > 0:
-            lines.append('Inventory sales were Rs %s with cost of goods sold '
-                         'Rs %s (gross profit Rs %s).'
+            lines.append('Shop sales were Rs %s and the items sold cost Rs %s '
+                         '(profit on them: Rs %s).'
                          % (money(sales['revenue']),
                             money(sales['cogs'] - sales['package_cogs']),
                             money(sales['gross_profit'])))
         if sales.get('package_cogs'):
-            lines.append('Books and uniform worth Rs %s (at cost) were given '
-                         'inside admission packages - their price is already '
-                         'part of the admission fees.'
-                         % money(sales['package_cogs']))
+            lines.append('Books and uniform worth Rs %s were given with '
+                         'admissions. Their price is already inside the '
+                         'admission fee.' % money(sales['package_cogs']))
         if sales['purchases'] > 0:
-            lines.append('Stock purchases of Rs %s are part of Cash Out but '
-                         'not expenses; their cost enters Cost of Goods Sold '
-                         'when the items sell.' % money(sales['purchases']))
-        lines.append('Estimated Net Operating Position was Rs %s '
-                     '(Revenue minus Salaries, Operating Expenses and Cost of '
-                     'Goods Sold — an operating estimate, not money movement).'
+            lines.append('Rs %s was spent on buying stock. It is money paid '
+                         'out, but not an expense. The cost is counted when '
+                         'the items are sold.' % money(sales['purchases']))
+        lines.append('Estimated Net Operating Position was Rs %s (what the '
+                     'school earned, minus salaries, running costs and the '
+                     'cost of items sold). It is an estimate, not money moved.'
                      % money(m['operating_position']))
 
     left_total = sum(entry['monthly'] for entry in m['left_impact'].values())
     if left_total > 0:
-        lines.append('Students who left reduce estimated monthly revenue by '
-                     'Rs %s (estimate).' % money(left_total))
+        lines.append('Students who left mean about Rs %s less in monthly '
+                     'fees (estimate).' % money(left_total))
     return {'enough_history': True, 'lines': lines}
 
 
-def recommendations(month_year):
-    """Actionable, rule-based follow-ups; empty when there is nothing to act on."""
-    m = period_metrics(month_year)
-    money = lambda v: '{:,.2f}'.format(v)
+def recommendation_items(month_year, metrics=None):
+    """Things to do, each with the page that helps (``endpoint`` / ``params``).
+
+    Rule-based only; empty when there is nothing to act on.  The page turns
+    ``endpoint`` into a button with ``url_for``.
+    """
+    m = metrics if metrics is not None else period_metrics(month_year)
+    money = _money
     items = []
 
+    def add(text, endpoint, link_text, **params):
+        items.append({'text': text, 'endpoint': endpoint,
+                      'link_text': link_text, 'params': params})
+
     if m['arrears']['recoverable'] > 0:
-        items.append('Recover older arrears: Rs %s from earlier months is '
-                     'still unpaid — see the dues list.'
-                     % money(m['arrears']['recoverable']))
+        add('Collect old dues: Rs %s from earlier months is still unpaid.'
+            % money(m['arrears']['recoverable']),
+            'main.financials_student_outstanding', 'See who owes')
     fee = m['fees']
     if fee['expected'] > 0 and fee['rate'] is not None and fee['rate'] < 80:
-        items.append('This month\'s fee collection is at %s%% — follow up '
-                     'with pending payers.'
-                     % '{:,.1f}'.format(fee['rate']))
+        add('Only %s%% of this month\'s fees are paid. Call the parents who '
+            'have not paid yet.' % _pct_text(fee['rate']),
+            'main.fee_reminders', 'Send reminders')
     if m['arrears']['total_outstanding'] > 0:
-        items.append('Rs %s in fees is outstanding in total — send reminders '
-                     'to the largest dues first.'
-                     % money(m['arrears']['total_outstanding']))
+        add('In total, Rs %s of fees is still unpaid. Start with the biggest '
+            'dues.' % money(m['arrears']['total_outstanding']),
+            'main.fee_reminders', 'Send reminders')
 
     from flask import current_app
     rise_pct_threshold = current_app.config.get('ALERT_EXPENSE_RISE_PCT', 20)
@@ -239,24 +263,31 @@ def recommendations(month_year):
     for trend in m['expense_trends']:
         if (trend['pct'] or 0) >= rise_pct_threshold and \
                 trend['change'] >= min_change:
-            items.append('%s expenses rose %s%% vs last month — check for '
-                         'unusual usage or one-off purchases.'
-                         % (trend['name'], '{:,.1f}'.format(trend['pct'])))
+            add('%s spending went up %s%% since last month. Check for waste '
+                'or one-time purchases.'
+                % (trend['name'], _pct_text(trend['pct'])),
+                'main.expenses_list', 'Open expenses')
 
     if m['sales'] is not None and m['sales']['low_stock']:
+        low = m['sales']['low_stock']
         names = ', '.join('%s (%d left)' % (p.name, p.stock_qty)
-                          for p in m['sales']['low_stock'][:3])
-        more = (' and %d more' % (len(m['sales']['low_stock']) - 3)
-                if len(m['sales']['low_stock']) > 3 else '')
-        items.append('Restock soon: %s%s %s below minimum stock.'
-                     % (names, more,
-                        'is' if len(m['sales']['low_stock']) == 1 else 'are'))
+                          for p in low[:3])
+        more = ' and %d more' % (len(low) - 3) if len(low) > 3 else ''
+        add('Order more stock soon: %s%s %s running low.'
+            % (names, more, 'is' if len(low) == 1 else 'are'),
+            'main.inventory_page', 'Open inventory')
 
     if m['cash']['net'] < 0:
-        line = 'Net Position is negative this month.'
+        text = ('More money went out than came in this month '
+                '(Net Position is below zero).')
         if m['sales'] is not None and m['purchases'] > 0:
-            line = ('Net Position is negative this month. Stock purchases of '
-                    'Rs %s are held as inventory, not lost.'
-                    % money(m['purchases']))
-        items.append(line)
+            text += (' Rs %s of it was spent on stock, which you still '
+                     'have. It is not lost.' % money(m['purchases']))
+        add(text, 'main.financials_summary', 'Open Financial Overview',
+            month=m['month'])
     return items
+
+
+def recommendations(month_year, metrics=None):
+    """The same follow-ups as plain sentences (kept for exports and tests)."""
+    return [item['text'] for item in recommendation_items(month_year, metrics)]

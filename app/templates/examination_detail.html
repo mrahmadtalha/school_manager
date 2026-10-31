@@ -214,7 +214,7 @@
                     <p class="small mb-3">Publishing marks <b>{{ exam.name }}</b> as official and sets the announcement date (today if not set).{% if expected and filled < expected %}<br><span class="text-danger">Warning: {{ expected - filled }} mark(s) are still missing — the published result will be provisional.</span>{% endif %}</p>
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" value="1" name="queue_whatsapp" id="queueWa">
-                        <label class="form-check-label small" for="queueWa">Also queue WhatsApp result messages for parents (they follow the usual approval queue on the Automation page).</label>
+                        <label class="form-check-label small" for="queueWa">Also queue WhatsApp result messages for parents (sent according to your WhatsApp mode on the Automation page: approval, auto or delayed one-by-one; the "Results" switch must be on).</label>
                     </div>
                 </div>
                 <div class="modal-footer">

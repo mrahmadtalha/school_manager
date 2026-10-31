@@ -7,6 +7,7 @@ recalculated on every purchase.  Money is stored as integer paisa, like the
 rest of the financial modules.
 """
 from datetime import datetime
+from app.timeutil import utcnow
 
 from app.database import db
 
@@ -29,7 +30,7 @@ class Product(db.Model):
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     # Weighted-average unit cost (paisa), recalculated on every purchase.
     cost_paisa = db.Column(db.Integer, nullable=False, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     purchases = db.relationship('Purchase', backref='product', lazy=True)
     sales = db.relationship('Sale', backref='product', lazy=True)
@@ -68,7 +69,7 @@ class Purchase(db.Model):
     void_reason = db.Column(db.String(255), nullable=True)
     voided_at = db.Column(db.DateTime, nullable=True)
     voided_by_name = db.Column(db.String(80), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     created_by_name = db.Column(db.String(80), nullable=True, default='system')
 
     payments = db.relationship('SupplierPayment', backref='purchase', lazy=True,
@@ -115,7 +116,7 @@ class SupplierPayment(db.Model):
     void_reason = db.Column(db.String(255), nullable=True)
     voided_at = db.Column(db.DateTime, nullable=True)
     voided_by_name = db.Column(db.String(80), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     created_by_name = db.Column(db.String(80), nullable=True, default='system')
 
 
@@ -154,7 +155,7 @@ class Sale(db.Model):
     void_reason = db.Column(db.String(255), nullable=True)
     voided_at = db.Column(db.DateTime, nullable=True)
     voided_by_name = db.Column(db.String(80), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     created_by_name = db.Column(db.String(80), nullable=True, default='system')
 
     student = db.relationship('StudentModel', lazy=True)
@@ -187,7 +188,7 @@ class StudentIssue(db.Model):
     void_reason = db.Column(db.String(255), nullable=True)
     voided_at = db.Column(db.DateTime, nullable=True)
     voided_by_name = db.Column(db.String(80), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     created_by_name = db.Column(db.String(80), nullable=True, default='system')
 
     student = db.relationship('StudentModel', lazy=True)
@@ -222,7 +223,7 @@ class ProductSet(db.Model):
     kind = db.Column(db.String(20), nullable=False, default='other')
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     items = db.relationship('ProductSetItem', backref='set', lazy=True,
                             cascade='all, delete-orphan',
@@ -266,7 +267,7 @@ class CanteenEntry(db.Model):
                           nullable=True, index=True)
     expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id'),
                            nullable=True, index=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     created_by_name = db.Column(db.String(80), nullable=True, default='system')
 
     # Supplier credit (udhaar) on a purchase total.  ``bill_paisa`` is filled ONLY
@@ -354,7 +355,7 @@ class CanteenPayment(db.Model):
     void_reason = db.Column(db.String(255), nullable=True)
     voided_at = db.Column(db.DateTime, nullable=True)
     voided_by_name = db.Column(db.String(80), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     created_by_name = db.Column(db.String(80), nullable=True, default='system')
 
     entry = db.relationship('CanteenEntry', lazy=True,

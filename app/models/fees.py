@@ -7,6 +7,7 @@ working unchanged while the database never stores a float.
 """
 
 from datetime import datetime
+from app.timeutil import utcnow
 
 from app.database import db
 
@@ -133,7 +134,7 @@ class FeeTransaction(db.Model):
     # re-allocation reproduces exactly what they settled before the rule change.
     apply_month = db.Column(db.String(20), nullable=True)
     related_txn_id = db.Column(db.Integer, db.ForeignKey('fee_transactions.id'), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     created_by_id = db.Column(db.Integer, nullable=True)
     created_by_name = db.Column(db.String(80), nullable=True, default='system')
 
@@ -188,7 +189,7 @@ class FeePaymentAllocation(db.Model):
                               nullable=False)
     amount_paisa = db.Column(db.Integer, nullable=False, default=0)
     is_void = db.Column(db.Boolean, nullable=False, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     created_by_name = db.Column(db.String(80), nullable=True, default='system')
 
     payment_txn = db.relationship('FeeTransaction', foreign_keys=[payment_txn_id],

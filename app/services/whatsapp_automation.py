@@ -75,6 +75,7 @@ def _get_custom_template(trigger: str) -> str | None:
         'attendance_absent': 'template_absent',
         'attendance_late': 'template_late',
         'result': 'template_result',
+        'test_result': 'template_test_result',
     }
     field = field_map.get(trigger)
     if not field:
@@ -165,6 +166,7 @@ def queue_automation_message(student: Any, trigger: str, context: Dict[str, Any]
         'attendance_late': getattr(settings, 'notify_late', True),
         'attendance_correction': getattr(settings, 'notify_absent', True),
         'result': getattr(settings, 'notify_results', False),
+        'test_result': getattr(settings, 'notify_results', False),
     }
     if not event_settings.get(trigger, True):
         return None

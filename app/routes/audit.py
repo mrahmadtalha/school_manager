@@ -2,7 +2,7 @@
 
 import csv
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Response, render_template, request
 from sqlalchemy import or_
@@ -32,6 +32,62 @@ ENTITY_LABELS = {
 }
 
 
+# Plain-language wording for each action: (label, badge colour, icon).
+ACTION_INFO = {
+    'create': ('Added', 'ok', 'fa-plus'),
+    'update': ('Changed', 'warn', 'fa-pen'),
+    'delete': ('Deleted', 'bad', 'fa-trash'),
+    'login': ('Signed in', 'ok', 'fa-right-to-bracket'),
+    'login_failed': ('Failed sign-in', 'bad', 'fa-triangle-exclamation'),
+    'logout': ('Signed out', 'muted', 'fa-right-from-bracket'),
+    'charge': ('Fee charged', 'warn', 'fa-file-invoice-dollar'),
+    'payment': ('Payment received', 'ok', 'fa-coins'),
+    'void': ('Cancelled (void)', 'bad', 'fa-ban'),
+    'settings_change': ('Settings changed', 'warn', 'fa-gear'),
+    'export': ('Data exported', 'muted', 'fa-download'),
+    'user_admin': ('User account', 'warn', 'fa-user-gear'),
+    'reminder': ('Reminder sent', 'muted', 'fa-bell'),
+}
+
+RANGES = {'today': 0, '7d': 6, '30d': 29}
+_HIDDEN_FIELDS = {'id', 'updated_at', 'created_at'}
+_DETAIL_LIMIT = 12
+
+
+def action_info(action):
+    return ACTION_INFO.get(action) or (str(action or '').replace('_', ' ').capitalize(), 'muted', 'fa-circle')
+
+
+def _pretty_value(value):
+    if value is None or value == '':
+        return '—'
+    if value is True:
+        return 'Yes'
+    if value is False:
+        return 'No'
+    text = str(value)
+    return text if len(text) <= 80 else text[:77] + '…'
+
+
+def _pretty_field(name):
+    return str(name).replace('_', ' ').strip().capitalize()
+
+
+def change_details(row):
+    """What changed, as plain rows: [(field, before, after)] plus how many were left out."""
+    before = row.before if isinstance(row.before, dict) else {}
+    after = row.after if isinstance(row.after, dict) else {}
+    if before and after:
+        names = [k for k in row.changed_fields if k not in _HIDDEN_FIELDS]
+    else:
+        names = [k for k in sorted(before or after) if k not in _HIDDEN_FIELDS
+                 and (before or after).get(k) not in (None, '')]
+    items = [(_pretty_field(k), _pretty_value(before.get(k)), _pretty_value(after.get(k)))
+             for k in names[:_DETAIL_LIMIT]]
+    return {'items': items, 'more': max(0, len(names) - _DETAIL_LIMIT),
+            'kind': 'changed' if before and after else ('added' if after else 'deleted')}
+
+
 def _parse_date(value):
     if not value:
         return None
@@ -48,12 +104,17 @@ def _local_iso(value):
 
 
 def _filters():
+    date_from = _parse_date(request.args.get('date_from'))
+    date_to = _parse_date(request.args.get('date_to'))
+    quick = (request.args.get('range') or '').strip()
+    if quick in RANGES and not date_from and not date_to:
+        date_from = datetime.now().date() - timedelta(days=RANGES[quick])
     return {
         'entity_type': (request.args.get('entity_type') or '').strip() or None,
         'action': (request.args.get('action') or '').strip() or None,
         'username': (request.args.get('username') or '').strip() or None,
-        'date_from': _parse_date(request.args.get('date_from')),
-        'date_to': _parse_date(request.args.get('date_to')),
+        'date_from': date_from,
+        'date_to': date_to,
         'search': (request.args.get('search') or '').strip() or None,
     }
 
@@ -71,9 +132,33 @@ def _json_id_match(column, key, value):
 def audit_log():
     filters = _filters()
     rows = audit_service.query_logs(limit=500, **filters)
+    quick = (request.args.get('range') or '').strip()
+    view_rows = []
+    counts = {'create': 0, 'update': 0, 'delete': 0, 'login_failed': 0}
+    for row in rows:
+        if row.action in counts:
+            counts[row.action] += 1
+        label, tone, icon = action_info(row.action)
+        view_rows.append({'row': row, 'label': label, 'tone': tone, 'icon': icon,
+                          'detail': change_details(row) if (row.before_json or row.after_json) else None})
+    stats = {
+        'total': len(rows),
+        'added': counts['create'],
+        'changed': counts['update'],
+        'deleted': counts['delete'],
+        'failed': counts['login_failed'],
+        'other': len(rows) - counts['create'] - counts['update'] - counts['delete'],
+        'capped': len(rows) >= 500,
+    }
+    filters['range'] = quick if (quick in RANGES and not request.args.get('date_from')
+                                 and not request.args.get('date_to')) else ''
+    filters['active'] = any(v for k, v in filters.items() if k != 'range') or bool(filters['range'])
     return render_template(
         'audit_log.html',
         rows=rows,
+        view_rows=view_rows,
+        stats=stats,
+        action_info=ACTION_INFO,
         filters=filters,
         entity_labels=ENTITY_LABELS,
         actions=ACTIONS,

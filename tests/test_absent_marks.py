@@ -250,7 +250,10 @@ def test_publish_skips_whatsapp_for_fully_absent_student(admin_client, app, seed
         db.session.add(StudentMarkModel(test_id=tid, student_id=sara, marks_obtained=80,
                                         percentage=80, grade='A'))
     db.session.commit()
-    from app.models import MessageQueue
+    from app.models import AutomationSettings, MessageQueue
+    cfg = AutomationSettings.get()      # publish alerts obey the WhatsApp switches
+    cfg.enabled, cfg.notify_results = True, True
+    db.session.commit()
     admin_client.post(f'/examinations/{exam.id}/publish', data={'queue_whatsapp': '1'})
     queued = {m.student_id for m in MessageQueue.query.filter_by(trigger='result').all()}
     assert ali not in queued and sara in queued

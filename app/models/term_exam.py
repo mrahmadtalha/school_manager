@@ -1,5 +1,6 @@
 """Formal term examinations: groups subject test rows under one scheduled exam."""
 from datetime import datetime
+from app.timeutil import utcnow
 
 from app.database import db
 
@@ -22,7 +23,7 @@ class TermExam(db.Model):
     announce_date = db.Column(db.Date, nullable=True)
     status = db.Column(db.String(20), nullable=False, default='Scheduled')
     created_by = db.Column(db.String(80), nullable=True, default='system')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     class_info = db.relationship('ClassModel', backref='term_exams')
 

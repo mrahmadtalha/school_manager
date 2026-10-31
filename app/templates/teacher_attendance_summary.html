@@ -1,112 +1,347 @@
 {% extends "base.html" %}
+{% from "_photo_macro.html" import avatar %}
 {% block content %}
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+<style>
+    /* ------------------------------------------------------------------
+       Teacher Attendance Summary — same "register book" family as the Student
+       Attendance page. Colours come from the school's brand
+       (--bs-primary-rgb). Everything is scoped under .ts- so nothing
+       leaks to other pages.
+       ------------------------------------------------------------------ */
+    .ts-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0.25rem 0 1.1rem; }
+    .ts-head h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; margin: 0; line-height: 1.1; }
+    .ts-head p { margin: 0.35rem 0 0; color: #64748b; font-size: 0.92rem; max-width: 46rem; }
+    .ts-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .ts-tools .btn { box-shadow: none; }
+    .ts-tools .btn-outline-secondary { background: #fff; }
+    .ts-tools .dropdown-menu { border-radius: 14px; border-color: #e2e8f0; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12); padding: 0.4rem; }
+    .ts-tools .dropdown-item { border-radius: 9px; font-size: 0.9rem; padding: 0.45rem 0.7rem; }
+
+    /* class + period bar */
+    .ts-filters { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.7rem; margin-bottom: 0.9rem; }
+    .ts-filters form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
+    .ts-filters .form-select, .ts-filters .form-control { height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background-color: #f8fafc; }
+    .ts-filters .form-select { width: auto; min-width: 12rem; max-width: 18rem; font-weight: 600; }
+    .ts-filters .form-control[type=date] { width: auto; min-width: 10.5rem; font-weight: 600; }
+    .ts-range { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .ts-range span { font-size: 0.82rem; font-weight: 600; color: #64748b; }
+    .ts-chip { height: 2.7rem; display: inline-flex; align-items: center; padding: 0 1rem; border-radius: 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-size: 0.88rem; font-weight: 600; color: #475569; text-decoration: none; }
+    .ts-chip:hover { background: #fff; color: #0f172a; }
+    .ts-chip.is-on { background: rgba(var(--bs-primary-rgb), 0.1); border-color: rgba(var(--bs-primary-rgb), 0.35); color: rgb(var(--bs-primary-rgb)); }
+
+    /* summary ribbon */
+    .ts-ribbon { display: grid; grid-template-columns: minmax(8rem, 0.7fr) minmax(14rem, 1.6fr) minmax(8rem, 0.7fr) minmax(9rem, 0.8fr); background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .ts-stat { padding: 0.85rem 1.2rem; display: flex; flex-direction: column; justify-content: center; gap: 0.2rem; min-width: 0; }
+    .ts-stat + .ts-stat { border-left: 1px solid #eef2f7; }
+    .ts-num { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .ts-num.g { color: #15803d; } .ts-num.a { color: #b45309; } .ts-num.r { color: #b91c1c; } .ts-num.n { color: #94a3b8; }
+    .ts-lab { font-size: 0.78rem; color: #64748b; }
+    .ts-meter { height: 10px; border-radius: 99px; background: #eef2f7; overflow: hidden; margin: 0.35rem 0 0.2rem; }
+    .ts-meter i { display: block; height: 100%; border-radius: 99px; background: #16a34a; }
+    .ts-meter i.a { background: #f59e0b; } .ts-meter i.r { background: #dc2626; }
+    .ts-stat.is-risk { border-left: 4px solid #dc2626 !important; background: #fff5f5; }
+    .ts-stat.is-risk .ts-num { color: #b91c1c; }
+    .ts-stat.is-clear { border-left: 4px solid #16a34a !important; background: #f3fbf6; }
+    .ts-stat.is-clear .ts-num { color: #15803d; }
+
+    /* notes */
+    .ts-hint { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid rgb(var(--bs-primary-rgb)); border-radius: 14px; color: #475569; font-size: 0.88rem; padding: 0.65rem 1rem; margin-bottom: 0.9rem; }
+    .ts-hint b { color: #0f172a; }
+    .ts-warn { background: #fffbf3; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b; border-radius: 14px; color: #78350f; font-size: 0.88rem; padding: 0.65rem 1rem; margin-bottom: 0.9rem; }
+
+    /* tools above the table */
+    .ts-toolbar { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.7rem; margin-bottom: 0.9rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
+    .ts-search { position: relative; flex: 1 1 15rem; min-width: 12rem; }
+    .ts-search i { position: absolute; left: 0.95rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+    .ts-search input { padding-left: 2.5rem; height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background: #f8fafc; }
+    .ts-search input:focus { background: #fff; }
+    .ts-tabs { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+    .ts-tabs button { border: 0; background: transparent; padding: 0.5rem 0.9rem; border-radius: 9px; font-size: 0.88rem; font-weight: 600; color: #475569; }
+    .ts-tabs button:hover { color: #0f172a; }
+    .ts-tabs button.active { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+    .ts-tabs button .n { font-variant-numeric: tabular-nums; opacity: 0.7; margin-left: 0.2rem; }
+    .ts-tabs button.risk.active { background: #dc2626; color: #fff; }
+
+    /* the table */
+    .ts-panel { border: 1px solid #e2e8f0 !important; box-shadow: none !important; border-radius: 18px; overflow: hidden; }
+    .ts-panel:hover { transform: none; }
+    .ts-count { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.7rem 1.1rem; border-bottom: 1px solid #eef2f7; font-size: 0.86rem; color: #64748b; flex-wrap: wrap; }
+    .ts-count strong { color: #0f172a; }
+    .ts-scroll { overflow-x: auto; }
+    .ts-table { margin: 0; border-collapse: separate; border-spacing: 0; width: 100%; }
+    .ts-table thead th { background: #f8fafc; color: #64748b; font-size: 0.74rem; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding: 0.55rem 0.5rem; white-space: nowrap; text-align: center; vertical-align: bottom; }
+    .ts-table tbody td { padding: 0.5rem 0.5rem; border-bottom: 1px solid #f1f5f9; vertical-align: middle; text-align: center; background: #fff; }
+    .ts-table tbody tr:hover td { background: #f8fafc; }
+    .ts-table .ts-sticky { position: sticky; left: 0; z-index: 2; text-align: left; min-width: 13rem; box-shadow: 1px 0 0 #e2e8f0; }
+    .ts-table thead .ts-sticky { z-index: 3; background: #f8fafc; }
+    .ts-table tbody tr[data-risk="1"] td.ts-sticky { box-shadow: inset 4px 0 0 #dc2626, 1px 0 0 #e2e8f0; }
+    .ts-table .ts-grp { border-left: 1px solid #e2e8f0; }
+    .ts-who-name { font-weight: 700; color: #0f172a; line-height: 1.25; }
+    .ts-who-sub { font-size: 0.78rem; color: #64748b; line-height: 1.25; }
+    .ts-roll { display: inline-block; min-width: 2rem; text-align: center; padding: 0.05rem 0.4rem; margin-right: 0.35rem; border-radius: 7px; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); font-weight: 800; font-size: 0.74rem; font-variant-numeric: tabular-nums; vertical-align: middle; }
+    .ts-rate { display: inline-block; min-width: 4rem; padding: 0.3rem 0.7rem; border-radius: 99px; font-size: 0.85rem; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .ts-rate.g { background: #dcfce7; color: #166534; } .ts-rate.a { background: #fef3c7; color: #92400e; } .ts-rate.r { background: #fee2e2; color: #991b1b; } .ts-rate.n { background: #f1f5f9; color: #94a3b8; }
+    .ts-cnt { font-weight: 700; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .ts-cnt.zero { color: #cbd5e1; font-weight: 600; }
+    .ts-cnt small { display: block; font-size: 0.7rem; font-weight: 600; color: #92400e; }
+    .ts-dayhead b { display: block; font-size: 0.86rem; color: #0f172a; line-height: 1.1; }
+    .ts-dayhead small { display: block; font-size: 0.66rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; }
+    .ts-dayhead em { display: block; font-style: normal; font-size: 0.62rem; font-weight: 700; color: rgb(var(--bs-primary-rgb)); text-transform: uppercase; min-height: 0.8rem; }
+    .ts-day { display: inline-block; min-width: 1.9rem; padding: 0.22rem 0.35rem; border-radius: 8px; font-size: 0.75rem; font-weight: 800; line-height: 1.2; white-space: nowrap; }
+    .ts-day.p { background: #dcfce7; color: #166534; } .ts-day.a { background: #dc2626; color: #fff; }
+    .ts-day.l { background: #fde68a; color: #78350f; } .ts-day.v { background: #cbd5e1; color: #334155; }
+    .ts-day.n { background: transparent; color: #cbd5e1; font-weight: 600; }
+
+    .ts-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; align-items: center; padding: 0.8rem 1.1rem; border-top: 1px solid #eef2f7; background: #f8fafc; font-size: 0.82rem; color: #475569; }
+    .ts-legend .ts-day { min-width: 1.6rem; margin-right: 0.3rem; }
+
+    .ts-empty { text-align: center; padding: 3.5rem 1rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; }
+    .ts-empty .ts-empty-icon { width: 76px; height: 76px; border-radius: 24px; margin: 0 auto 1rem; display: flex; align-items: center; justify-content: center; font-size: 1.9rem; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); }
+    .ts-empty p { font-weight: 700; color: #334155; margin-bottom: 1rem; }
+
+    .ts-who { display: flex; align-items: center; gap: 0.6rem; }
+    .ts-who .ts-who-text { min-width: 0; }
+    .ts-id { display: inline-block; min-width: 2rem; text-align: center; padding: 0.05rem 0.4rem; margin-right: 0.35rem; border-radius: 7px; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); font-weight: 800; font-size: 0.74rem; vertical-align: middle; }
+    html[dir="rtl"] .ts-who { flex-direction: row-reverse; justify-content: flex-end; }
+    html[dir="rtl"] .ts-id { margin-right: 0; margin-left: 0.35rem; }
+    html[dir="rtl"] .ts-search i { left: auto; right: 0.95rem; }
+    html[dir="rtl"] .ts-search input { padding-left: 0.75rem; padding-right: 2.5rem; }
+    html[dir="rtl"] .ts-stat + .ts-stat { border-left: 0; border-right: 1px solid #eef2f7; }
+    html[dir="rtl"] .ts-hint, html[dir="rtl"] .ts-warn { border-left-width: 1px; border-right-width: 4px; }
+    html[dir="rtl"] .ts-table .ts-sticky { left: auto; right: 0; text-align: right; box-shadow: -1px 0 0 #e2e8f0; }
+    html[dir="rtl"] .ts-roll { margin-right: 0; margin-left: 0.35rem; }
+
+    @media (max-width: 991.98px) {
+        .ts-ribbon { grid-template-columns: 1fr 1fr; }
+        .ts-ribbon .ts-stat:nth-child(3) { border-left: 0; border-top: 1px solid #eef2f7; }
+        .ts-ribbon .ts-stat:nth-child(4) { border-top: 1px solid #eef2f7; }
+    }
+    @media (max-width: 767.98px) {
+        .ts-ribbon { grid-template-columns: 1fr; }
+        .ts-stat + .ts-stat { border-left: 0 !important; border-top: 1px solid #eef2f7; }
+        .ts-filters .form-select, .ts-filters .form-control[type=date] { flex: 1 1 100%; max-width: none; }
+        .ts-range { flex: 1 1 100%; }
+        .ts-range .form-control { flex: 1; }
+        .ts-toolbar .ts-tabs { width: 100%; }
+        .ts-toolbar .ts-tabs button { flex: 1; padding: 0.6rem 0.4rem; }
+        .ts-table .ts-sticky { min-width: 9.5rem; }
+    }
+    @media print {
+        .no-print { display: none !important; }
+        .ts-table .ts-sticky { position: static; }
+    }
+</style>
+<div class="ts-head">
     <div>
-        <p class="eyebrow mb-2">Teacher analysis</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-chalkboard-teacher text-primary me-2"></i>Teacher Attendance Matrix Summary</h1>
-        <p class="text-muted small mb-0">Review teacher attendance across the selected date range.</p>
+        <h1>Teacher Attendance Summary</h1>
+        <p>See how often each teacher came to school between two dates. Teachers who came on fewer than <b>75%</b> of the days are marked in red, so you can talk to them.</p>
     </div>
-    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
-        <div class="btn-group">
-            <a href="{{ url_for('main.export_teacher_summary', fmt='excel', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-success">
-                <i class="fas fa-file-excel me-1"></i> Excel
-            </a>
-            <a href="{{ url_for('main.export_teacher_summary', fmt='csv', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-primary">
-                <i class="fas fa-file-csv me-1"></i> CSV
-            </a>
-            <a href="{{ url_for('main.export_teacher_summary', fmt='pdf', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-danger">
-                <i class="fas fa-file-pdf me-1"></i> PDF
-            </a>
+    <div class="ts-tools btn-toolbar no-print">
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                <i class="fas fa-download me-1"></i> Export
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_summary', fmt='pdf', start_date=start_date, end_date=end_date) }}"><i class="fas fa-file-pdf text-danger me-2"></i>PDF</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_summary', fmt='excel', start_date=start_date, end_date=end_date) }}"><i class="fas fa-file-excel text-success me-2"></i>Excel</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_teacher_summary', fmt='csv', start_date=start_date, end_date=end_date) }}"><i class="fas fa-file-csv text-primary me-2"></i>CSV</a></li>
+            </ul>
         </div>
         <a href="{{ url_for('main.teacher_attendance') }}" class="btn btn-outline-secondary btn-sm">
-            <i class="fas fa-arrow-left me-1"></i> Back to Daily Teacher Attendance
+            <i class="fas fa-clipboard-check me-1"></i> Take Teacher Attendance
+        </a>
+        <a href="{{ url_for('main.attendance_summary') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-user-graduate me-1"></i> Student Attendance Summary
         </a>
     </div>
 </div>
 
-<!-- Date Range Filter Card -->
-<div class="card shadow-sm mb-4 border-0 analytics-panel">
-    <div class="card-body">
-        <form method="GET" action="{{ url_for('main.teacher_attendance_summary') }}" class="row g-3 align-items-end">
-            <div class="col-md-5">
-                <label class="form-label fw-bold">Start Date:</label>
-                <input type="date" class="form-control" name="start_date" value="{{ start_date }}" onchange="this.form.submit()">
-            </div>
-            <div class="col-md-5">
-                <label class="form-label fw-bold">End Date:</label>
-                <input type="date" class="form-control" name="end_date" value="{{ end_date }}" onchange="this.form.submit()">
-            </div>
-            <div class="col-md-2">
-                <button type="submit" class="btn dark w-100 btn-dark"><i class="fas fa-sync-alt me-1"></i> Refresh</button>
-            </div>
-        </form>
+<!-- Period -->
+<div class="ts-filters no-print">
+    <form method="GET" action="{{ url_for('main.teacher_attendance_summary') }}">
+        <a class="ts-chip {% if on_this_month %}is-on{% endif %}" href="{{ url_for('main.teacher_attendance_summary', start_date=this_month_start, end_date=this_month_end) }}">This Month</a>
+        <a class="ts-chip {% if on_last_month %}is-on{% endif %}" href="{{ url_for('main.teacher_attendance_summary', start_date=last_month_start, end_date=last_month_end) }}">Last Month</a>
+        <div class="ts-range">
+            <span>From</span>
+            <input type="date" class="form-control" name="start_date" value="{{ start_date }}" aria-label="From date" onchange="this.form.submit()">
+            <span>To</span>
+            <input type="date" class="form-control" name="end_date" value="{{ end_date }}" aria-label="To date" onchange="this.form.submit()">
+        </div>
+    </form>
+</div>
+
+{% if matrix_data and dates_list %}
+{% set avg = stats.avg_percentage %}
+{% set recorded = stats.days_recorded %}
+{% set avg_tone = 'n' if not recorded else ('g' if avg >= 85 else ('a' if avg >= 75 else 'r')) %}
+
+<!-- Summary -->
+<section class="ts-ribbon no-print" aria-label="Summary">
+    <div class="ts-stat">
+        <span class="ts-num">{{ stats.total_teachers }}</span>
+        <span class="ts-lab">Teachers in school</span>
+    </div>
+    <div class="ts-stat">
+        <span class="ts-num {{ avg_tone }}">{% if recorded %}{{ avg }}%{% else %}—{% endif %}</span>
+        <div class="ts-meter" role="img" aria-label="Average attendance"><i class="{{ avg_tone if avg_tone in ['a', 'r'] else '' }}" style="width: {{ avg if recorded else 0 }}%"></i></div>
+        <span class="ts-lab">Average attendance &middot; {{ recorded }} school day(s) recorded</span>
+    </div>
+    <div class="ts-stat">
+        <span class="ts-num">{{ stats.perfect_count }}</span>
+        <span class="ts-lab">Never absent (100%)</span>
+    </div>
+    <div class="ts-stat {% if stats.at_risk_count > 0 %}is-risk{% elif recorded %}is-clear{% endif %}">
+        <span class="ts-num">{{ stats.at_risk_count }}</span>
+        <span class="ts-lab">{% if stats.at_risk_count > 0 %}Need attention (below 75%){% else %}Nobody is below 75%{% endif %}</span>
+    </div>
+</section>
+
+<div class="ts-hint no-print" role="status">
+    <b><i class="fas fa-circle-info me-1"></i>What to do now:</b> Press <b>Need attention</b> to see only the teachers below 75%, then talk to them. The coloured boxes on the right show every school day.
+</div>
+
+<!-- Tools -->
+<div class="ts-toolbar no-print">
+    <div class="ts-search">
+        <i class="fas fa-search"></i>
+        <input type="text" class="form-control" id="tsSearch" aria-label="Find a teacher"
+               placeholder="Find a teacher by name or ID…" autocomplete="off">
+    </div>
+    <div class="ts-tabs" role="group" aria-label="Show">
+        <button type="button" class="active" data-mode="all" onclick="setMode('all')">All teachers <span class="n">{{ stats.total_teachers }}</span></button>
+        <button type="button" class="risk" data-mode="risk" onclick="setMode('risk')">Need attention <span class="n">{{ stats.at_risk_count }}</span></button>
+        <button type="button" data-mode="perfect" onclick="setMode('perfect')">Never absent <span class="n">{{ stats.perfect_count }}</span></button>
     </div>
 </div>
 
-<!-- Matrix Table -->
-<div class="card shadow-sm border-0 table-panel">
-    <div class="card-body table-responsive p-0">
-        {% if matrix_data and dates_list %}
-        <table class="table table-hover align-middle mb-0">
-            <thead class="table-light text-nowrap text-center">
+<!-- Register -->
+<div class="card border-0 ts-panel">
+    <div class="ts-count">
+        <span>Showing <strong id="tsVisible">{{ stats.total_teachers }}</strong> of <strong>{{ stats.total_teachers }}</strong> teachers</span>
+        <span class="small">{{ period_label }}</span>
+        <span class="small text-muted w-100" id="tsNoMatch" hidden>No teacher matches your search.</span>
+    </div>
+    <div class="ts-scroll">
+        <table class="table ts-table" id="tsTable">
+            <thead>
                 <tr>
-                    <th class="py-3" style="width: 50px;">Sr</th>
-                    <th class="py-3 text-start">Teacher ID</th>
-                    <th class="py-3 text-start">Teacher Name</th>
-                    <th class="py-3 text-start">Qualification</th>
+                    <th class="ts-sticky">Teacher</th>
+                    <th class="ts-grp">Attendance</th>
+                    <th>Present</th>
+                    <th>Absent</th>
+                    <th>Late</th>
+                    <th>Leave</th>
+                    {% set mon = namespace(last=0) %}
                     {% for d in dates_list %}
-                    <th class="py-3 px-3">{{ d.strftime('%d/%m/%Y') }}</th>
+                    <th class="ts-dayhead {% if loop.first %}ts-grp{% endif %}" title="{{ d.strftime('%A, %d %B %Y') }}">
+                        <em>{% if d.month != mon.last %}{{ d.strftime('%b') }}{% set mon.last = d.month %}{% endif %}</em>
+                        <b>{{ d.day }}</b><small>{{ d.strftime('%a') }}</small>
+                    </th>
                     {% endfor %}
-                    <th class="py-3 bg-success text-white">Present</th>
-                    <th class="py-3 bg-danger text-white">Absent</th>
-                    <th class="py-3 bg-warning text-dark">Late</th>
-                    <th class="py-3 bg-warning-subtle text-dark">Late min</th>
-                    <th class="py-3 bg-secondary text-white">%</th>
                 </tr>
             </thead>
             <tbody>
                 {% for row in matrix_data %}
-                <tr>
-                    <td class="text-center text-muted fw-bold">{{ row.sr }}</td>
-                    <td class="font-monospace fw-bold text-primary">{{ row.teacher.teacher_id_str }}</td>
-                    <td class="fw-bold text-dark">{{ row.teacher.teacher_name }}</td>
-                    <td class="text-muted">{{ row.teacher.qualification }}</td>
-                    
+                {% set taken = row.taken %}
+                {% set pct = row.percentage %}
+                {% set tone = 'n' if not taken else ('r' if pct < 75 else ('a' if pct < 85 else 'g')) %}
+                <tr data-risk="{{ 1 if row.is_at_risk else 0 }}" data-perfect="{{ 1 if (taken and pct == 100) else 0 }}"
+                    data-search="{{ (row.teacher.teacher_name ~ ' ' ~ row.teacher.teacher_id_str) | lower }}">
+                    <td class="ts-sticky">
+                        <div class="ts-who">
+                            {{ avatar('teacher', row.teacher, 36) }}
+                            <div class="ts-who-text">
+                                <div class="ts-who-name"><span class="ts-id">{{ row.teacher.teacher_id_str }}</span>{{ row.teacher.teacher_name }}</div>
+                                <div class="ts-who-sub">{{ row.teacher.designation or row.teacher.qualification or '' }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="ts-grp">
+                        {% if taken %}
+                        <span class="ts-rate {{ tone }}" {% if tone == 'r' %}title="Attendance below 75% — needs attention"{% endif %}>{% if tone == 'r' %}<i class="fas fa-exclamation-circle me-1"></i>{% endif %}{{ pct }}%</span>
+                        {% else %}
+                        <span class="ts-rate n">—</span>
+                        {% endif %}
+                    </td>
+                    <td><span class="ts-cnt {% if not row.p_count %}zero{% endif %}">{{ row.p_count }}</span></td>
+                    <td><span class="ts-cnt {% if not row.a_count %}zero{% endif %}">{{ row.a_count }}</span></td>
+                    <td><span class="ts-cnt {% if not row.l_count %}zero{% endif %}">{{ row.l_count }}{% if row.total_late_minutes %}<small>{{ row.total_late_minutes }} min</small>{% endif %}</span></td>
+                    <td><span class="ts-cnt {% if not row.lv_count %}zero{% endif %}">{{ row.lv_count }}</span></td>
                     {% for d in dates_list %}
                     {% set status = row.daily_status.get(d, '—') %}
                     {% set late_minutes = row.daily_late_minutes.get(d) %}
-                    <td class="text-center text-nowrap">
+                    <td class="text-nowrap {% if loop.first %}ts-grp{% endif %}">
                         {% if status == 'Late' and late_minutes is not none %}
-                        <span class="badge bg-warning text-dark" title="Late arrival: {{ late_minutes }} minutes">Late · {{ late_minutes }}m</span>
-                        {% else %}
-                        <span class="badge 
-                            {% if status == '—' %}bg-light text-muted
-                            {% elif 'Present' in status %}bg-success
-                            {% elif status == 'Absent' %}bg-danger
-                            {% elif status == 'Late' %}bg-warning text-dark
-                            {% elif status == 'Leave' %}bg-secondary
-                            {% else %}bg-light text-dark{% endif %} 
-                            px-2 py-1">
-                            {{ status.lower() }}
-                        </span>
+                        <span class="ts-day l" title="Late · {{ late_minutes }}m">L · {{ late_minutes }}m</span>
+                        {% elif status == 'Present' %}<span class="ts-day p" title="Present">P</span>
+                        {% elif status == 'Absent' %}<span class="ts-day a" title="Absent">A</span>
+                        {% elif status == 'Late' %}<span class="ts-day l" title="Late">L</span>
+                        {% elif status == 'Leave' %}<span class="ts-day v" title="Leave">LV</span>
+                        {% else %}<span class="ts-day n" title="Attendance not taken">—</span>
                         {% endif %}
                     </td>
                     {% endfor %}
-                    <td class="text-center fw-bold text-success bg-light">{{ row.p_count }}</td>
-                    <td class="text-center fw-bold text-danger bg-light">{{ row.a_count }}</td>
-                    <td class="text-center fw-bold text-warning bg-light">{{ row.l_count }}</td>
-                    <td class="text-center fw-bold text-dark bg-light">{{ row.total_late_minutes }}</td>
-                    <td class="text-center fw-bold text-primary bg-light">{{ row.percentage }}%</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        {% else %}
-        <div class="text-center py-5">
-            <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
-            <h5 class="text-muted">No attendance logs found for teachers in this date range.</h5>
-        </div>
-        {% endif %}
+    </div>
+    <div class="ts-legend">
+        <b>How to read the boxes:</b>
+        <span><span class="ts-day p">P</span>Present</span>
+        <span><span class="ts-day a">A</span>Absent</span>
+        <span><span class="ts-day l">L</span>Late</span>
+        <span><span class="ts-day v">LV</span>Leave</span>
+        <span><span class="ts-day n">—</span>Not taken</span>
+        <span class="ms-md-auto"><span class="ts-rate r">75%</span> red = below 75%, <span class="ts-rate a">80%</span> orange = 75 to 85%, <span class="ts-rate g">90%</span> green = 85% or more</span>
     </div>
 </div>
+
+{% else %}
+<div class="ts-empty">
+    <div class="ts-empty-icon"><i class="fas fa-calendar-times"></i></div>
+    {% if not matrix_data %}
+    <p>No teachers found.</p>
+    <a href="{{ url_for('main.teachers_list') }}" class="btn btn-primary"><i class="fas fa-user-plus me-1"></i> Go to Teachers</a>
+    {% else %}
+    <p>No attendance logs found for teachers in this date range.</p>
+    <a href="{{ url_for('main.teacher_attendance') }}" class="btn btn-primary"><i class="fas fa-clipboard-check me-1"></i> Take Teacher Attendance</a>
+    {% endif %}
+</div>
+{% endif %}
+
+<script>
+var tsMode = 'all';
+
+function applyFilters() {
+    var box = document.getElementById('tsSearch');
+    var needle = box ? box.value.trim().toLowerCase() : '';
+    var shown = 0, total = 0;
+    document.querySelectorAll('#tsTable tbody tr').forEach(function(row) {
+        total++;
+        var hide = (tsMode === 'risk' && row.dataset.risk !== '1') ||
+                   (tsMode === 'perfect' && row.dataset.perfect !== '1') ||
+                   (needle && (row.dataset.search || '').indexOf(needle) === -1);
+        row.style.display = hide ? 'none' : '';
+        if (!hide) shown++;
+    });
+    var count = document.getElementById('tsVisible');
+    if (count) count.textContent = shown;
+    var none = document.getElementById('tsNoMatch');
+    if (none) none.hidden = shown !== 0 || total === 0;
+}
+
+function setMode(mode) {
+    tsMode = mode;
+    document.querySelectorAll('.ts-tabs button').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    applyFilters();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    var box = document.getElementById('tsSearch');
+    if (box) box.addEventListener('input', applyFilters);
+});
+</script>
 {% endblock %}

@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.timeutil import utcnow
 from app.database import db
 
 
@@ -23,6 +24,6 @@ class StudentEnrollment(db.Model):
     start_date = db.Column(db.Date, nullable=True)
     end_date = db.Column(db.Date, nullable=True)          # NULL = current/active enrollment
     reason = db.Column(db.String(50), nullable=True)      # enrolled | promoted | class_change | restored | backfill
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     student_info = db.relationship('StudentModel', backref='enrollments', lazy=True)

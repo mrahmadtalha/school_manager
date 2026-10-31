@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from flask import (
     render_template, 
     request, 
@@ -35,25 +35,37 @@ from app.services.attendance_service import (
 
 @main.route('/attendance/teachers', methods=['GET', 'POST'])
 def teacher_attendance():
-    selected_date_str = request.args.get('date', date.today().strftime('%Y-%m-%d'))
-    attendance_date = datetime.strptime(selected_date_str, '%Y-%m-%d').date()
+    from datetime import timedelta
+    from app.services.attendance_service import late_after_cutoff_enabled
+
+    def _parse_day(text):
+        try:
+            return datetime.strptime(text, '%Y-%m-%d').date() if text else date.today()
+        except ValueError:
+            return date.today()
+
+    attendance_date = _parse_day(request.args.get('date') or request.form.get('date'))
+    selected_date_str = attendance_date.strftime('%Y-%m-%d')
     teachers = TeacherModel.query.filter_by(is_active=True).all()
     school_settings = SchoolSettings.query.first()
-    
+
     if request.method == 'POST':
-        selected_date_str = request.form.get('date')
-        attendance_date = datetime.strptime(selected_date_str, '%Y-%m-%d').date()
         save_teacher_attendance(attendance_date, request.form, teachers)
         flash('Teacher attendance saved successfully!', 'success')
         return redirect(url_for('main.teacher_attendance', date=selected_date_str))
-        
+
     records = AttendanceModel.query.filter_by(date=attendance_date, target_type='teacher').all()
     attendance_map = {r.target_id: r.status for r in records}
     late_time_map = {r.target_id: r.late_time for r in records if r.late_time}
     late_minutes_map = {r.target_id: r.late_minutes for r in records if r.late_minutes is not None}
 
-    return render_template('teacher_attendance.html', 
+    return render_template('teacher_attendance.html',
                            teachers=teachers, selected_date=selected_date_str,
+                           prev_date=(attendance_date - timedelta(days=1)).strftime('%Y-%m-%d'),
+                           next_date=(attendance_date + timedelta(days=1)).strftime('%Y-%m-%d'),
+                           today_date=date.today().strftime('%Y-%m-%d'),
+                           marked_ids=set(attendance_map.keys()),
+                           late_auto=late_after_cutoff_enabled(school_settings),
                            attendance_map=attendance_map,
                            late_time_map=late_time_map,
                            late_minutes_map=late_minutes_map,
@@ -68,21 +80,45 @@ def teacher_attendance():
 @main.route('/attendance/teachers/summary', methods=['GET'])
 def teacher_attendance_summary():
     today = date.today()
-    default_start = date(today.year, today.month, 1).strftime('%Y-%m-%d')
-    default_end = today.strftime('%Y-%m-%d')
-    
-    start_date_str = request.args.get('start_date', default_start)
-    end_date_str = request.args.get('end_date', default_end)
-    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-    
-    summary = build_teacher_attendance_summary(start_date, end_date)
+    this_start = date(today.year, today.month, 1)
+    last_end = this_start - timedelta(days=1)
+    last_start = date(last_end.year, last_end.month, 1)
 
+    def _parse_day(text, fallback):
+        try:
+            return datetime.strptime(text, '%Y-%m-%d').date() if text else fallback
+        except ValueError:
+            return fallback
+
+    start_day = _parse_day(request.args.get('start_date'), this_start)
+    end_day = _parse_day(request.args.get('end_date'), today)
+    if start_day > end_day:          # dates typed the wrong way round: show them the right way round
+        start_day, end_day = end_day, start_day
+    start_date_str = start_day.strftime('%Y-%m-%d')
+    end_date_str = end_day.strftime('%Y-%m-%d')
+
+    summary = build_teacher_attendance_summary(start_day, end_day)
+
+    this_start_str = this_start.strftime('%Y-%m-%d')
+    this_end_str = today.strftime('%Y-%m-%d')
+    last_start_str = last_start.strftime('%Y-%m-%d')
+    last_end_str = last_end.strftime('%Y-%m-%d')
     return render_template('teacher_attendance_summary.html',
                            start_date=start_date_str,
                            end_date=end_date_str,
+                           period_label='%s \u2013 %s' % (start_day.strftime('%d %b %Y'),
+                                                          end_day.strftime('%d %b %Y')),
+                           this_month_start=this_start_str,
+                           this_month_end=this_end_str,
+                           last_month_start=last_start_str,
+                           last_month_end=last_end_str,
+                           on_this_month=(start_date_str == this_start_str
+                                          and end_date_str == this_end_str),
+                           on_last_month=(start_date_str == last_start_str
+                                          and end_date_str == last_end_str),
                            dates_list=summary['dates_list'],
-                           matrix_data=summary['matrix_data'])
+                           matrix_data=summary['matrix_data'],
+                           stats=summary['kpi_stats'])
 
 
 # ==========================================
@@ -221,15 +257,27 @@ def lock_attendance():
 
 @main.route('/attendance/summary', methods=['GET'])
 def attendance_summary():
+    import calendar
     today = date.today()
-    default_start = date(today.year, today.month, 1).strftime('%Y-%m-%d')
-    default_end = today.strftime('%Y-%m-%d')
-    
-    start_date_str = request.args.get('start_date', default_start)
-    end_date_str = request.args.get('end_date', default_end)
+    this_start = date(today.year, today.month, 1)
+    last_end = this_start - timedelta(days=1)
+    last_start = date(last_end.year, last_end.month, 1)
+
+    def _parse_day(text, fallback):
+        try:
+            return datetime.strptime(text, '%Y-%m-%d').date() if text else fallback
+        except ValueError:
+            return fallback
+
+    start_day = _parse_day(request.args.get('start_date'), this_start)
+    end_day = _parse_day(request.args.get('end_date'), today)
+    if start_day > end_day:          # dates typed the wrong way round: show them the right way round
+        start_day, end_day = end_day, start_day
+    start_date_str = start_day.strftime('%Y-%m-%d')
+    end_date_str = end_day.strftime('%Y-%m-%d')
     class_arg = request.args.get('class_id', '')
     selected_class_id = request.args.get('class_id', type=int)
-    
+
     classes = ClassModel.query.all()
     # "all" is the whole-school student filter; anything else needs a class.
     whole_school = (str(class_arg).strip().lower() == 'all')
@@ -241,8 +289,7 @@ def attendance_summary():
                                     end_date=end_date_str))
         whole_school = True
 
-    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+    start_date, end_date = start_day, end_day
 
     if whole_school:
         summary = build_school_attendance_summary(start_date, end_date)
@@ -257,6 +304,8 @@ def attendance_summary():
         export_class_id = None
         scope_label = 'Class'
 
+    this_end = today
+    last_end_str = last_end.strftime('%Y-%m-%d')
     return render_template('attendance_summary.html',
                            classes=classes,
                            selected_class_id=selected_class_id,
@@ -266,6 +315,16 @@ def attendance_summary():
                            class_names={c.id: c.name for c in classes},
                            start_date=start_date_str,
                            end_date=end_date_str,
+                           period_label='%s \u2013 %s' % (start_day.strftime('%d %b %Y'),
+                                                          end_day.strftime('%d %b %Y')),
+                           this_month_start=this_start.strftime('%Y-%m-%d'),
+                           this_month_end=this_end.strftime('%Y-%m-%d'),
+                           last_month_start=last_start.strftime('%Y-%m-%d'),
+                           last_month_end=last_end_str,
+                           on_this_month=(start_date_str == this_start.strftime('%Y-%m-%d')
+                                          and end_date_str == this_end.strftime('%Y-%m-%d')),
+                           on_last_month=(start_date_str == last_start.strftime('%Y-%m-%d')
+                                          and end_date_str == last_end_str),
                            dates_list=summary.get('dates_list', []),
                            matrix_data=summary.get('matrix_data', []),
                            stats=summary.get('kpi_stats', {}))

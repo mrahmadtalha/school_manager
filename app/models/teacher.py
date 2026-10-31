@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.timeutil import utcnow
 from app.database import db
 
 
@@ -9,7 +10,7 @@ class TeacherModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     teacher_id_str = db.Column(db.String(50), unique=True, nullable=False)  # e.g. T001
     teacher_name = db.Column(db.String(100), nullable=False)
-    joining_date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    joining_date = db.Column(db.Date, nullable=False, default=utcnow)
     qualification = db.Column(db.String(100), nullable=False)
     salary = db.Column(db.Float, nullable=False, default=0.0)
     salary_type = db.Column(db.String(20), nullable=False, default='monthly')  # monthly or hourly

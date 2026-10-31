@@ -6,6 +6,7 @@ receipt (an ``OtherIncome`` row) when a fee was taken.  Rows are never
 deleted: a wrong issue is voided with a reason.
 """
 from datetime import datetime
+from app.timeutil import utcnow
 
 from app.database import db
 
@@ -40,7 +41,7 @@ class IssuedDocument(db.Model):
 
     created_by_id = db.Column(db.Integer, nullable=True)
     created_by_name = db.Column(db.String(80), nullable=True, default='system')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     student = db.relationship('StudentModel', lazy=True)
     income = db.relationship('OtherIncome', lazy=True)

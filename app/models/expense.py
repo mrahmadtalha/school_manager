@@ -8,6 +8,7 @@ created only by salary payments, and manual expense entry refuses the category
 — so Salaries in the expense totals comes only from Payroll, by construction.
 """
 from datetime import datetime
+from app.timeutil import utcnow
 
 from app.database import db
 from app.models.fees import to_paisa, to_rupees
@@ -40,7 +41,7 @@ class ExpenseCategory(db.Model):
     description = db.Column(db.String(200), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     is_system = db.Column(db.Boolean, nullable=False, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     def __repr__(self):
         return f'<ExpenseCategory {self.name}>'
@@ -57,7 +58,7 @@ class Expense(db.Model):
                             nullable=False)
     amount_paisa = db.Column(db.Integer, nullable=False, default=0)
     payment_method = db.Column(db.String(20), nullable=False, default='Cash')
-    date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    date = db.Column(db.Date, nullable=False, default=utcnow)
     receipt_no = db.Column(db.String(80), nullable=True)
     description = db.Column(db.String(255), nullable=True)
     logged_by_id = db.Column(db.Integer, nullable=True)
@@ -69,7 +70,7 @@ class Expense(db.Model):
     void_reason = db.Column(db.String(255), nullable=True)
     voided_at = db.Column(db.DateTime, nullable=True)
     voided_by_name = db.Column(db.String(80), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     category = db.relationship('ExpenseCategory',
                                backref=db.backref('expenses', lazy='dynamic'))

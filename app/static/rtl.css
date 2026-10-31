@@ -51,3 +51,5 @@ html[dir="rtl"] table.dataTable thead th, html[dir="rtl"] table.dataTable thead 
 @media print {
     html[dir="rtl"] body { line-height: 1.5; }
 }
+html[dir="rtl"] #sidebar .nav-link.active::before { left: auto; right: -0.5rem; }
+html[dir="rtl"] .nav-section-title { letter-spacing: 0; text-transform: none; }

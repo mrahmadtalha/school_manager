@@ -2,175 +2,322 @@
 {% block content %}
 
 {% set money = '{:,.2f}'.format %}
+{% set fees = metrics.fees %}
+{% set cash = metrics.cash %}
+{% set history = metrics.enough_history %}
+{% set todo_count = recommendations | length %}
 
 <div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
     <div>
         <p class="eyebrow mb-2">Finance</p>
         <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-lightbulb text-primary me-2"></i>Financial Insights</h1>
-        <p class="text-muted small mb-0">Rule-based comparisons of recorded figures for {{ metrics.label }} — no estimates beyond the ones labelled as estimates.</p>
+        <p class="text-muted small mb-0">What changed since last month, and what to do about it.</p>
     </div>
-    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
-        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary') }}">
-            <i class="fas fa-arrow-left me-1"></i>Financial Overview
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2 no-print">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary', month=month) }}">
+            <i class="fas fa-arrow-left me-1"></i>Back to Financial Overview
         </a>
-        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_insights', month=prev_month) }}"><i class="fas fa-chevron-left"></i></a>
-        <form method="get" action="{{ url_for('main.financials_insights') }}" class="d-flex gap-2">
-            <input type="month" class="form-control form-control-sm" name="month" value="{{ month }}" style="width: 160px;">
-            <button class="btn btn-primary btn-sm">Show</button>
-        </form>
-        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_insights', month=next_month) }}"><i class="fas fa-chevron-right"></i></a>
     </div>
 </div>
 
-<div class="row g-3 mb-3">
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Collection rate</div>
-            <div class="h4 fw-bold mb-1 {{ 'text-success' if metrics.fees.rate is not none and metrics.fees.rate >= 80 else 'text-danger' }}">
-                {{ '{:,.1f}'.format(metrics.fees.rate) + '%' if metrics.fees.rate is not none else '—' }}</div>
-            <div class="text-muted small">collected Rs {{ money(metrics.fees.collected) }} of Rs {{ money(metrics.fees.expected) }} this month's charges{% if metrics.enough_history and metrics.fees.rate_change is not none %} · {{ 'up' if metrics.fees.rate_change >= 0 else 'down' }} {{ '{:,.1f}'.format(metrics.fees.rate_change | abs) }} points vs last month{% endif %}</div>
-        </div></div>
+<style>
+    /* ------------------------------------------------------------------
+       Financial Insights - plain-language page for non-technical owners.
+       Same family as the Students and Financial Overview pages: flat white
+       panels, one accent from the school's brand colour, big numbers and
+       short words.  Everything is scoped under .fi- so nothing leaks.
+       ------------------------------------------------------------------ */
+    .fi-monthbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.7rem 0.9rem; margin-bottom: 0.9rem; }
+    .fi-monthbar .fi-now { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    .fi-monthbar .fi-month { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; color: #0f172a; min-width: 9.5rem; text-align: center; }
+    .fi-monthbar .btn { box-shadow: none; height: 2.5rem; display: inline-flex; align-items: center; border-radius: 12px; font-weight: 600; }
+    .fi-monthbar form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0; }
+    .fi-monthbar .form-control { height: 2.5rem; border-radius: 12px; border-color: #e2e8f0; background: #f8fafc; width: 11.5rem; }
+    .fi-hint { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid rgb(var(--bs-primary-rgb)); border-radius: 14px; color: #475569; font-size: 0.9rem; }
+    .fi-hint b { color: #0f172a; }
+
+    /* the answer: one sentence, then four numbers */
+    .fi-hero { background: #fff; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; margin-bottom: 0.9rem; }
+    .fi-verdict { display: flex; align-items: center; gap: 0.9rem; padding: 1rem 1.3rem; border-bottom: 1px solid #eef2f7; }
+    .fi-verdict-icon { flex: none; width: 3rem; height: 3rem; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; }
+    .fi-hero.is-good .fi-verdict { background: #f0fdf7; }
+    .fi-hero.is-good .fi-verdict-icon { background: #d1fae5; color: #047857; }
+    .fi-hero.is-warn .fi-verdict { background: #fffbf3; }
+    .fi-hero.is-warn .fi-verdict-icon { background: #fef3c7; color: #b45309; }
+    .fi-hero.is-empty .fi-verdict-icon { background: #f1f5f9; color: #64748b; }
+    .fi-verdict-title { font-size: 1.12rem; font-weight: 800; color: #0f172a; line-height: 1.25; }
+    .fi-verdict-sub { font-size: 0.88rem; color: #475569; margin-top: 0.15rem; }
+    .fi-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .fi-tile { padding: 1rem 1.2rem; min-width: 0; }
+    .fi-tile + .fi-tile { border-left: 1px solid #eef2f7; }
+    .fi-tile .fi-lab { font-size: 0.8rem; font-weight: 700; color: #475569; }
+    .fi-tile .fi-num { font-size: clamp(1.35rem, 2vw, 1.75rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; font-variant-numeric: tabular-nums; margin-top: 0.15rem; color: #0f172a; }
+    .fi-tile .fi-help { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; }
+    .fi-tile.t-green { box-shadow: inset 0 3px 0 #10b981; }
+    .fi-tile.t-blue { box-shadow: inset 0 3px 0 #38bdf8; }
+    .fi-tile.t-amber { box-shadow: inset 0 3px 0 #f59e0b; }
+    .fi-tile.t-red { box-shadow: inset 0 3px 0 #ef4444; }
+    .fi-tile .fi-bad { color: #b91c1c; }
+    .fi-tile .fi-ok { color: #047857; }
+    .fi-chip { display: inline-block; margin-top: 0.4rem; padding: 0.1rem 0.55rem; border-radius: 99px; font-size: 0.76rem; font-weight: 700; }
+    .fi-chip.up { background: #d1fae5; color: #047857; }
+    .fi-chip.down { background: #fee2e2; color: #b91c1c; }
+    .fi-chip.same { background: #f1f5f9; color: #475569; }
+    .fi-track { height: 8px; background: #eef2f7; border-radius: 99px; overflow: hidden; margin-top: 0.55rem; }
+    .fi-track i { display: block; height: 100%; border-radius: 99px; background: #10b981; }
+    .fi-track i.low { background: #f59e0b; }
+
+    /* panels */
+    .fi-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .fi-panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.8rem 1.15rem; border-bottom: 1px solid #eef2f7; }
+    .fi-panel-head h2 { font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+    .fi-panel-head h2 i { color: rgb(var(--bs-primary-rgb)); }
+    .fi-panel-head .fi-sub { font-size: 0.82rem; color: #64748b; }
+    .fi-panel-body { padding: 0.9rem 1.15rem 1rem; }
+    .fi-todo { list-style: none; margin: 0; padding: 0; }
+    .fi-todo-item { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; padding: 0.75rem 1.15rem; border-top: 1px solid #f1f5f9; border-left: 4px solid #f59e0b; background: #fffdf7; }
+    .fi-todo-item:first-child { border-top: 0; }
+    .fi-todo-text { flex: 1 1 18rem; font-size: 0.95rem; color: #1e293b; }
+    .fi-todo .btn { box-shadow: none; border-radius: 10px; font-weight: 600; }
+    .fi-allgood { display: flex; align-items: center; gap: 0.7rem; padding: 0.9rem 1.15rem; color: #047857; font-weight: 600; }
+    .fi-changes { list-style: none; margin: 0; padding: 0; }
+    .fi-changes li { padding: 0.55rem 0; border-top: 1px solid #f1f5f9; color: #1e293b; font-size: 0.95rem; }
+    .fi-changes li:first-child { border-top: 0; padding-top: 0.1rem; }
+    .fi-shop { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.9rem; }
+    .fi-shop .fi-box { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.8rem 1rem; background: #f8fafc; min-width: 0; }
+    .fi-shop .fi-lab { font-size: 0.78rem; font-weight: 700; color: #475569; }
+    .fi-shop .fi-num { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .fi-shop .fi-help { font-size: 0.78rem; color: #64748b; margin-top: 0.15rem; }
+    .fi-more { margin-bottom: 0.9rem; }
+    .fi-more > summary { cursor: pointer; list-style: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 0.85rem 1.15rem; font-weight: 700; color: rgb(var(--bs-primary-rgb)); }
+    .fi-more > summary::-webkit-details-marker { display: none; }
+    .fi-more > summary span { font-weight: 500; font-size: 0.82rem; color: #64748b; }
+    .fi-more[open] > summary { margin-bottom: 0.9rem; }
+    .fi-panel .table thead th { background: #f8fafc; color: #64748b; font-size: 0.76rem; font-weight: 700; border-bottom: 1px solid #e2e8f0; }
+    .fi-panel .table > :not(caption) > * > * { border-bottom-color: #f1f5f9; }
+    .fi-foot { padding: 0.6rem 1.15rem; font-size: 0.8rem; color: #64748b; border-top: 1px solid #eef2f7; }
+    @media (max-width: 991.98px) {
+        .fi-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .fi-tile:nth-child(3) { border-left: 0; }
+        .fi-tile:nth-child(n+3) { border-top: 1px solid #eef2f7; }
+        .fi-shop { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 575.98px) {
+        .fi-tiles, .fi-shop { grid-template-columns: 1fr; }
+        .fi-tile + .fi-tile { border-left: 0; border-top: 1px solid #eef2f7; }
+        .fi-monthbar { flex-direction: column; align-items: stretch; }
+        .fi-monthbar .fi-now { justify-content: space-between; }
+        .fi-monthbar form { width: 100%; }
+        .fi-monthbar .form-control { flex: 1 1 auto; width: auto; }
+        .fi-todo .btn { width: 100%; }
+    }
+</style>
+
+<!-- Month bar -->
+<div class="fi-monthbar no-print">
+    <div class="fi-now">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_insights', month=prev_month) }}"><i class="fas fa-chevron-left me-2"></i>Previous month</a>
+        <span class="fi-month">{{ metrics.label }}</span>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_insights', month=next_month) }}">Next month<i class="fas fa-chevron-right ms-2"></i></a>
     </div>
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Arrears recovery</div>
-            <div class="h4 fw-bold mb-1 text-success">Rs {{ money(metrics.arrears.recovered) }}</div>
-            <div class="text-muted small">older arrears recovered in {{ metrics.label }}{% if metrics.arrears.recoverable > 0 %} · Rs {{ money(metrics.arrears.recoverable) }} still recoverable{% else %} · nothing older left recoverable{% endif %}</div>
-        </div></div>
+    <form method="get" action="{{ url_for('main.financials_insights') }}">
+        <input type="month" class="form-control form-control-sm" name="month" value="{{ month }}" aria-label="Pick a month">
+        <button class="btn btn-primary btn-sm">Show month</button>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_insights') }}">This month</a>
+    </form>
+</div>
+
+<div class="alert alert-info fi-hint py-2 px-3 no-print" role="status">
+    <b><i class="fas fa-circle-info me-1"></i>What to do now:</b>
+    Read the <b>short answer</b> first, then do what is listed under <b>What to do</b>.
+</div>
+
+<!-- The answer -->
+<section class="fi-hero {{ 'is-empty' if not history else ('is-warn' if todo_count else 'is-good') }}" aria-label="Summary for {{ metrics.label }}">
+    <div class="fi-verdict">
+        <span class="fi-verdict-icon"><i class="fas {{ 'fa-hourglass-start' if not history else ('fa-bell' if todo_count else 'fa-face-smile') }}"></i></span>
+        <div>
+            {% if not history %}
+            <div class="fi-verdict-title">Not enough history yet.</div>
+            <div class="fi-verdict-sub">Insights compare this month with last month. When last month has records, the comparison will appear here.</div>
+            {% elif todo_count %}
+            <div class="fi-verdict-title">{{ todo_count }} thing(s) need your attention in {{ metrics.label }}.</div>
+            <div class="fi-verdict-sub">The list below says what to do.</div>
+            {% else %}
+            <div class="fi-verdict-title">Everything looks fine for {{ metrics.label }}.</div>
+            <div class="fi-verdict-sub">Nothing needs your attention.</div>
+            {% endif %}
+        </div>
     </div>
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Salary burden</div>
-            <div class="h4 fw-bold mb-1">{{ '{:,.1f}'.format(metrics.salary_burden.burden) + '%' if metrics.salary_burden.burden is not none else '—' }}</div>
-            <div class="text-muted small">salaries paid (Rs {{ money(metrics.salary_burden.salary) }}) as a share of Cash In (Rs {{ money(metrics.salary_burden.cash_in) }})</div>
-        </div></div>
+    <div class="fi-tiles">
+        <div class="fi-tile {{ 't-green' if fees.rate is not none and fees.rate >= 80 else 't-amber' }}">
+            <div class="fi-lab">Fees paid this month</div>
+            <div class="fi-num {{ 'fi-ok' if fees.rate is not none and fees.rate >= 80 else 'fi-bad' if fees.rate is not none else '' }}">{{ '{:,.1f}'.format(fees.rate) + '%' if fees.rate is not none else '—' }}</div>
+            <div class="fi-help">Rs {{ money(fees.collected) }} paid out of Rs {{ money(fees.expected) }} due this month</div>
+            {% if fees.rate is not none %}
+            <div class="fi-track" role="img" aria-label="Share of this month's fees that is paid"><i class="{{ '' if fees.rate >= 80 else 'low' }}" style="width: {{ [fees.rate, 100] | min | round(1) }}%"></i></div>
+            {% endif %}
+            {% if history and fees.rate_change is not none %}
+            <span class="fi-chip {{ 'up' if fees.rate_change > 0 else ('down' if fees.rate_change < 0 else 'same') }}">{{ 'Better than' if fees.rate_change > 0 else ('Lower than' if fees.rate_change < 0 else 'Same as') }} last month ({{ '{:,.1f}'.format(fees.prev_rate) }}%)</span>
+            {% endif %}
+        </div>
+        <div class="fi-tile t-blue">
+            <div class="fi-lab">Old dues paid this month</div>
+            <div class="fi-num fi-ok">Rs {{ money(metrics.arrears.recovered) }}</div>
+            <div class="fi-help">Unpaid fees from earlier months that were paid this month.</div>
+            <div class="fi-help">{% if metrics.arrears.recoverable > 0 %}Rs {{ money(metrics.arrears.recoverable) }} from earlier months is still unpaid.{% else %}No old dues are left unpaid.{% endif %}</div>
+        </div>
+        <div class="fi-tile t-amber">
+            <div class="fi-lab">Salaries vs money received</div>
+            <div class="fi-num">{{ '{:,.1f}'.format(metrics.salary_burden.burden) + '%' if metrics.salary_burden.burden is not none else '—' }}</div>
+            <div class="fi-help">{% if metrics.salary_burden.burden is not none %}Out of every Rs 100 received, about Rs {{ metrics.salary_burden.burden | round | int }} went to salaries.{% else %}No money was received this month.{% endif %}</div>
+            <div class="fi-help">Salaries paid Rs {{ money(metrics.salary_burden.salary) }} &middot; received Rs {{ money(metrics.salary_burden.cash_in) }}</div>
+        </div>
+        <div class="fi-tile {{ 't-green' if cash.net >= 0 else 't-red' }}">
+            <div class="fi-lab">Net Position</div>
+            <div class="fi-num {{ 'fi-ok' if cash.net >= 0 else 'fi-bad' }}">Rs {{ money(cash.net) }}</div>
+            <div class="fi-help">Money received minus money paid out.</div>
+            {% if history %}
+            <span class="fi-chip {{ 'up' if cash.net_change > 0 else ('down' if cash.net_change < 0 else 'same') }}">{% if cash.net_change == 0 %}Same as last month (Rs {{ money(cash.prev_net) }}){% else %}Rs {{ money(cash.net_change | abs) }} {{ 'better' if cash.net_change > 0 else 'lower' }} than last month (Rs {{ money(cash.prev_net) }}){% endif %}</span>
+            {% endif %}
+        </div>
     </div>
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Net Position change</div>
-            <div class="h4 fw-bold mb-1 {{ 'text-success' if metrics.cash.net_change >= 0 else 'text-danger' }}">Rs {{ money(metrics.cash.net_change) }}</div>
-            <div class="text-muted small">Cash In minus Cash Out: Rs {{ money(metrics.cash.net) }} this month vs Rs {{ money(metrics.cash.prev_net) }} last month</div>
-        </div></div>
+</section>
+
+<!-- What to do -->
+<div class="fi-panel">
+    <div class="fi-panel-head">
+        <h2><i class="fas fa-clipboard-check"></i>What to do</h2>
+        <span class="fi-sub">Simple steps, based on this month's records</span>
+    </div>
+    {% if recommendations %}
+    <ul class="fi-todo">
+        {% for item in recommendations %}
+        <li class="fi-todo-item">
+            <i class="fas fa-triangle-exclamation text-warning"></i>
+            <span class="fi-todo-text">{{ item.text }}</span>
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for(item.endpoint, **item.params) }}">{{ item.link_text }}</a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="fi-allgood"><i class="fas fa-circle-check"></i><span>Nothing needs your attention for {{ metrics.label }}.</span></div>
+    {% endif %}
+</div>
+
+<!-- What changed -->
+<div class="fi-panel">
+    <div class="fi-panel-head">
+        <h2><i class="fas fa-arrow-right-arrow-left"></i>What changed since last month</h2>
+        <span class="fi-sub">{{ metrics.label }}</span>
+    </div>
+    <div class="fi-panel-body">
+        <ul class="fi-changes">
+            {% for line in insights.lines %}
+            <li>{{ line }}</li>
+            {% endfor %}
+        </ul>
     </div>
 </div>
 
 {% if metrics.sales %}
-<div class="row g-3 mb-3">
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Sales revenue</div>
-            <div class="h4 fw-bold mb-1 text-success">Rs {{ money(metrics.sales.revenue) }}</div>
-            <div class="text-muted small">inventory sales in {{ metrics.label }} · already inside Cash In</div>
-        </div></div>
+<!-- Shop -->
+<div class="fi-panel">
+    <div class="fi-panel-head">
+        <h2><i class="fas fa-store"></i>Shop and stock</h2>
+        <span class="fi-sub">{{ metrics.label }}</span>
     </div>
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Cost of goods sold</div>
-            <div class="h4 fw-bold mb-1" style="color:#fd7e14;">Rs {{ money(metrics.sales.cogs) }}</div>
-            <div class="text-muted small">cost of items that left the shelf{% if metrics.sales.package_cogs %} · Rs {{ money(metrics.sales.package_cogs) }} of it was given inside admission packages (already paid in the admission fee){% endif %}</div>
-        </div></div>
-    </div>
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Estimated Net Operating Position</div>
-            <div class="h4 fw-bold mb-1 {{ 'text-success' if metrics.operating_position >= 0 else 'text-danger' }}">Rs {{ money(metrics.operating_position) }}</div>
-            <div class="text-muted small">Revenue minus Salaries, Operating Expenses and Cost of Goods Sold — an operating estimate, not money movement</div>
-        </div></div>
-    </div>
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Stock purchases</div>
-            <div class="h4 fw-bold mb-1">Rs {{ money(metrics.purchases) }}</div>
-            <div class="text-muted small">part of Cash Out but not expenses — cost enters Cost of Goods Sold when items sell{% if metrics.sales.low_stock %} · <span class="text-danger fw-bold">{{ metrics.sales.low_stock | length }} item(s) low on stock</span>{% endif %}</div>
-        </div></div>
+    <div class="fi-panel-body">
+        <div class="fi-shop">
+            <div class="fi-box">
+                <div class="fi-lab">Shop sales</div>
+                <div class="fi-num fi-ok">Rs {{ money(metrics.sales.revenue) }}</div>
+                <div class="fi-help">Already included in the money received.</div>
+            </div>
+            <div class="fi-box">
+                <div class="fi-lab">Cost of items sold</div>
+                <div class="fi-num" style="color:#b45309;">Rs {{ money(metrics.sales.cogs) }}</div>
+                <div class="fi-help">What the items that left the shelf cost you.</div>
+                {% if metrics.sales.package_cogs %}<div class="fi-help">Rs {{ money(metrics.sales.package_cogs) }} of it went out inside admission packages (already paid in the admission fee).</div>{% endif %}
+            </div>
+            <div class="fi-box">
+                <div class="fi-lab">Estimated Net Operating Position</div>
+                <div class="fi-num {{ 'fi-ok' if metrics.operating_position >= 0 else 'fi-bad' }}">Rs {{ money(metrics.operating_position) }}</div>
+                <div class="fi-help">What the school earned minus salaries, running costs and the cost of items sold. An estimate, not money moved.</div>
+            </div>
+            <div class="fi-box">
+                <div class="fi-lab">Stock bought</div>
+                <div class="fi-num">Rs {{ money(metrics.purchases) }}</div>
+                <div class="fi-help">Money paid out, but not an expense. The cost is counted when items sell.</div>
+                {% if metrics.sales.low_stock %}<div class="fi-help fi-bad fw-bold">{{ metrics.sales.low_stock | length }} item(s) low on stock</div>{% endif %}
+            </div>
+        </div>
     </div>
 </div>
 {% endif %}
 
-<div class="row g-3 mb-3">
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-dark text-white fw-bold border-0"><i class="fas fa-file-alt me-2"></i>What changed</div>
-            <div class="card-body">
-                {% for line in insights.lines %}
-                <p class="mb-2">{{ line }}</p>
-                {% endfor %}
+<!-- Details, folded until asked -->
+<details class="fi-more">
+    <summary>See more details <span>&middot; spending by type, students who left</span></summary>
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <div class="fi-panel h-100 mb-0">
+                <div class="fi-panel-head"><h2>Spending by type</h2><span class="fi-sub">{{ metrics.label }} and last month</span></div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead><tr>
+                            <th class="ps-3">Type</th>
+                            <th class="text-end">This month</th>
+                            <th class="text-end">Last month</th>
+                            <th class="text-end pe-3">Change</th>
+                        </tr></thead>
+                        <tbody>
+                            {% for trend in metrics.expense_trends %}
+                            <tr>
+                                <td class="ps-3">{{ trend.name }}</td>
+                                <td class="text-end">Rs {{ money(trend.current) }}</td>
+                                <td class="text-end">Rs {{ money(trend.previous) }}</td>
+                                <td class="text-end pe-3">
+                                    {% if trend.pct is none %}new this month
+                                    {% elif trend.pct > 0 %}<span class="text-danger">+{{ '{:,.1f}'.format(trend.pct) }}% (Rs {{ money(trend.change) }})</span>
+                                    {% elif trend.pct < 0 %}<span class="text-success">{{ '{:,.1f}'.format(trend.pct) }}% (Rs {{ money(trend.change) }})</span>
+                                    {% else %}unchanged{% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="4" class="text-center text-muted py-4">No expenses recorded in these months.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="fi-foot">Salaries are not included here.</div>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="fi-panel h-100 mb-0">
+                <div class="fi-panel-head"><h2>Students who have left</h2><span class="fi-sub">Fees no longer coming in</span></div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead><tr>
+                            <th class="ps-3">Status</th><th class="text-end">Students</th>
+                            <th class="text-end pe-3">Monthly fees</th>
+                        </tr></thead>
+                        <tbody>
+                            {% for entry in metrics.left_impact.values() %}
+                            <tr>
+                                <td class="ps-3">{{ entry.label }}</td>
+                                <td class="text-end">{{ entry.count }}</td>
+                                <td class="text-end pe-3">Rs {{ money(entry.monthly) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="text-center text-muted py-4">No former students with a monthly fee.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="fi-foot">A guess of the monthly fees that are no longer being billed. It is not a loss.</div>
             </div>
         </div>
     </div>
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-primary text-white fw-bold border-0"><i class="fas fa-clipboard-check me-2"></i>Recommendations</div>
-            <div class="card-body">
-                {% if recommendations %}
-                    <ul class="mb-0 ps-3">
-                        {% for item in recommendations %}<li class="mb-2">{{ item }}</li>{% endfor %}
-                    </ul>
-                {% else %}
-                    <p class="text-muted mb-0">Nothing needs attention for {{ metrics.label }}.</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row g-3">
-    <div class="col-md-7">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white border-0 pt-3"><h2 class="h6 fw-bold mb-0">Expense trends — {{ metrics.label }} vs previous month (salaries excluded)</h2></div>
-            <div class="card-body p-0 table-responsive">
-                <table class="table table-sm table-striped align-middle mb-0">
-                    <thead class="table-light"><tr>
-                        <th class="ps-3">Category</th>
-                        <th class="text-end">{{ metrics.label }}</th>
-                        <th class="text-end">Previous</th>
-                        <th class="text-end pe-3">Change</th>
-                    </tr></thead>
-                    <tbody>
-                        {% for trend in metrics.expense_trends %}
-                        <tr>
-                            <td class="ps-3">{{ trend.name }}</td>
-                            <td class="text-end">Rs {{ money(trend.current) }}</td>
-                            <td class="text-end">Rs {{ money(trend.previous) }}</td>
-                            <td class="text-end pe-3">
-                                {% if trend.pct is none %}new this month
-                                {% elif trend.pct > 0 %}<span class="text-danger">+{{ '{:,.1f}'.format(trend.pct) }}% (Rs {{ money(trend.change) }})</span>
-                                {% elif trend.pct < 0 %}<span class="text-success">{{ '{:,.1f}'.format(trend.pct) }}% (Rs {{ money(trend.change) }})</span>
-                                {% else %}unchanged{% endif %}
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="4" class="text-center text-muted py-4">No expenses recorded in these months.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-5">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white border-0 pt-3"><h2 class="h6 fw-bold mb-0">Students who left — estimated monthly revenue impact</h2></div>
-            <div class="card-body p-0 table-responsive">
-                <table class="table table-sm table-striped align-middle mb-0">
-                    <thead class="table-light"><tr>
-                        <th class="ps-3">Status</th><th class="text-end">Students</th>
-                        <th class="text-end pe-3">Monthly fees</th>
-                    </tr></thead>
-                    <tbody>
-                        {% for entry in metrics.left_impact.values() %}
-                        <tr>
-                            <td class="ps-3">{{ entry.label }}</td>
-                            <td class="text-end">{{ entry.count }}</td>
-                            <td class="text-end">Rs {{ money(entry.monthly) }}</td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="3" class="text-center text-muted py-4">No former students with a monthly fee.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            <div class="card-footer bg-white border-0 text-muted small">An estimate of monthly fees no longer being billed — not a loss claim.</div>
-        </div>
-    </div>
-</div>
+</details>
 {% endblock %}

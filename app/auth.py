@@ -1,5 +1,6 @@
 import time
 from datetime import datetime
+from app.timeutil import utcnow
 
 from flask import (Blueprint, current_app, flash, jsonify, redirect,
                    render_template, request, session, url_for)
@@ -111,6 +112,15 @@ def setup_progress_status():
     return jsonify(job)
 
 
+def _default_login_hint():
+    """True only while the first-install account still has its starting password."""
+    try:
+        admin = AdminUser.query.filter_by(username='admin').first()
+        return bool(admin and admin.is_active and admin.check_password('admin123'))
+    except Exception:
+        return False
+
+
 @auth.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -123,14 +133,15 @@ def login():
                        summary=f'Locked-out login attempt for "{username}"')
             db.session.commit()
             flash(f'Too many failed attempts. Try again in about {remaining} seconds.', 'danger')
-            return render_template('login.html'), 429
+            return render_template('login.html', show_default_hint=_default_login_hint(),
+                                   typed_username=username), 429
 
         user = AdminUser.query.filter_by(username=username).first()
         if user and user.is_active and user.check_password(password):
             clear_failed_logins(username)
             login_user(user)
             session.permanent = True
-            user.last_login_at = datetime.utcnow()
+            user.last_login_at = utcnow()
             log_action('login', entity_type='AdminUser', entity_id=user.id,
                        summary=f'User "{user.username}" logged in ({user.role})')
             db.session.commit()
@@ -149,8 +160,11 @@ def login():
                    summary=f'Failed login for "{username}"')
         db.session.commit()
         flash('Incorrect username or password.', 'danger')
+        return render_template('login.html', show_default_hint=_default_login_hint(),
+                               typed_username=username)
 
-    return render_template('login.html')
+    return render_template('login.html', show_default_hint=_default_login_hint(),
+                           typed_username='')
 
 
 @auth.route('/recover', methods=['GET', 'POST'])

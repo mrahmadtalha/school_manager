@@ -474,7 +474,7 @@ window.addEventListener('DOMContentLoaded', function () {
                                 <h3 class="wa-category-title h6"><i class="fas fa-graduation-cap text-success"></i> Academic alerts</h3>
                                 <label class="wa-option" for="notify_results">
                                     <input class="form-check-input" type="checkbox" id="notify_results" name="notify_results" {% if settings.notify_results %}checked{% endif %}>
-                                    <span><strong>Results &amp; exam cards</strong><span class="d-block small text-muted">Notify guardians when results are published.</span></span>
+                                    <span><strong>Results &amp; exam cards</strong><span class="d-block small text-muted">Notify guardians when results are published, and send class-test result summaries from the marks page.</span></span>
                                 </label>
                                 <p class="small text-muted mb-0 mt-2">Published exam messages use the current delivery mode and queue.</p>
                             </section>
@@ -502,7 +502,10 @@ window.addEventListener('DOMContentLoaded', function () {
                             <label class="form-label fw-semibold">Late arrival</label>
                             <textarea class="form-control mb-3" name="template_late" rows="3">{{ settings.template_late }}</textarea>
                             <label class="form-label fw-semibold">Result</label>
-                            <textarea class="form-control" name="template_result" rows="3">{{ settings.template_result }}</textarea>
+                            <textarea class="form-control mb-3" name="template_result" rows="3">{{ settings.template_result }}</textarea>
+                            <label class="form-label fw-semibold">Class test result summary</label>
+                            <textarea class="form-control" name="template_test_result" rows="5" placeholder="Leave empty to use the standard wording.">{{ settings.template_test_result or '' }}</textarea>
+                            <div class="form-text">Available: {student_name} {test_title} {date_value} {subjects} {obtained} {total} {percentage} {grade} {class_average} {position} {class_size}</div>
                         </div>
                     </details>
 

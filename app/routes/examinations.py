@@ -10,6 +10,7 @@ from app.models import (ClassModel, StudentMarkModel, StudentModel, SubjectModel
 from app.routes import main
 from app.services.audit import log_action
 from app.services.marks import ABSENT_LETTER, is_absent_token
+from app.services.test_result_alerts import describe, queue_test_result_alerts
 from app.services.whatsapp_automation import queue_automation_message  # noqa: F401
 
 #: Card accent colours per test category (case-insensitive, with safe fallback).
@@ -118,11 +119,24 @@ def tests_list():
             bucket['progress_label'] = ('Marks %d/%d (%d%%)'
                                         % (bucket['marks_filled'],
                                            bucket['marks_total'], pct))
+        bucket['marks_pct'] = (round(bucket['marks_filled'] * 100.0 / bucket['marks_total'])
+                               if bucket['marks_total'] else 0)
+        bucket['needs_marks'] = bucket['progress_state'] in ('none', 'partial')
         bucket.pop('test_ids', None)
+
+    today = date.today()
+    stats = {
+        'total': len(exams),
+        'this_month': sum(1 for e in exams
+                          if e['date'] and (e['date'].year, e['date'].month) == (today.year, today.month)),
+        'complete': sum(1 for e in exams if e['progress_state'] == 'done'),
+        'pending': sum(1 for e in exams if e['needs_marks']),
+    }
 
     return render_template(
         'tests.html',
         exams=exams,
+        stats=stats,
         classes=classes,
         subjects=subjects,
         test_types=test_types,
@@ -131,7 +145,7 @@ def tests_list():
         recent_titles=_recent_titles(),
         type_defaults={tt.name: (tt.default_marks if tt.default_marks else 100)
                        for tt in test_types},
-        today=date.today(),
+        today=today,
     )
 
 
@@ -358,6 +372,10 @@ def enter_batch_marks():
             db.session.commit()
 
             flash(f'Marks saved successfully ({saved_count} entries)!', 'success')
+            if request.form.get('send_wa') == '1' and term_exam is None:
+                alert = queue_test_result_alerts(tests, students)
+                db.session.commit()
+                flash(describe(alert), 'warning' if alert['off_reason'] else 'info')
             if term_exam is not None:
                 canonical = url_for('main.enter_batch_marks',
                                     term_exam_id=term_exam.id)

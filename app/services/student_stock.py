@@ -15,6 +15,7 @@ of Goods Sold (see ``inventory_service.record_sale``).
   (``StudentModel.stock_tracked``); older students are never touched.
 """
 from datetime import date, datetime
+from app.timeutil import utcnow
 
 from app.database import db
 from app.models import Product, ProductSet, StudentIssue, StudentModel
@@ -147,7 +148,7 @@ def void_issue(issue, reason, actor=None):
         sale.is_void = True
     issue.is_void = True
     issue.void_reason = reason[:255]
-    issue.voided_at = datetime.utcnow()
+    issue.voided_at = utcnow()
     issue.voided_by_name = _actor(actor)
     return issue
 

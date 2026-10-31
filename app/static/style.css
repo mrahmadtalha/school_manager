@@ -953,3 +953,275 @@ body {
     .tt2-title { font-size: 1.35rem; }
     .tt2-timehead { min-width: 5.5rem; font-size: 0.8rem; }
 }
+
+
+/* -- sidebar refresh: group headings, clearer open link, fixed + scrolling ------ */
+
+.nav-section {
+    list-style: none;
+}
+
+.nav-section-title {
+    display: block;
+    padding: 1rem 0.75rem 0.3rem;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(148, 163, 184, 0.8);
+    user-select: none;
+}
+
+.nav-section:first-child .nav-section-title {
+    padding-top: 0.15rem;
+}
+
+#sidebar .nav-link {
+    position: relative;
+}
+
+/* A small accent bar beside the open link, so it is easy to spot even at a glance. */
+#sidebar .nav-link.active::before {
+    content: "";
+    position: absolute;
+    left: -0.5rem;
+    top: 22%;
+    bottom: 22%;
+    width: 3px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #60a5fa, #a78bfa);
+}
+
+.sidebar-skip-link:focus {
+    position: fixed;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 2000;
+    padding: 0.5rem 0.9rem;
+    border-radius: 10px;
+    background: #0f172a;
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+@media (min-width: 768px) {
+    /* The menu stays on screen and scrolls by itself, so a long administrator menu
+       no longer scrolls away together with the page. */
+    #sidebar {
+        position: sticky;
+        top: 0;
+        align-self: flex-start;
+        height: 100vh;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+    }
+
+    #sidebar::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    #sidebar::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.35);
+        border-radius: 999px;
+    }
+
+    /* Icon-only mode: the headings give way to a thin line between groups. */
+    html.sidebar-collapsed #sidebar .nav-section {
+        height: 1px;
+        margin: 0.55rem 0.35rem;
+        background: rgba(148, 163, 184, 0.14);
+    }
+
+    html.sidebar-collapsed #sidebar .nav-section:first-child {
+        display: none;
+    }
+
+    html.sidebar-collapsed #sidebar .nav-section-title {
+        display: none;
+    }
+
+    html.sidebar-collapsed #sidebar .nav-link.active::before {
+        left: -0.45rem;
+    }
+}
+
+@media (max-width: 767.98px) {
+    /* Bigger touch targets in the phone drawer. */
+    #sidebar .nav-link {
+        min-height: 44px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #sidebar,
+    #sidebar ~ main,
+    #sidebar .nav-link,
+    .nav-icon {
+        transition: none !important;
+    }
+}
+
+
+/* -- sidebar: collapsible groups and quick find ----------------------------------- */
+
+/* The heading is a real button, so it can be reached and used with the keyboard. */
+button.nav-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    font-family: inherit;
+    text-align: start;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+
+button.nav-section-title:hover {
+    color: #e2e8f0;
+    background: rgba(148, 163, 184, 0.08);
+}
+
+.nav-section-chevron {
+    font-size: 0.6rem;
+    transition: transform 0.2s ease;
+}
+
+.nav-section.is-closed .nav-section-chevron {
+    transform: rotate(-90deg);
+}
+
+html[dir="rtl"] .nav-section.is-closed .nav-section-chevron {
+    transform: rotate(90deg);
+}
+
+.nav-item.group-collapsed {
+    display: none;
+}
+
+/* While the person is searching, every group is searched and shown. */
+#sidebar.is-finding .nav-item.group-collapsed {
+    display: list-item;
+}
+
+#sidebar .nav-item.find-hide,
+#sidebar.is-finding .nav-item.find-hide {
+    display: none;
+}
+
+.sidebar-find {
+    position: relative;
+    margin: 0.9rem 0 0.2rem;
+}
+
+.sidebar-find-icon {
+    position: absolute;
+    top: 50%;
+    left: 0.8rem;
+    transform: translateY(-50%);
+    font-size: 0.75rem;
+    color: rgba(148, 163, 184, 0.85);
+    pointer-events: none;
+}
+
+.sidebar-find-input {
+    width: 100%;
+    padding: 0.5rem 3.2rem 0.5rem 2.1rem;
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(148, 163, 184, 0.09);
+    color: #f1f5f9;
+    font-size: 0.85rem;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.sidebar-find-input::placeholder {
+    color: rgba(148, 163, 184, 0.8);
+}
+
+.sidebar-find-input:focus {
+    outline: none;
+    border-color: rgba(96, 165, 250, 0.7);
+    background: rgba(148, 163, 184, 0.14);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.sidebar-find-key {
+    position: absolute;
+    top: 50%;
+    right: 0.6rem;
+    transform: translateY(-50%);
+    padding: 0.05rem 0.35rem;
+    border-radius: 6px;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    background: transparent;
+    color: rgba(148, 163, 184, 0.9);
+    font-size: 0.62rem;
+    font-family: inherit;
+    pointer-events: none;
+}
+
+.sidebar-find-input:focus ~ .sidebar-find-key,
+.sidebar-find-input:not(:placeholder-shown) ~ .sidebar-find-key {
+    display: none !important;
+}
+
+.sidebar-find-empty {
+    margin: 0.6rem 0.4rem 0;
+    font-size: 0.8rem;
+    color: rgba(148, 163, 184, 0.85);
+}
+
+html[dir="rtl"] .sidebar-find-icon { left: auto; right: 0.8rem; }
+html[dir="rtl"] .sidebar-find-key { right: auto; left: 0.6rem; }
+html[dir="rtl"] .sidebar-find-input { padding: 0.5rem 2.1rem 0.5rem 3.2rem; }
+
+@media (min-width: 768px) {
+    /* Icon-only mode: no search box, and every link is shown whatever the group state. */
+    html.sidebar-collapsed #sidebar .sidebar-find,
+    html.sidebar-collapsed #sidebar .sidebar-find-empty {
+        display: none;
+    }
+
+    html.sidebar-collapsed #sidebar .nav-item.group-collapsed {
+        display: list-item;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nav-section-chevron,
+    button.nav-section-title,
+    .sidebar-find-input {
+        transition: none !important;
+    }
+}
+
+#sidebar.is-finding .nav-section-chevron {
+    transform: none;
+}
+
+.sidebar-find-input::-webkit-search-cancel-button {
+    filter: grayscale(1) brightness(1.6);
+    opacity: 0.7;
+    cursor: pointer;
+}
+
+/* A little lighter and smaller than before, so names like "Daily Attendance" and
+   "Classes & Subjects" fit on one line on a normal screen.  The open page stays bold. */
+@media (min-width: 1200px) {
+    #sidebar .nav-link {
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+
+    #sidebar .nav-link.active {
+        font-weight: 600;
+    }
+}

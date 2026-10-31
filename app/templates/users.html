@@ -1,257 +1,513 @@
 {% extends "base.html" %}
+{#
+    Users & Roles — redesigned for non-technical school staff, in the same
+    family as the Students page: plain header, one summary band, a filter bar,
+    a clean table, plain-language help.  One shared Edit / Password / Children
+    window for the whole page (filled from the row's buttons) instead of three
+    windows per user.  Scoped under .ud- so nothing leaks into other pages.
+#}
+{% set role_meta = {
+    'admin':      {'icon': 'fa-user-shield',     'tone': 'admin',
+                   'help': 'Full control: every page, all settings, and creating other users.'},
+    'teacher':    {'icon': 'fa-chalkboard-teacher', 'tone': 'teacher',
+                   'help': 'Daily class work: attendance, marks, class tests and exams.'},
+    'parent':     {'icon': 'fa-user-friends',    'tone': 'parent',
+                   'help': 'Sees only their own child: attendance, fees and results.'},
+    'owner':      {'icon': 'fa-crown',           'tone': 'owner',
+                   'help': 'Principal / owner: read-only overview of the whole school.'},
+    'accountant': {'icon': 'fa-calculator',      'tone': 'accountant',
+                   'help': 'Money matters: fees, expenses, salaries and financial reports.'},
+    'guard':      {'icon': 'fa-shield-halved',   'tone': 'guard',
+                   'help': 'Gate phone app only: scans student QR cards at the gate.'},
+} %}
+{% set role_counts = {'admin': stats.admins, 'teacher': stats.teachers, 'parent': stats.parents,
+                      'owner': stats.owners, 'accountant': stats.accountants, 'guard': stats.guards} %}
+{% set action_words = {'create': 'Created', 'login': 'Signed in', 'login_failed': 'Wrong password',
+                       'update': 'Changed', 'user_admin': 'Account change', 'settings_change': 'Settings changed',
+                       'delete': 'Removed', 'void': 'Cancelled'} %}
+
+{% macro child_picker(picker_id, selected_ids=[]) %}
+<div class="ud-picker" data-child-picker>
+    <div class="ud-picker-search">
+        <i class="fas fa-search"></i>
+        <input type="search" class="form-control" placeholder="Type a name or roll number…"
+               aria-label="Search students" data-picker-search autocomplete="off">
+    </div>
+    <div class="ud-picker-list" role="group" aria-label="Students">
+        {% for student in students %}
+        <label class="ud-pick" data-picker-item
+               data-text="{{ (student.student_name ~ ' ' ~ student.roll_number) | lower }}">
+            <input type="checkbox" name="student_ids" value="{{ student.id }}"
+                   {% if student.id in selected_ids %}checked{% endif %}>
+            <span class="ud-pick-name">{{ student.student_name }}</span>
+            <span class="ud-pick-roll">Roll {{ student.roll_number }}</span>
+        </label>
+        {% else %}
+        <div class="ud-picker-empty">No students yet. Add students first, then link them here.</div>
+        {% endfor %}
+        <div class="ud-picker-empty d-none" data-picker-none>No student matches your search.</div>
+    </div>
+    <div class="ud-picker-foot"><span data-picker-count>0 selected</span></div>
+</div>
+{% endmacro %}
+
+{% macro password_field(field_id) %}
+<div class="input-group ud-pass">
+    <input type="password" class="form-control" name="password" id="{{ field_id }}" minlength="8"
+           required autocomplete="new-password" data-pass-input>
+    <button type="button" class="btn btn-outline-secondary" data-pass-show title="Show or hide the password"
+            aria-label="Show or hide the password"><i class="fas fa-eye"></i></button>
+    <button type="button" class="btn btn-outline-secondary" data-pass-suggest
+            title="Make a strong password for me"><i class="fas fa-wand-magic-sparkles me-1"></i>Suggest</button>
+</div>
+<div class="form-text">At least 8 characters with letters and numbers. Write it down and tell the person.</div>
+{% endmacro %}
+
 {% block content %}
 <style>
-    .ustat { border-radius: 16px; padding: 14px 18px; height: 100%; }
-    .ustat .ustat-num { font-size: 1.7rem; font-weight: 800; line-height: 1.1; }
-    .ustat .ustat-label { font-size: .72rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; opacity: .85; }
-    .ustat.u-blue { background: #e7efff; border: 1px solid #c9dbff; color: #0b3a8f; }
-    .ustat.u-green { background: #e7f6ee; border: 1px solid #c6e9d8; color: #0a5c3a; }
-    .ustat.u-amber { background: #fdf3e2; border: 1px solid #f5e2bf; color: #7a4a06; }
-    .ustat.u-slate { background: #eef2f7; border: 1px solid #d8e0ea; color: #1f2a44; }
-    .u-role-chip { font-size: .72rem; font-weight: 700; border-radius: 999px; padding: .22rem .65rem; display: inline-block; }
-    .u-role-admin { background: #fde8e8; color: #9b1c1c; border: 1px solid #f8c4c4; }
-    .u-role-teacher { background: #e7efff; color: #1e40af; border: 1px solid #c9dbff; }
-    .u-role-parent { background: #e7f6ee; color: #0a5c3a; border: 1px solid #c6e9d8; }
-    .u-role-owner { background: #f3e8ff; color: #6b21a8; border: 1px solid #e2d1f9; }
-    .u-role-accountant { background: #fef3c7; color: #92400e; border: 1px solid #f7e2b0; }
-    .u-role-guard { background: #e0f2f1; color: #00695c; border: 1px solid #b2dfdb; }
-    .u-pill-active { background: #e7f6ee; color: #0a5c3a; border: 1px solid #c6e9d8; border-radius: 999px; padding: .2rem .65rem; font-weight: 700; font-size: .75rem; }
-    .u-pill-disabled { background: #eef1f5; color: #475569; border: 1px solid #d8dee7; border-radius: 999px; padding: .2rem .65rem; font-weight: 700; font-size: .75rem; }
-    .u-action-btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; }
-    .u-recent-row { border-bottom: 1px dashed #e2e8f0; padding: .5rem 0; font-size: .85rem; }
-    .u-recent-row:last-child { border-bottom: 0; }
-    .u-teacher-chip { background: #eef2f7; border: 1px solid #d8e0ea; color: #1f2a44; border-radius: 10px; padding: .18rem .55rem; font-size: .78rem; font-weight: 600; display: inline-block; }
+    .ud-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0.25rem 0 1.1rem; }
+    .ud-head h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; margin: 0; line-height: 1.1; }
+    .ud-head p { margin: 0.35rem 0 0; color: #64748b; font-size: 0.92rem; }
+    .ud-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .ud-tools .btn { box-shadow: none; }
+    .ud-tools .btn-outline-secondary { background: #fff; }
+
+    .ud-hint { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid rgb(var(--bs-primary-rgb)); border-radius: 14px; color: #475569; font-size: 0.88rem; }
+    .ud-hint b { color: #0f172a; }
+
+    /* role colours (chip text/background/border + bar colour) */
+    .ud-tone-admin      { --t-bg: #fde8e8; --t-fg: #9b1c1c; --t-bd: #f8c4c4; --t-bar: #dc2626; }
+    .ud-tone-teacher    { --t-bg: #e7efff; --t-fg: #1e40af; --t-bd: #c9dbff; --t-bar: #2563eb; }
+    .ud-tone-parent     { --t-bg: #e7f6ee; --t-fg: #0a5c3a; --t-bd: #c6e9d8; --t-bar: #16a34a; }
+    .ud-tone-owner      { --t-bg: #f3e8ff; --t-fg: #6b21a8; --t-bd: #e2d1f9; --t-bar: #9333ea; }
+    .ud-tone-accountant { --t-bg: #fef3c7; --t-fg: #92400e; --t-bd: #f7e2b0; --t-bar: #d97706; }
+    .ud-tone-guard      { --t-bg: #e0f2f1; --t-fg: #00695c; --t-bd: #b2dfdb; --t-bar: #0d9488; }
+    .ud-role { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0.65rem; border-radius: 99px; font-size: 0.78rem; font-weight: 700; white-space: nowrap;
+               background: var(--t-bg, #f1f5f9); color: var(--t-fg, #334155); border: 1px solid var(--t-bd, #e2e8f0); }
+
+    /* summary ribbon */
+    .ud-ribbon { display: grid; grid-template-columns: minmax(8rem, 0.7fr) minmax(12rem, 1fr) minmax(16rem, 1.8fr); background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .ud-stat { padding: 0.85rem 1.2rem; display: flex; flex-direction: column; justify-content: center; gap: 0.2rem; min-width: 0; }
+    .ud-stat + .ud-stat { border-left: 1px solid #eef2f7; }
+    .ud-num { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .ud-lab { font-size: 0.78rem; color: #64748b; }
+    .ud-lab b { color: #0f172a; }
+    .ud-lab .ud-off { color: #92400e; }
+    .ud-bar { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: #eef2f7; margin: 0.35rem 0 0.3rem; }
+    .ud-bar i { display: block; height: 100%; background: var(--t-bar, #94a3b8); transform-origin: left center; animation: ud-grow 0.7s cubic-bezier(.2, .7, .2, 1) both; }
+    .ud-legend { display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; font-size: 0.8rem; color: #475569; font-variant-numeric: tabular-nums; }
+    .ud-legend b { color: #0f172a; }
+    .ud-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.3rem; vertical-align: middle; background: var(--t-bar, #94a3b8); }
+    @keyframes ud-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+    /* filter bar */
+    .ud-filters { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.7rem; margin-bottom: 0.9rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
+    .ud-search { position: relative; flex: 1 1 18rem; min-width: 14rem; }
+    .ud-search i { position: absolute; left: 0.95rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+    .ud-search input { padding-left: 2.5rem; height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background: #f8fafc; }
+    .ud-search input:focus { background: #fff; }
+    .ud-filters .form-select { height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background-color: #f8fafc; width: auto; min-width: 10rem; max-width: 15rem; }
+    .ud-seg { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; }
+    .ud-seg input { position: absolute; opacity: 0; pointer-events: none; }
+    .ud-seg label { margin: 0; padding: 0.4rem 0.8rem; border-radius: 9px; font-size: 0.85rem; font-weight: 600; color: #475569; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; }
+    .ud-seg input:checked + label { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+    .ud-seg input:focus-visible + label { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 1px; }
+    .ud-filters .btn { box-shadow: none; height: 2.7rem; padding-top: 0; padding-bottom: 0; display: inline-flex; align-items: center; }
+
+    /* people table */
+    .ud-panel { border: 1px solid #e2e8f0 !important; box-shadow: none !important; border-radius: 18px; overflow: hidden; }
+    .ud-panel:hover { transform: none; }
+    .ud-count { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.7rem 1.1rem; border-bottom: 1px solid #eef2f7; font-size: 0.86rem; color: #64748b; }
+    .ud-count strong { color: #0f172a; }
+    .ud-table thead th { background: #f8fafc; color: #64748b; font-size: 0.74rem; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding: 0.7rem 0.75rem; white-space: nowrap; }
+    .ud-table > :not(caption) > * > * { padding: 0.65rem 0.75rem; border-bottom-color: #f1f5f9; }
+    .ud-row { cursor: pointer; }
+    .ud-row:hover > td:first-child { box-shadow: inset 3px 0 0 rgb(var(--bs-primary-rgb)), inset 0 0 0 9999px var(--bs-table-bg-state, transparent); }
+    .ud-row:hover > * { --bs-table-bg-state: rgba(var(--bs-primary-rgb), 0.045); }
+    .ud-row.is-off .ud-who-name, .ud-row.is-off .ud-avatar { opacity: 0.6; }
+    .ud-who { display: flex; align-items: center; gap: 0.7rem; min-width: 12rem; }
+    .ud-avatar { width: 40px; height: 40px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.95rem;
+                 background: var(--t-bg, #f1f5f9); color: var(--t-fg, #334155); border: 1px solid var(--t-bd, #e2e8f0); }
+    .ud-who-name { font-weight: 700; color: #0f172a; line-height: 1.2; }
+    .ud-who-user { font-size: 0.8rem; color: #64748b; }
+    .ud-you { display: inline-block; margin-left: 0.4rem; padding: 0.05rem 0.5rem; border-radius: 99px; background: #e0f2fe; color: #075985; font-size: 0.7rem; font-weight: 700; vertical-align: middle; }
+    .ud-link { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 99px; background: #f1f5f9; color: #334155; font-size: 0.78rem; font-weight: 600; border: 1px solid #e2e8f0; margin: 0 0.25rem 0.2rem 0; }
+    .ud-status { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.18rem 0.65rem; border-radius: 99px; font-size: 0.78rem; font-weight: 700; }
+    .ud-status.on { background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857; }
+    .ud-status.off { background: #f1f5f9; border: 1px solid #d8dee7; color: #475569; }
+    .ud-when { font-size: 0.84rem; color: #475569; white-space: nowrap; }
+    .ud-acts { display: inline-flex; gap: 0.3rem; align-items: center; }
+    .ud-act { width: 2.1rem; height: 2.1rem; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid #e2e8f0; background: #fff; color: #475569; font-size: 0.85rem; cursor: pointer; text-decoration: none; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+    .ud-act:hover:not(:disabled) { background: rgb(var(--bs-primary-rgb)); border-color: rgb(var(--bs-primary-rgb)); color: #fff; }
+    .ud-act.warn:hover:not(:disabled) { background: #b45309; border-color: #b45309; }
+    .ud-act-ph { width: 2.1rem; height: 2.1rem; display: inline-block; }
+    @media (max-width: 767.98px) { .ud-act-ph { display: none; } }
+    .ud-act:disabled { opacity: 0.4; cursor: not-allowed; }
+    .ud-empty { text-align: center; padding: 3rem 1rem; }
+    .ud-empty .ud-empty-icon { width: 76px; height: 76px; border-radius: 24px; margin: 0 auto 1rem; display: flex; align-items: center; justify-content: center; font-size: 1.9rem; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); }
+    .ud-empty p { font-weight: 700; color: #334155; margin-bottom: 1rem; }
+
+    /* "what can each role do" guide */
+    .ud-guide { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; }
+    .ud-guide > summary { cursor: pointer; padding: 0.85rem 1.1rem; font-weight: 700; color: #0f172a; list-style: none; display: flex; align-items: center; gap: 0.5rem; }
+    .ud-guide > summary::-webkit-details-marker { display: none; }
+    .ud-guide > summary .ud-chev { margin-left: auto; transition: transform 0.15s ease; color: #94a3b8; }
+    .ud-guide[open] > summary .ud-chev { transform: rotate(180deg); }
+    .ud-guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 0.7rem; padding: 0 1.1rem 1.1rem; }
+    .ud-guide-card { border: 1px solid #eef2f7; border-radius: 14px; padding: 0.8rem 0.9rem; background: #fcfdff; }
+    .ud-guide-card p { margin: 0.5rem 0 0; font-size: 0.86rem; color: #475569; }
+
+    /* recent activity */
+    .ud-recent { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.9rem 1.1rem; }
+    .ud-recent h2 { font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0; }
+    .ud-recent-row { display: flex; gap: 0.7rem; align-items: flex-start; padding: 0.55rem 0; border-bottom: 1px dashed #e2e8f0; font-size: 0.88rem; }
+    .ud-recent-row:last-child { border-bottom: 0; }
+    .ud-tag { flex: none; min-width: 6.2rem; text-align: center; padding: 0.15rem 0.5rem; border-radius: 99px; font-size: 0.74rem; font-weight: 700; background: #f1f5f9; color: #475569; }
+    .ud-tag.good { background: #ecfdf5; color: #047857; }
+    .ud-tag.change { background: #fff4de; color: #92400e; }
+    .ud-tag.bad { background: #fde8e8; color: #9b1c1c; }
+
+    /* windows (modals) */
+    .ud-modal .modal-content { border: 0; border-radius: 18px; overflow: hidden; }
+    .ud-modal .modal-header { padding: 1rem 1.4rem; border-bottom: 1px solid #eef2f7; }
+    .ud-modal .modal-title { font-weight: 800; color: #0f172a; font-size: 1.15rem; }
+    .ud-modal .modal-sub { font-size: 0.84rem; color: #64748b; margin: 0.15rem 0 0; }
+    .ud-modal .modal-body { padding: 1.2rem 1.4rem; }
+    .ud-modal .modal-footer { border-top: 1px solid #eef2f7; padding: 0.8rem 1.4rem; }
+    .ud-modal .form-label { font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 0.3rem; }
+    .ud-modal .form-control, .ud-modal .form-select { border-radius: 10px; border-color: #dbe3ee; padding-top: 0.55rem; padding-bottom: 0.55rem; }
+    .ud-modal .input-group > .form-control { border-radius: 10px 0 0 10px; }
+    .ud-modal .input-group > .btn:last-child { border-radius: 0 10px 10px 0; }
+    .ud-role-help { margin-top: 0.5rem; padding: 0.6rem 0.8rem; border-radius: 10px; font-size: 0.84rem; background: var(--t-bg, #f1f5f9); color: var(--t-fg, #334155); border: 1px solid var(--t-bd, #e2e8f0); }
+    .ud-note { margin-top: 0.5rem; padding: 0.55rem 0.8rem; border-radius: 10px; font-size: 0.84rem; background: #fff7e6; color: #92400e; border: 1px solid #fcd34d; }
+
+    /* child picker: tick boxes instead of Ctrl+click */
+    .ud-picker { border: 1px solid #dbe3ee; border-radius: 12px; overflow: hidden; background: #fff; }
+    .ud-picker-search { position: relative; border-bottom: 1px solid #eef2f7; }
+    .ud-picker-search i { position: absolute; left: 0.9rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+    .ud-picker-search input { border: 0 !important; border-radius: 0 !important; padding-left: 2.4rem; box-shadow: none !important; background: #f8fafc; }
+    .ud-picker-list { max-height: 14rem; overflow-y: auto; }
+    .ud-pick { display: flex; align-items: center; gap: 0.65rem; margin: 0; padding: 0.5rem 0.9rem; cursor: pointer; border-bottom: 1px solid #f4f6fa; font-weight: 600; color: #0f172a; font-size: 0.9rem; }
+    .ud-pick:hover { background: rgba(var(--bs-primary-rgb), 0.05); }
+    .ud-pick input { width: 1.1rem; height: 1.1rem; flex: none; }
+    .ud-pick input:checked ~ .ud-pick-name { color: rgb(var(--bs-primary-rgb)); }
+    .ud-pick-name { flex: 1; }
+    .ud-pick-roll { font-size: 0.78rem; color: #64748b; font-weight: 600; }
+    .ud-picker-empty { padding: 1rem; text-align: center; color: #64748b; font-size: 0.86rem; }
+    .ud-picker-foot { padding: 0.45rem 0.9rem; font-size: 0.8rem; font-weight: 700; color: #475569; background: #f8fafc; border-top: 1px solid #eef2f7; }
+
+
+    /* phones: every person becomes a card, so nothing hides off-screen */
+    @media (max-width: 767.98px) {
+        .ud-table thead { display: none; }
+        .ud-table, .ud-table tbody { display: block; }
+        .ud-table tr.ud-row { display: block; padding: 0.8rem 1rem; border-bottom: 1px solid #eef2f7; }
+        .ud-table tr.ud-row > td { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.3rem 0 !important; border: 0; background: none; box-shadow: none !important; text-align: left; }
+        .ud-table tr.ud-row > td[data-label]::before { content: attr(data-label); font-size: 0.74rem; font-weight: 700; color: #64748b; flex: none; }
+        .ud-table tr.ud-row > td:first-child { padding-bottom: 0.5rem !important; }
+        .ud-table tr.ud-row > td:last-child { justify-content: flex-end; padding-top: 0.6rem !important; }
+        .ud-who { min-width: 0; }
+    }
+
+    @media (max-width: 991.98px) {
+        .ud-ribbon { grid-template-columns: 1fr 1fr; }
+        .ud-ribbon .ud-stat:nth-child(3) { grid-column: 1 / -1; border-left: 0; border-top: 1px solid #eef2f7; }
+    }
+    @media (max-width: 575.98px) {
+        .ud-ribbon { grid-template-columns: 1fr; }
+        .ud-stat + .ud-stat { border-left: 0; border-top: 1px solid #eef2f7; }
+        .ud-search { flex-basis: 100%; }
+        .ud-seg { width: 100%; }
+        .ud-seg label { flex: 1; text-align: center; }
+        .ud-filters .form-select { flex: 1 1 100%; max-width: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .ud-bar i { animation: none; }
+        .ud-act, .ud-seg label, .ud-guide > summary .ud-chev { transition: none; }
+    }
 </style>
 
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+<div class="ud-head">
     <div>
-        <p class="eyebrow mb-2">System Administration</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-users-cog text-primary me-2"></i>Users &amp; Roles</h1>
-        <p class="text-muted small mb-0">
-            Administrators see everything. Teachers run daily academic work. Parents see only their own child.
-        </p>
+        <h1>Users &amp; Roles</h1>
+        <p>Give your staff and parents their own login, and choose what each person can see.</p>
     </div>
-    <div class="d-flex gap-2 mt-3 mt-md-0">
-        <a class="btn btn-outline-dark btn-sm" href="{{ url_for('main.audit_log', entity_type='AdminUser') }}"
-           title="Open the audit trail filtered to user account activity">
-            <i class="fas fa-clipboard-list me-1"></i> User Activity Log
+    <div class="ud-tools">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.audit_log', entity_type='AdminUser') }}"
+           title="See who signed in and what changed on accounts">
+            <i class="fas fa-clock-rotate-left me-1"></i> Activity Log
         </a>
-        <button class="btn btn-primary btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#createUserModal">
+        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createUserModal">
             <i class="fas fa-user-plus me-1"></i> Add User
         </button>
     </div>
 </div>
 
-<div class="row g-3 mb-4">
-    <div class="col-6 col-xl-3">
-        <div class="ustat u-blue">
-            <div class="ustat-num">{{ stats.total }}</div>
-            <div class="ustat-label">Total Users</div>
-        </div>
-    </div>
-    <div class="col-6 col-xl-3">
-        <div class="ustat u-green">
-            <div class="ustat-num">{{ stats.active }}</div>
-            <div class="ustat-label">Active Accounts</div>
-        </div>
-    </div>
-    <div class="col-6 col-xl-3">
-        <div class="ustat u-amber">
-            <div class="ustat-num">{{ stats.disabled }}</div>
-            <div class="ustat-label">Disabled Accounts</div>
-        </div>
-    </div>
-    <div class="col-6 col-xl-3">
-        <div class="ustat u-slate">
-            <div class="ustat-label mb-2">Role Distribution</div>
-            <div class="d-flex flex-wrap gap-2">
-                <span class="u-role-chip u-role-admin"><i class="fas fa-user-shield me-1"></i>Admins {{ stats.admins }}</span>
-                <span class="u-role-chip u-role-teacher"><i class="fas fa-chalkboard-teacher me-1"></i>Teachers {{ stats.teachers }}</span>
-                <span class="u-role-chip u-role-parent"><i class="fas fa-user-friends me-1"></i>Parents {{ stats.parents }}</span>
-                <span class="u-role-chip u-role-owner"><i class="fas fa-crown me-1"></i>Owners {{ stats.owners }}</span>
-                <span class="u-role-chip u-role-accountant"><i class="fas fa-calculator me-1"></i>Accountants {{ stats.accountants }}</span>
-                <span class="u-role-chip u-role-guard"><i class="fas fa-shield-halved me-1"></i>Guards {{ stats.guards }}</span>
-            </div>
-        </div>
-    </div>
+<div class="alert alert-info ud-hint py-2 px-3 no-print" role="status">
+    <b><i class="fas fa-circle-info me-1"></i>What to do now:</b>
+    {% if users | length > 1 %}
+    Press <b>Add User</b> to give someone a login. To change a person, click their row or the
+    <b>pencil</b>. Forgot a password? Use the <b>key</b>. Not sure what a role can do? Open
+    <b>What can each role do?</b> below.
+    {% else %}
+    Only your own login exists so far. Press <b>Add User</b> to create logins for teachers,
+    accountants or parents.
+    {% endif %}
 </div>
 
-<div class="card shadow-sm border-0 table-panel mb-4">
-    <div class="card-body p-0 table-responsive">
-        <table id="usersTable" class="table table-hover align-middle mb-0 datatable" data-order='[[0, "asc"]]'>
-            <thead class="table-light">
+<section class="ud-ribbon no-print" aria-label="Summary">
+    <div class="ud-stat">
+        <span class="ud-num">{{ stats.total }}</span>
+        <span class="ud-lab">{{ 'Login' if stats.total == 1 else 'Logins' }} in all</span>
+    </div>
+    <div class="ud-stat">
+        <span class="ud-num">{{ stats.active }}</span>
+        <span class="ud-lab">Can sign in{% if stats.disabled %} · <b class="ud-off">{{ stats.disabled }} switched off</b>{% endif %}</span>
+    </div>
+    <div class="ud-stat">
+        {% if stats.total %}
+        <div class="ud-bar" role="img"
+             aria-label="{% for r in roles %}{{ role_labels.get(r, r) }} {{ role_counts.get(r, 0) }}{% if not loop.last %}, {% endif %}{% endfor %}">
+            {% for r in roles %}{% if role_counts.get(r, 0) %}
+            <i class="ud-tone-{{ role_meta[r].tone }}" style="width: {{ (role_counts[r] * 100 / stats.total) | round(1) }}%"></i>
+            {% endif %}{% endfor %}
+        </div>
+        <div class="ud-legend">
+            {% for r in roles %}{% if role_counts.get(r, 0) %}
+            <span class="ud-tone-{{ role_meta[r].tone }}"><span class="ud-dot"></span>{{ role_labels.get(r, r) }} <b>{{ role_counts[r] }}</b></span>
+            {% endif %}{% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+<div class="ud-filters no-print">
+    <div class="ud-search">
+        <i class="fas fa-search"></i>
+        <input type="search" class="form-control" id="udSearch" aria-label="Find a person"
+               placeholder="Find by name or username…" autocomplete="off">
+    </div>
+    <select class="form-select" id="udRole" aria-label="Role">
+        <option value="">— All roles —</option>
+        {% for r in roles %}{% if role_counts.get(r, 0) %}
+        <option value="{{ r }}">{{ role_labels.get(r, r) }} ({{ role_counts[r] }})</option>
+        {% endif %}{% endfor %}
+    </select>
+    <div class="ud-seg" role="group" aria-label="Status">
+        {% for val, label in (('', 'Everyone'), ('on', 'Can sign in'), ('off', 'Switched off')) %}
+        <input type="radio" name="udStatus" id="udStatus{{ loop.index }}" value="{{ val }}" {% if not val %}checked{% endif %}>
+        <label for="udStatus{{ loop.index }}">{{ label }}</label>
+        {% endfor %}
+    </div>
+    <button type="button" class="btn btn-outline-secondary d-none" id="udClear" title="Clear filters" aria-label="Clear filters">
+        <i class="fas fa-times"></i>
+    </button>
+</div>
+
+<div class="card border-0 ud-panel mb-3">
+    <div class="ud-count">
+        <span>Showing <strong id="udVisible">{{ users | length }}</strong> of {{ users | length }}
+            {{ 'person' if users | length == 1 else 'people' }}</span>
+        <span class="d-none d-md-inline small">Tip: click a row to edit that person</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 ud-table" id="usersTable">
+            <thead>
                 <tr>
-                    <th class="ps-4 py-3">ID</th>
-                    <th class="py-3">Username</th>
-                    <th class="py-3">Full name</th>
-                    <th class="py-3">Role</th>
-                    <th class="py-3">Linked teacher</th>
-                    <th class="no-sort py-3">Linked children</th>
-                    <th class="py-3">Status</th>
-                    <th class="py-3">Last login</th>
-                    <th class="text-end pe-4 py-3 no-sort">Actions</th>
+                    <th class="ps-3">Person</th>
+                    <th>Role</th>
+                    <th>Connected to</th>
+                    <th>Can sign in?</th>
+                    <th>Last signed in</th>
+                    <th class="text-end pe-3">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for user in users %}
-                <tr>
-                    <td class="ps-4 font-monospace fw-bold text-primary">#{{ user.id }}</td>
-                    <td class="fw-bold">{{ user.username }}</td>
-                    <td class="text-muted">{{ user.full_name or '—' }}</td>
-                    <td>
-                        <span class="u-role-chip {% if user.role == 'admin' %}u-role-admin{% elif user.role == 'teacher' %}u-role-teacher{% elif user.role == 'parent' %}u-role-parent{% elif user.role == 'owner' %}u-role-owner{% elif user.role == 'accountant' %}u-role-accountant{% elif user.role == 'guard' %}u-role-guard{% else %}u-role-admin{% endif %}">
-                            <i class="fas {% if user.role == 'admin' %}fa-user-shield{% elif user.role == 'teacher' %}fa-chalkboard-teacher{% elif user.role == 'parent' %}fa-user-friends{% elif user.role == 'owner' %}fa-crown{% elif user.role == 'accountant' %}fa-calculator{% elif user.role == 'guard' %}fa-shield-halved{% else %}fa-user{% endif %} me-1"></i>{{ user.role_label }}
-                        </span>
-                    </td>
-                    <td class="small">
-                        {% if user.teacher %}
-                        <span class="u-teacher-chip"><i class="fas fa-chalkboard-teacher me-1 text-primary"></i>{{ user.teacher.teacher_name }}{% if user.teacher.teacher_id_str %} ({{ user.teacher.teacher_id_str }}){% endif %}</span>
-                        {% else %}—{% endif %}
-                    </td>
-                    <td class="small">
-                        {% set children = user.linked_students if user.linked_students else ([user.student] if user.student else []) %}
-                        {% if user.is_parent and children %}
-                            {% for child in children %}
-                            <div>{{ child.student_name }} ({{ child.roll_number }})</div>
-                            {% endfor %}
-                        {% else %}—{% endif %}
-                    </td>
-                    <td>
-                        {% if user.is_active %}<span class="u-pill-active"><i class="fas fa-check-circle me-1"></i>Active</span>
-                        {% else %}<span class="u-pill-disabled"><i class="fas fa-ban me-1"></i>Disabled</span>{% endif %}
-                    </td>
-                    <td class="small text-muted">
-                        {% if user.last_login_at %}
-                        <div class="d-flex align-items-center">
-                            <i class="far fa-clock me-1 text-info"></i> {{ user.last_login_at.strftime('%Y-%m-%d %H:%M') }}
+                {% set meta = role_meta.get(user.role, role_meta['admin']) %}
+                {% set children = user.linked_students if user.linked_students else ([user.student] if user.student else []) %}
+                {% set is_me = user.id == current_user.id %}
+                <tr class="ud-row ud-tone-{{ meta.tone }}{% if not user.is_active %} is-off{% endif %}"
+                    data-user-row
+                    data-search="{{ ((user.full_name or '') ~ ' ' ~ user.username) | lower }}"
+                    data-role="{{ user.role }}" data-status="{{ 'on' if user.is_active else 'off' }}"
+                    data-edit-id="{{ user.id }}">
+                    <td class="ps-3">
+                        <div class="ud-who">
+                            <span class="ud-avatar" aria-hidden="true">{{ ((user.full_name or user.username)[:1]) | upper }}</span>
+                            <div>
+                                <div class="ud-who-name">{{ user.full_name or user.username }}{% if is_me %}<span class="ud-you">You</span>{% endif %}</div>
+                                <div class="ud-who-user">Username: {{ user.username }}</div>
+                            </div>
                         </div>
-                        {% else %}
-                        <span class="text-muted fst-italic">Never</span>
-                        {% endif %}
                     </td>
-                    <td class="text-end pe-4">
-                        <div class="d-inline-flex gap-1 align-items-center">
-                            <button class="btn btn-sm btn-outline-primary u-action-btn" data-bs-toggle="modal"
-                                    data-bs-target="#editUserModal{{ user.id }}" title="Edit user" aria-label="Edit user">
+                    <td data-label="Role"><span class="ud-role"><i class="fas {{ meta.icon }}"></i>{{ user.role_label }}</span></td>
+                    <td class="small" data-label="Connected to">
+                        {% if user.teacher %}
+                        <span class="ud-link"><i class="fas fa-chalkboard-teacher me-1 text-primary"></i>{{ user.teacher.teacher_name }}{% if user.teacher.teacher_id_str %} ({{ user.teacher.teacher_id_str }}){% endif %}</span>
+                        {% elif user.is_parent and children %}
+                            {% for child in children %}<span class="ud-link"><i class="fas fa-child me-1 text-success"></i>{{ child.student_name }} ({{ child.roll_number }})</span>{% endfor %}
+                        {% elif user.is_parent %}
+                        <span class="text-danger fw-semibold"><i class="fas fa-triangle-exclamation me-1"></i>No child linked yet</span>
+                        {% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td data-label="Can sign in?">
+                        {% if user.is_active %}<span class="ud-status on"><i class="fas fa-check-circle"></i>Yes</span>
+                        {% else %}<span class="ud-status off"><i class="fas fa-ban"></i>Switched off</span>{% endif %}
+                    </td>
+                    <td class="ud-when" data-label="Last signed in">
+                        {% if user.last_login_at %}{{ user.last_login_at | localtime('%d %b %Y, %I:%M %p') }}
+                        {% else %}<span class="text-muted fst-italic">Never signed in</span>{% endif %}
+                    </td>
+                    <td class="text-end pe-3">
+                        <span class="ud-acts">
+                            <button type="button" class="ud-act" title="Edit name or role" aria-label="Edit {{ user.username }}"
+                                    data-user-edit="{{ user.id }}"
+                                    data-url="{{ url_for('main.edit_user', user_id=user.id) }}"
+                                    data-username="{{ user.username }}" data-fullname="{{ user.full_name or '' }}"
+                                    data-role="{{ user.role }}" data-teacher="{{ user.teacher_id or '' }}"
+                                    data-self="{{ 1 if is_me else 0 }}">
                                 <i class="fas fa-pen"></i>
                             </button>
                             {% if user.is_parent %}
-                            <button class="btn btn-sm btn-outline-info u-action-btn" data-bs-toggle="modal"
-                                    data-bs-target="#linkChildrenModal{{ user.id }}"
-                                    title="Edit linked children" aria-label="Edit linked children">
+                            <button type="button" class="ud-act" title="Choose this parent's children"
+                                    aria-label="Choose children for {{ user.username }}"
+                                    data-user-children="{{ user.id }}"
+                                    data-url="{{ url_for('main.update_user_students', user_id=user.id) }}"
+                                    data-username="{{ user.username }}"
+                                    data-ids="{{ children | map(attribute='id') | join(',') }}">
                                 <i class="fas fa-child"></i>
                             </button>
+                            {% else %}
+                            <span class="ud-act-ph" aria-hidden="true"></span>
                             {% endif %}
-                            <form method="POST" action="{{ url_for('main.toggle_user_active', user_id=user.id) }}"
-                                  class="d-inline">
-                                <button class="btn btn-sm btn-outline-secondary u-action-btn" type="submit"
-                                        title="{% if user.id == current_user.id %}You cannot deactivate your own account{% elif user.is_active %}Disable User{% else %}Enable User{% endif %}"
-                                        {% if user.id == current_user.id %}disabled{% endif %}>
-                                    {% if user.is_active %}<i class="fas fa-ban"></i>{% else %}<i class="fas fa-check"></i>{% endif %}
-                                </button>
-                            </form>
                             {% if user.role != 'admin' %}
-                            <button class="btn btn-sm btn-outline-warning u-action-btn" data-bs-toggle="modal"
-                                    data-bs-target="#resetPassModal{{ user.id }}" title="Reset password" aria-label="Reset password">
+                            <button type="button" class="ud-act" title="Set a new password" aria-label="Reset password for {{ user.username }}"
+                                    data-user-pass="{{ user.id }}"
+                                    data-url="{{ url_for('main.reset_user_password', user_id=user.id) }}"
+                                    data-username="{{ user.username }}">
                                 <i class="fas fa-key"></i>
                             </button>
                             {% else %}
                             <span class="d-inline-block" tabindex="0" data-bs-toggle="tooltip"
-                                  title="Admin passwords are changed via the 'Change Password' menu.">
-                                <button class="btn btn-sm btn-outline-secondary u-action-btn" type="button" disabled style="opacity:.45;" aria-label="Password">
-                                    <i class="fas fa-key"></i>
-                                </button>
+                                  title="Administrator passwords are changed from the 'Change Password' menu.">
+                                <button type="button" class="ud-act" disabled aria-label="Password"><i class="fas fa-key"></i></button>
                             </span>
                             {% endif %}
-                        </div>
+                            <form method="POST" action="{{ url_for('main.toggle_user_active', user_id=user.id) }}" class="d-inline"
+                                  {% if user.is_active and not is_me %}data-confirm="Switch off {{ user.full_name or user.username }}? They will not be able to sign in until you switch them back on. Nothing is deleted."{% endif %}>
+                                <button type="submit" class="ud-act warn"
+                                        title="{% if is_me %}You cannot switch off your own login{% elif user.is_active %}Switch off this login{% else %}Switch this login back on{% endif %}"
+                                        aria-label="{% if user.is_active %}Switch off{% else %}Switch on{% endif %} {{ user.username }}"
+                                        {% if is_me %}disabled{% endif %}>
+                                    <i class="fas {% if user.is_active %}fa-ban{% else %}fa-check{% endif %}"></i>
+                                </button>
+                            </form>
+                        </span>
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
+        <div class="ud-empty d-none" id="udNone">
+            <div class="ud-empty-icon"><i class="fas fa-user-slash"></i></div>
+            <p>No one matches your search.</p>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-ud-clear>Clear filters</button>
+        </div>
     </div>
 </div>
 
-<div class="card shadow-sm border-0 mb-4">
-    <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="fw-bold text-dark mb-0"><i class="fas fa-clock-rotate-left text-primary me-2"></i>Recent user activity</h6>
-            <a class="small fw-bold" href="{{ url_for('main.audit_log', entity_type='AdminUser') }}">View full trail <i class="fas fa-arrow-right ms-1"></i></a>
+<details class="ud-guide no-print">
+    <summary><i class="fas fa-circle-question text-primary"></i>What can each role do?<i class="fas fa-chevron-down ud-chev"></i></summary>
+    <div class="ud-guide-grid">
+        {% for r in roles %}
+        <div class="ud-guide-card ud-tone-{{ role_meta[r].tone }}">
+            <span class="ud-role"><i class="fas {{ role_meta[r].icon }}"></i>{{ role_labels.get(r, r) }}</span>
+            {% if r in disabled_roles %}<span class="badge text-bg-light border ms-1">Not in your plan</span>{% endif %}
+            <p>{{ role_meta[r].help }}</p>
         </div>
-        {% for row in recent_user_activity %}
-        <div class="u-recent-row d-flex align-items-start gap-2">
-            <span class="badge {% if row.action in ('create', 'login') %}bg-success{% elif row.action in ('update', 'user_admin', 'settings_change') %}bg-warning text-dark{% elif row.action in ('delete', 'login_failed', 'void') %}bg-danger{% else %}bg-secondary{% endif %}">{{ row.action }}</span>
-            <div class="flex-grow-1">
-                <div>{{ row.summary }}</div>
-                <div class="text-muted small">{{ row.username }} &middot; {{ row.created_at | localtime }}</div>
-            </div>
-        </div>
-        {% else %}
-        <div class="text-muted small">No user activity recorded yet.</div>
         {% endfor %}
     </div>
-</div>
+</details>
 
-<!-- Create user modal -->
-<div class="modal fade" id="createUserModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
+<section class="ud-recent no-print mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-1">
+        <h2><i class="fas fa-clock-rotate-left text-primary me-2"></i>Recent activity</h2>
+        <a class="small fw-bold text-decoration-none" href="{{ url_for('main.audit_log', entity_type='AdminUser') }}">See everything <i class="fas fa-arrow-right ms-1"></i></a>
+    </div>
+    {% for row in recent_user_activity %}
+    <div class="ud-recent-row">
+        <span class="ud-tag {% if row.action in ('create', 'login') %}good{% elif row.action in ('update', 'user_admin', 'settings_change') %}change{% elif row.action in ('delete', 'login_failed', 'void') %}bad{% endif %}">{{ action_words.get(row.action, row.action) }}</span>
+        <div class="flex-grow-1">
+            <div>{{ row.summary }}</div>
+            <div class="text-muted small">by {{ row.username }} &middot; {{ row.created_at | localtime('%d %b %Y, %I:%M %p') }}</div>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-muted small py-2">Nothing yet. Changes to logins will show up here.</div>
+    {% endfor %}
+</section>
+
+{# ================= Windows ================= #}
+
+<!-- Add user -->
+<div class="modal fade ud-modal" id="createUserModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
         <div class="modal-content">
-            <form method="POST" action="{{ url_for('main.create_user') }}" data-user-form>
-                <div class="modal-header px-4 py-3 text-white" style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border: none;">
+            <form method="POST" action="{{ url_for('main.create_user') }}" data-user-form data-needs-child="1">
+                <div class="modal-header">
                     <div>
-                        <p class="mb-1 small text-uppercase text-white-50 fw-bold" style="letter-spacing: .08em;">New account</p>
-                        <h5 class="modal-title mb-0"><i class="fas fa-user-plus me-2"></i>Create User</h5>
+                        <h5 class="modal-title"><i class="fas fa-user-plus text-primary me-2"></i>Add a new user</h5>
+                        <p class="modal-sub">Fill in the details. The person signs in with the username and password you set.</p>
                     </div>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body px-4">
+                <div class="modal-body">
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label small fw-bold text-muted">Username</label>
-                            <input type="text" class="form-control" name="username" required maxlength="80">
+                            <label class="form-label" for="cuName">Full name</label>
+                            <input type="text" class="form-control" id="cuName" name="full_name" maxlength="120" placeholder="e.g. Ayesha Khan">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label small fw-bold text-muted">Full name</label>
-                            <input type="text" class="form-control" name="full_name" maxlength="120">
+                            <label class="form-label" for="cuUser">Username <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="cuUser" name="username" required maxlength="80"
+                                   autocomplete="off" autocapitalize="none" placeholder="e.g. ayesha.khan">
+                            <div class="form-text">What they type to sign in. No spaces is easiest.</div>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label small fw-bold text-muted">Password</label>
-                            <input type="password" class="form-control" name="password" minlength="8" required>
-                            <div class="form-text">At least 8 characters, including letters and numbers.</div>
+                            <label class="form-label" for="cuPass">Password <span class="text-danger">*</span></label>
+                            {{ password_field('cuPass') }}
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label small fw-bold text-muted">Role</label>
-                            <select class="form-select" name="role">
+                            <label class="form-label" for="cuRole">What will this person do?</label>
+                            <select class="form-select" id="cuRole" name="role" data-role-select>
                                 {% for role in roles %}{% if role not in disabled_roles %}
-                                <option value="{{ role }}">{{ role_labels.get(role, role) }}</option>{% endif %}
-                                {% endfor %}
+                                <option value="{{ role }}" data-help="{{ role_meta[role].help }}" data-tone="{{ role_meta[role].tone }}"
+                                        {% if role == 'teacher' %}selected{% endif %}>{{ role_labels.get(role, role) }}</option>
+                                {% endif %}{% endfor %}
                             </select>
+                            <div class="ud-role-help" data-role-help></div>
                         </div>
                         <div class="col-12 d-none" data-role-field="teacher">
-                            <label class="form-label small fw-bold text-muted">Linked teacher profile</label>
-                            <select class="form-select" name="teacher_id">
-                                <option value="">— No linked teacher —</option>
+                            <label class="form-label" for="cuTeacher">Which teacher is this? <span class="text-muted fw-normal">(optional)</span></label>
+                            <select class="form-select" id="cuTeacher" name="teacher_id">
+                                <option value="">— Not linked to a staff record —</option>
                                 {% for teacher in teachers %}
                                 <option value="{{ teacher.id }}">{{ teacher.teacher_name }}{% if teacher.teacher_id_str %} ({{ teacher.teacher_id_str }}){% endif %}</option>
                                 {% endfor %}
                             </select>
-                            <div class="form-text">Optional: connect this login to a staff record (shows on their profile and reports).</div>
+                            <div class="form-text">Linking shows this login on the teacher's profile and reports.</div>
                         </div>
                         <div class="col-12 d-none" data-role-field="parent">
-                            <label class="form-label small fw-bold text-muted">Linked children (parents only)</label>
-                            <select class="form-select" name="student_ids" multiple size="6">
-                                {% for student in students %}
-                                <option value="{{ student.id }}">
-                                    {{ student.student_name }} ({{ student.roll_number }})
-                                </option>
-                                {% endfor %}
-                            </select>
-                            <div class="form-text">Ctrl+click to select one or more children. At least one is required for parent accounts.</div>
+                            <label class="form-label">Which children does this parent have? <span class="text-danger">*</span></label>
+                            {{ child_picker('create') }}
+                            <div class="form-text">Tick every child. A parent sees only the children ticked here.</div>
+                            <div class="ud-note d-none" data-child-warning><i class="fas fa-triangle-exclamation me-1"></i>Please tick at least one child for a parent login.</div>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary fw-bold px-4"><i class="fas fa-plus me-1"></i>Create User</button>
                 </div>
             </form>
@@ -259,151 +515,282 @@
     </div>
 </div>
 
-<!-- Edit user modals -->
-{% for user in users %}
-<div class="modal fade" id="editUserModal{{ user.id }}" tabindex="-1" aria-hidden="true">
+<!-- Edit user (one window for everybody) -->
+<div class="modal fade ud-modal" id="editUserModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <form method="POST" action="{{ url_for('main.edit_user', user_id=user.id) }}" data-user-form>
-                <div class="modal-header px-4 py-3 text-white" style="background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%); border: none;">
+            <form method="POST" action="" id="editUserForm" data-user-form>
+                <div class="modal-header">
                     <div>
-                        <p class="mb-1 small text-uppercase text-white-50 fw-bold" style="letter-spacing: .08em;">Edit account</p>
-                        <h5 class="modal-title mb-0"><i class="fas fa-pen me-2"></i>{{ user.username }}</h5>
+                        <h5 class="modal-title"><i class="fas fa-pen text-primary me-2"></i>Edit <span data-edit-title></span></h5>
+                        <p class="modal-sub">Change the name or the role. The username and password stay the same.</p>
                     </div>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body px-4">
+                <div class="modal-body">
                     <div class="row g-3">
                         <div class="col-12">
-                            <label class="form-label small fw-bold text-muted">Full name</label>
-                            <input type="text" class="form-control" name="full_name" maxlength="120"
-                                   value="{{ user.full_name or '' }}">
+                            <label class="form-label" for="euName">Full name</label>
+                            <input type="text" class="form-control" id="euName" name="full_name" maxlength="120">
                         </div>
                         <div class="col-12">
-                            <label class="form-label small fw-bold text-muted">Role</label>
-                            {% if user.id == current_user.id %}
-                            <select class="form-select" name="role" disabled>
-                                <option selected>{{ user.role_label }}</option>
-                            </select>
-                            <div class="form-text text-warning-emphasis">
-                                <i class="fas fa-lock me-1"></i>You cannot change your own role (self-lockout protection).
-                            </div>
-                            {% else %}
-                            <select class="form-select" name="role">
-                                {% for role in roles %}{% if role not in disabled_roles or user.role == role %}
-                                <option value="{{ role }}" {% if user.role == role %}selected{% endif %}>{{ role_labels.get(role, role) }}</option>{% endif %}
+                            <label class="form-label" for="euRole">Role</label>
+                            <select class="form-select" id="euRole" name="role" data-role-select>
+                                {% for role in roles %}
+                                <option value="{{ role }}" data-help="{{ role_meta[role].help }}" data-tone="{{ role_meta[role].tone }}"
+                                        {% if role in disabled_roles %}data-license-off="1"{% endif %}>{{ role_labels.get(role, role) }}</option>
                                 {% endfor %}
                             </select>
-                            {% endif %}
+                            <div class="ud-role-help" data-role-help></div>
+                            <div class="ud-note d-none" data-self-note><i class="fas fa-lock me-1"></i>You cannot change your own role. This keeps you from locking yourself out.</div>
+                            <div class="ud-note d-none" data-parent-note><i class="fas fa-child me-1"></i>After saving, press the <b>child</b> button on this person's row to choose their children.</div>
                         </div>
-                        <div class="col-12 {% if user.role != 'teacher' %}d-none{% endif %}" data-role-field="teacher">
-                            <label class="form-label small fw-bold text-muted">Linked teacher profile</label>
-                            <select class="form-select" name="teacher_id">
-                                <option value="">— No linked teacher —</option>
+                        <div class="col-12 d-none" data-role-field="teacher">
+                            <label class="form-label" for="euTeacher">Which teacher is this? <span class="text-muted fw-normal">(optional)</span></label>
+                            <select class="form-select" id="euTeacher" name="teacher_id">
+                                <option value="">— Not linked to a staff record —</option>
                                 {% for teacher in teachers %}
-                                <option value="{{ teacher.id }}" {% if user.teacher_id == teacher.id %}selected{% endif %}>{{ teacher.teacher_name }}{% if teacher.teacher_id_str %} ({{ teacher.teacher_id_str }}){% endif %}</option>
+                                <option value="{{ teacher.id }}">{{ teacher.teacher_name }}{% if teacher.teacher_id_str %} ({{ teacher.teacher_id_str }}){% endif %}</option>
                                 {% endfor %}
                             </select>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-primary fw-bold px-4"><i class="fas fa-save me-1"></i>Save</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
-{% endfor %}
 
-<!-- Reset password modals -->
-{% for user in users %}
-{% if user.role != 'admin' %}
-<div class="modal fade" id="resetPassModal{{ user.id }}" tabindex="-1" aria-hidden="true">
+<!-- New password (one window for everybody) -->
+<div class="modal fade ud-modal" id="resetPassModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <form method="POST" action="{{ url_for('main.reset_user_password', user_id=user.id) }}">
-                <div class="modal-header px-4 py-3 text-white" style="background: linear-gradient(135deg, #78350f 0%, #d97706 100%); border: none;">
+            <form method="POST" action="" id="resetPassForm">
+                <div class="modal-header">
                     <div>
-                        <p class="mb-1 small text-uppercase text-white-50 fw-bold" style="letter-spacing: .08em;">Security</p>
-                        <h5 class="modal-title mb-0"><i class="fas fa-key me-2"></i>Reset password: {{ user.username }}</h5>
+                        <h5 class="modal-title"><i class="fas fa-key text-warning me-2"></i>New password for <span data-pass-title></span></h5>
+                        <p class="modal-sub">The old password stops working right away.</p>
                     </div>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body px-4">
-                    <label class="form-label small fw-bold text-muted">New password</label>
-                    <input type="password" class="form-control" name="password" minlength="8" required>
-                    <div class="form-text">At least 8 characters, including letters and numbers.</div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-warning fw-bold px-4"><i class="fas fa-key me-1"></i>Reset Password</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-{% endif %}
-{% endfor %}
-
-<!-- Linked-children modals (parents) -->
-{% for user in users %}
-{% if user.is_parent %}
-{% set children = user.linked_students if user.linked_students else ([user.student] if user.student else []) %}
-{% set selected_ids = children | map(attribute='id') | list %}
-<div class="modal fade" id="linkChildrenModal{{ user.id }}" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <form method="POST" action="{{ url_for('main.update_user_students', user_id=user.id) }}">
-                <div class="modal-header px-4 py-3 text-white" style="background: linear-gradient(135deg, #0284c7 0%, #3b82f6 100%); border: none;">
-                    <div>
-                        <p class="mb-1 small text-uppercase text-white-50 fw-bold" style="letter-spacing: 0.08em;">Parent Account</p>
-                        <h5 class="modal-title mb-0"><i class="fas fa-child me-2"></i>Linked children: {{ user.username }}</h5>
-                    </div>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <label class="form-label small fw-bold text-muted">Select the children for this parent account</label>
-                    <select class="form-select" name="student_ids" multiple size="8" required>
-                        {% for student in students %}
-                        <option value="{{ student.id }}" {% if student.id in selected_ids %}selected{% endif %}>
-                            {{ student.student_name }} ({{ student.roll_number }})
-                        </option>
-                        {% endfor %}
-                    </select>
-                    <div class="form-text">At least one child is required. The first selected child becomes the primary (legacy) link.</div>
+                    <label class="form-label" for="rpPass">New password</label>
+                    {{ password_field('rpPass') }}
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-info px-4">Save children</button>
+                    <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning fw-bold px-4"><i class="fas fa-key me-1"></i>Save Password</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
-{% endif %}
-{% endfor %}
+
+<!-- Choose a parent's children (one window for everybody) -->
+<div class="modal fade ud-modal" id="linkChildrenModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="POST" action="" id="linkChildrenForm" data-needs-child="1">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title"><i class="fas fa-child text-success me-2"></i>Children of <span data-children-title></span></h5>
+                        <p class="modal-sub">Tick every child this parent should see.</p>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    {{ child_picker('link') }}
+                    <div class="ud-note d-none" data-child-warning><i class="fas fa-triangle-exclamation me-1"></i>Please tick at least one child.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4"><i class="fas fa-save me-1"></i>Save Children</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 <script>
 (function () {
-    function syncForm(form) {
-        var roleSelect = form.querySelector('[name="role"]');
-        if (!roleSelect) { return; }
-        function apply() {
-            var role = roleSelect.value;
-            form.querySelectorAll('[data-role-field]').forEach(function (field) {
-                if (field.getAttribute('data-role-field') === role) {
-                    field.classList.remove('d-none');
-                } else {
-                    field.classList.add('d-none');
-                }
-            });
-        }
-        roleSelect.addEventListener('change', apply);
-        apply();
+    'use strict';
+    function $(sel, root) { return (root || document).querySelector(sel); }
+    function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+    function showModal(id) { bootstrap.Modal.getOrCreateInstance(document.getElementById(id)).show(); }
+
+    /* ---------- find a person (filters the rows; no page reload) ---------- */
+    var rows = $$('[data-user-row]');
+    var search = $('#udSearch'), roleSel = $('#udRole'), clearBtn = $('#udClear');
+    function status() { var c = $('input[name="udStatus"]:checked'); return c ? c.value : ''; }
+    function applyFilters() {
+        var q = (search.value || '').trim().toLowerCase(), role = roleSel.value, st = status(), shown = 0;
+        rows.forEach(function (row) {
+            var ok = (!q || row.getAttribute('data-search').indexOf(q) !== -1) &&
+                     (!role || row.getAttribute('data-role') === role) &&
+                     (!st || row.getAttribute('data-status') === st);
+            row.classList.toggle('d-none', !ok);
+            if (ok) { shown++; }
+        });
+        $('#udVisible').textContent = shown;
+        $('#udNone').classList.toggle('d-none', shown !== 0);
+        $('#usersTable').classList.toggle('d-none', shown === 0);
+        clearBtn.classList.toggle('d-none', !(q || role || st));
     }
-    document.querySelectorAll('[data-user-form]').forEach(syncForm);
+    function clearFilters() {
+        search.value = ''; roleSel.value = '';
+        var all = $('input[name="udStatus"][value=""]'); if (all) { all.checked = true; }
+        applyFilters();
+    }
+    search.addEventListener('input', applyFilters);
+    roleSel.addEventListener('change', applyFilters);
+    $$('input[name="udStatus"]').forEach(function (r) { r.addEventListener('change', applyFilters); });
+    clearBtn.addEventListener('click', clearFilters);
+    var none = $('[data-ud-clear]'); if (none) { none.addEventListener('click', clearFilters); }
+
+    /* ---------- role help text + role-specific fields ---------- */
+    function syncRole(form) {
+        var select = $('[data-role-select]', form);
+        if (!select) { return; }
+        var role = select.value, opt = select.options[select.selectedIndex];
+        var help = $('[data-role-help]', form);
+        if (help && opt) {
+            help.textContent = opt.getAttribute('data-help') || '';
+            help.className = 'ud-role-help ud-tone-' + (opt.getAttribute('data-tone') || 'admin');
+        }
+        $$('[data-role-field]', form).forEach(function (f) {
+            f.classList.toggle('d-none', f.getAttribute('data-role-field') !== role);
+        });
+        var note = $('[data-parent-note]', form);
+        if (note) { note.classList.toggle('d-none', !(role === 'parent' && form.getAttribute('data-orig-role') !== 'parent')); }
+    }
+    $$('[data-user-form]').forEach(function (form) {
+        var sel = $('[data-role-select]', form);
+        if (sel) { sel.addEventListener('change', function () { syncRole(form); }); }
+        syncRole(form);
+    });
+
+    /* ---------- tick-box child picker ---------- */
+    function pickerCount(picker) {
+        var n = $$('input[type="checkbox"]:checked', picker).length;
+        $('[data-picker-count]', picker).textContent = n + (n === 1 ? ' child selected' : ' children selected');
+    }
+    $$('[data-child-picker]').forEach(function (picker) {
+        var box = $('[data-picker-search]', picker);
+        box.addEventListener('input', function () {
+            var q = box.value.trim().toLowerCase(), any = false;
+            $$('[data-picker-item]', picker).forEach(function (item) {
+                var ok = !q || item.getAttribute('data-text').indexOf(q) !== -1;
+                item.classList.toggle('d-none', !ok);
+                if (ok) { any = true; }
+            });
+            var empty = $('[data-picker-none]', picker);
+            if (empty) { empty.classList.toggle('d-none', any || !$$('[data-picker-item]', picker).length); }
+        });
+        picker.addEventListener('change', function () { pickerCount(picker); });
+        pickerCount(picker);
+    });
+    // A parent login needs at least one child: say so before the page reloads.
+    $$('form[data-needs-child]').forEach(function (form) {
+        form.addEventListener('submit', function (event) {
+            var roleSel2 = $('[data-role-select]', form);
+            var isParent = !roleSel2 || roleSel2.value === 'parent';
+            var picker = $('[data-child-picker]', form);
+            if (isParent && picker && !$$('input[type="checkbox"]:checked', picker).length) {
+                event.preventDefault();
+                $('[data-child-warning]', form).classList.remove('d-none');
+            }
+        });
+    });
+
+    /* ---------- password helpers ---------- */
+    document.addEventListener('click', function (event) {
+        var show = event.target.closest('[data-pass-show]');
+        var suggest = event.target.closest('[data-pass-suggest]');
+        if (!show && !suggest) { return; }
+        var input = $('[data-pass-input]', (show || suggest).closest('.ud-pass'));
+        if (show) {
+            var hidden = input.type === 'password';
+            input.type = hidden ? 'text' : 'password';
+            show.querySelector('i').className = hidden ? 'fas fa-eye-slash' : 'fas fa-eye';
+        } else {
+            var letters = 'abcdefghjkmnpqrstuvwxyz', digits = '23456789', all = letters + digits + 'ABCDEFGHJKMNPQRSTUVWXYZ';
+            var bytes = new Uint32Array(10);
+            (window.crypto || window.msCrypto).getRandomValues(bytes);
+            var out = [letters[bytes[0] % letters.length], digits[bytes[1] % digits.length]];
+            for (var i = 2; i < 10; i++) { out.push(all[bytes[i] % all.length]); }
+            input.value = out.join('');
+            input.type = 'text';
+            var icon = $('[data-pass-show] i', input.closest('.ud-pass')); if (icon) { icon.className = 'fas fa-eye-slash'; }
+        }
+    });
+
+    /* ---------- open the shared windows from a row ---------- */
+    function openEdit(btn) {
+        var form = $('#editUserForm');
+        form.action = btn.getAttribute('data-url');
+        $('[data-edit-title]', form).textContent = btn.getAttribute('data-username');
+        $('#euName').value = btn.getAttribute('data-fullname');
+        var role = btn.getAttribute('data-role'), self = btn.getAttribute('data-self') === '1';
+        var select = $('#euRole');
+        form.setAttribute('data-orig-role', role);
+        $$('option', select).forEach(function (o) {
+            var off = o.hasAttribute('data-license-off') && o.value !== role;
+            o.hidden = off; o.disabled = off;
+        });
+        select.value = role;
+        select.disabled = self;                       // a disabled field is not sent: the server keeps the role
+        $('[data-self-note]', form).classList.toggle('d-none', !self);
+        $('#euTeacher').value = btn.getAttribute('data-teacher') || '';
+        syncRole(form);
+        showModal('editUserModal');
+    }
+    function openPass(btn) {
+        var form = $('#resetPassForm');
+        form.action = btn.getAttribute('data-url');
+        $('[data-pass-title]', form).textContent = btn.getAttribute('data-username');
+        var input = $('[data-pass-input]', form); input.value = ''; input.type = 'password';
+        $('[data-pass-show] i', form).className = 'fas fa-eye';
+        showModal('resetPassModal');
+    }
+    function openChildren(btn) {
+        var form = $('#linkChildrenForm');
+        form.action = btn.getAttribute('data-url');
+        $('[data-children-title]', form).textContent = btn.getAttribute('data-username');
+        var ids = (btn.getAttribute('data-ids') || '').split(',');
+        $$('input[type="checkbox"]', form).forEach(function (c) { c.checked = ids.indexOf(c.value) !== -1; });
+        var picker = $('[data-child-picker]', form);
+        $('[data-picker-search]', picker).value = '';
+        $$('[data-picker-item]', picker).forEach(function (i) { i.classList.remove('d-none'); });
+        $('[data-child-warning]', form).classList.add('d-none');
+        pickerCount(picker);
+        showModal('linkChildrenModal');
+    }
+    document.addEventListener('click', function (event) {
+        var edit = event.target.closest('[data-user-edit]');
+        var pass = event.target.closest('[data-user-pass]');
+        var kids = event.target.closest('[data-user-children]');
+        if (edit) { openEdit(edit); }
+        else if (pass) { openPass(pass); }
+        else if (kids) { openChildren(kids); }
+        else {
+            // A click anywhere else on a row opens that person's Edit window.
+            var row = event.target.closest('[data-user-row]');
+            if (!row || event.target.closest('a, button, form, input, select, label')) { return; }
+            if (window.getSelection && String(window.getSelection())) { return; }
+            var btn = $('[data-user-edit]', row); if (btn) { openEdit(btn); }
+        }
+    });
+    $$('.modal').forEach(function (m) {
+        m.addEventListener('shown.bs.modal', function () {
+            var first = m.querySelector('input:not([type="hidden"]):not([type="checkbox"]), select:not(:disabled)');
+            if (first) { first.focus(); }
+        });
+    });
+    if (window.bootstrap) { $$('[data-bs-toggle="tooltip"]').forEach(function (el) { new bootstrap.Tooltip(el); }); }
 })();
 </script>
 {% endblock %}

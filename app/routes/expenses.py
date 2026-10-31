@@ -1,6 +1,7 @@
 """Operational expense tracker routes: entries, categories and exports (admin only)."""
 import io  # noqa: F401  (ledger_csv's sibling — the XLSX export writes into a BytesIO)
 from datetime import date, datetime
+from app.timeutil import utcnow
 
 import pandas as pd
 from flask import (Response, abort, current_app, flash, redirect, render_template,
@@ -268,7 +269,7 @@ def expenses_edit(id):
     expense.updated_by_id = getattr(current_user, 'id', None)
     expense.updated_by_name = getattr(current_user, 'username', None) or 'system'
     from datetime import datetime as _dt
-    expense.updated_at = _dt.utcnow()
+    expense.updated_at = utcnow()
     log_action('update', entity_type='Expense', entity_id=expense.id,
                summary='Expense #%d updated (%s, Rs. %s)' % (
                    expense.id, values['category'].name,

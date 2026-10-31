@@ -1,20 +1,89 @@
 {% extends "base.html" %}
+{#
+    School Settings — redesigned for non-technical school staff (same family as
+    Students / Users & Roles / License).  Same four tabs, same forms and field
+    names; what changed is the wording, the grouping into small titled sections,
+    a "Save" bar that stays in view, and plain-language help under each choice.
+    Scoped under .st- so nothing leaks into other pages.
+#}
 {% block content %}
 <style>
-.settings-tabs { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; }
-.settings-tabs .nav-link { white-space: nowrap; }
-.settings-card { height: 100%; border-radius: .5rem; }
-.settings-card .card-header { min-height: 3.25rem; display: flex; align-items: center; }
-@media (max-width: 575.98px) {
-    .settings-tabs .nav-link { padding: .55rem .7rem; font-size: .875rem; }
-}
+    .st-head { margin: 0.25rem 0 1.1rem; }
+    .st-head h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; margin: 0; line-height: 1.1; }
+    .st-head p { margin: 0.35rem 0 0; color: #64748b; font-size: 0.92rem; }
+    .st-hint { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid rgb(var(--bs-primary-rgb)); border-radius: 14px; color: #475569; font-size: 0.88rem; }
+    .st-hint b { color: #0f172a; }
+
+    /* tabs as a segmented bar */
+    .settings-tabs { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; border: 0; background: #f1f5f9; border-radius: 14px; padding: 4px; gap: 2px; margin-bottom: 1rem !important; }
+    .settings-tabs .nav-link { white-space: nowrap; border: 0; border-radius: 10px; color: #475569; font-weight: 600; font-size: 0.9rem; padding: 0.55rem 1rem; }
+    .settings-tabs .nav-link:hover { color: #0f172a; }
+    .settings-tabs .nav-link.active { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+    .settings-tabs .nav-link:focus-visible { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 1px; }
+    @media (max-width: 575.98px) { .settings-tabs .nav-link { padding: .5rem .7rem; font-size: .85rem; } }
+
+    /* section cards */
+    .st-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 1.15rem 1.3rem; margin-bottom: 1rem; }
+    .st-card > h2 { font-size: 1.05rem; font-weight: 800; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 0.55rem; }
+    .st-card > h2 i { width: 1.9rem; height: 1.9rem; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.9rem; background: rgba(var(--bs-primary-rgb), 0.1); color: rgb(var(--bs-primary-rgb)); }
+    .st-card > .st-sub { color: #64748b; font-size: 0.86rem; margin: 0.3rem 0 1rem; }
+    .st-card .form-label { font-weight: 700; font-size: 0.85rem; color: #334155; margin-bottom: 0.3rem; }
+    .st-card .form-control, .st-card .form-select { border-radius: 12px; border-color: #dbe3ee; }
+    .st-card .form-control-sm, .st-card .form-select-sm { border-radius: 9px; }
+    .st-card .form-text { font-size: 0.8rem; color: #64748b; }
+    .st-card .input-group > .form-control { border-radius: 12px 0 0 12px; }
+    .st-card .input-group > .input-group-text { border-radius: 0 12px 12px 0; border-color: #dbe3ee; background: #f8fafc; color: #64748b; }
+    .st-card .table thead th { background: #f8fafc; color: #64748b; font-size: 0.74rem; font-weight: 700; border-bottom: 1px solid #e2e8f0; }
+    .st-opt { color: #94a3b8; font-weight: 500; }
+    .st-switch { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.7rem 0.9rem; border: 1px solid #e2e8f0; border-radius: 14px; background: #f8fafc; height: 100%; }
+    .st-switch .form-check-input { margin-top: 0.15rem; flex: none; width: 2.4em; height: 1.3em; }
+    .st-switch b { color: #0f172a; font-size: 0.92rem; }
+    .st-switch small { display: block; color: #64748b; font-size: 0.8rem; }
+    .st-logo-now { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.6rem; font-size: 0.82rem; color: #64748b; }
+    .st-logo-now img { max-height: 64px; border: 1px solid #e2e8f0; border-radius: 12px; padding: 4px; background: #fff; }
+    .st-colors { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+    .st-colors .form-control-color { width: 100%; height: 2.8rem; border-radius: 12px; padding: 0.3rem; }
+    .st-preview-card { position: sticky; top: 1rem; }
+    .st-preview { background: #0f172a; border-radius: 16px; padding: 1.1rem; min-height: 160px; color: #fff; }
+    .st-preview .st-prev-top { text-align: center; padding-bottom: 0.8rem; border-bottom: 1px solid #334155; }
+    .st-preview .st-prev-meta { margin-top: 0.8rem; text-align: center; font-size: 0.8rem; color: #94a3b8; }
+    .st-adm-preview { display: inline-block; padding: 0.25rem 0.7rem; border-radius: 10px; background: rgba(var(--bs-primary-rgb), 0.1); color: rgb(var(--bs-primary-rgb)); font-weight: 800; font-size: 1rem; letter-spacing: 0.02em; }
+    .st-note { display: flex; gap: 0.55rem; align-items: flex-start; padding: 0.6rem 0.85rem; border-radius: 12px; background: #f1f5f9; color: #475569; font-size: 0.84rem; }
+    .st-note i { margin-top: 0.15rem; color: #64748b; }
+    .st-ok { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+    .st-ok i { color: #10b981; }
+
+    .st-grid { display: grid; grid-template-columns: 1fr; gap: 0 1rem; align-items: start; }
+    @media (min-width: 1200px) { .st-grid { grid-template-columns: 1fr 1fr; } }
+    .st-savebar.is-dirty { border-color: #fcd34d; background: #fffbeb; }
+    .st-savebar.is-dirty span { color: #92400e; font-weight: 700; }
+
+    /* save bar stays in view while you scroll a long form */
+    .st-savebar { position: sticky; bottom: 0.75rem; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap; background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(6px); border: 1px solid #e2e8f0; border-radius: 16px; padding: 0.65rem 0.9rem; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.1); margin-bottom: 1rem; }
+    .st-savebar span { color: #64748b; font-size: 0.84rem; }
+    .st-savebar .btn { box-shadow: none; }
+
+    .st-int { display: flex; gap: 1rem; align-items: flex-start; }
+    .st-int-ico { flex: none; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
+    .st-int-ico.wa { background: #dcfce7; color: #15803d; }
+    .st-int-ico.db { background: #e0e7ff; color: #4338ca; }
+    .st-chip { display: inline-block; padding: 0.15rem 0.65rem; border-radius: 99px; font-size: 0.78rem; font-weight: 700; border: 1px solid #e2e8f0; background: #f1f5f9; color: #475569; }
+    .st-chip.on { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+    .st-chip.dim { font-weight: 600; background: #fff; }
+    .st-bk-type { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 99px; font-size: 0.74rem; font-weight: 700; background: #f1f5f9; color: #475569; }
+    .st-bk-type.auto { background: #e0e7ff; color: #4338ca; }
+    @media (max-width: 575.98px) { .st-colors { grid-template-columns: 1fr; } .st-savebar .btn { width: 100%; } }
 </style>
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
-    <div>
-        <p class="eyebrow mb-2">Configuration</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-cog text-primary me-2"></i>School Settings</h1>
-        <p class="text-muted small mb-0">Manage school details, schedules, custom fields, and connected services.</p>
-    </div>
+
+<div class="st-head">
+    <h1>School Settings</h1>
+    <p>Your school's details, timings, extra form fields and connected services.</p>
+</div>
+
+<div class="alert alert-info st-hint py-2 px-3 no-print" role="status">
+    <b><i class="fas fa-circle-info me-1"></i>What to do now:</b>
+    Pick a tab, change what you need, then press the green <b>Save</b> button of that section.
+    Each section saves on its own, so a change is only kept after you press its Save.
 </div>
 
 <ul class="nav nav-tabs settings-tabs mb-3" id="settings-tabs" role="tablist">
@@ -41,173 +110,155 @@
 </ul>
 
 <div class="tab-content" id="settings-tabs-content">
+
+{# =================== GENERAL =================== #}
 <section class="tab-pane fade {% if active_tab == 'general' %}show active{% endif %}" id="general-panel" role="tabpanel" aria-labelledby="general-tab" tabindex="0">
-<div class="row g-4">
-    <div class="col-md-6">
-        <div class="card shadow-sm border-0 analytics-panel settings-card">
-            <div class="card-header bg-primary-subtle text-primary fw-bold border-0">
-                <i class="fas fa-school me-2"></i>School Identity
-            </div>
-            <div class="card-body">
-                <form method="POST" enctype="multipart/form-data">
-                    <input type="hidden" name="action" value="save_general_info">
+<div class="row g-3">
+    <div class="col-lg-7">
+        <form method="POST" enctype="multipart/form-data" data-dirty-form>
+            <input type="hidden" name="action" value="save_general_info">
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">School Name</label>
-                        <input type="text" class="form-control form-control-lg" name="school_name"
-                               value="{{ settings.school_name }}" placeholder="e.g. Al-Noor School" required>
+            <section class="st-card">
+                <h2><i class="fas fa-school"></i>School Identity</h2>
+                <p class="st-sub">Your name and logo appear on the sidebar, receipts, report cards, ID cards and certificates.</p>
+                <div class="mb-3">
+                    <label class="form-label" for="stName">School name</label>
+                    <input type="text" class="form-control form-control-lg" id="stName" name="school_name"
+                           value="{{ settings.school_name }}" placeholder="e.g. Al-Noor School" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="stTagline">Tagline / Motto <span class="st-opt">(optional)</span></label>
+                    <input type="text" class="form-control" id="stTagline" name="tagline"
+                           value="{{ settings.tagline }}" placeholder="e.g. Knowledge is Light">
+                </div>
+                <div class="mb-1">
+                    <label class="form-label" for="stLogo">School logo <span class="st-opt">(PNG, JPG or WEBP — optional)</span></label>
+                    {% if settings.logo_filename %}
+                    <div class="st-logo-now">
+                        <img src="{{ url_for('main.brand_logo') }}" alt="Current Logo"><span>Your current logo</span>
                     </div>
+                    {% endif %}
+                    <input type="file" class="form-control" id="stLogo" name="logo" accept=".png,.jpg,.jpeg,.gif,.webp">
+                    <div class="form-text">Choose a new picture only if you want to replace the current logo.</div>
+                </div>
+            </section>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Tagline / Motto <span class="text-muted small">(optional)</span></label>
-                        <input type="text" class="form-control" name="tagline"
-                               value="{{ settings.tagline }}" placeholder="e.g. Knowledge is Light">
+            <section class="st-card">
+                <h2><i class="fas fa-palette"></i>Brand Colors</h2>
+                <p class="st-sub">The whole program, and your printed papers, use these two colors.</p>
+                <div class="st-colors mb-2">
+                    <div>
+                        <label class="form-label" for="primaryColorInput">Main color</label>
+                        <input type="color" class="form-control form-control-color" name="primary_color" id="primaryColorInput"
+                               value="{{ settings.primary_color or '#0d6efd' }}" title="Choose your main color">
                     </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">School Logo <span class="text-muted small">(PNG, JPG, WEBP — optional)</span></label>
-                        {% if settings.logo_filename %}
-                        <div class="mb-2">
-                            <img src="{{ url_for('main.brand_logo') }}"
-                                 alt="Current Logo" style="max-height:80px;" class="border rounded p-1">
-                            <span class="text-muted small ms-2">Current logo</span>
-                        </div>
-                        {% endif %}
-                        <input type="file" class="form-control" name="logo" accept=".png,.jpg,.jpeg,.gif,.webp">
-                        <div class="form-text">Upload a new file to replace the current logo.</div>
+                    <div>
+                        <label class="form-label" for="secondaryColorInput">Second color</label>
+                        <input type="color" class="form-control form-control-color" name="secondary_color" id="secondaryColorInput"
+                               value="{{ settings.secondary_color or '#6c757d' }}" title="Choose your second color">
                     </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="resetColors()">
+                    <i class="fas fa-undo me-1"></i>Go back to the standard colors
+                </button>
+            </section>
 
-                    <hr>
-
-                    <div class="mb-2 d-flex justify-content-between align-items-center">
-                        <label class="form-label fw-bold mb-0">Brand Colors</label>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="resetColors()">
-                            <i class="fas fa-undo me-1"></i>Reset to Default
-                        </button>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-6">
-                            <label class="form-label small text-muted">Primary Color</label>
-                            <input type="color" class="form-control form-control-color w-100" name="primary_color" id="primaryColorInput"
-                                   value="{{ settings.primary_color or '#0d6efd' }}" title="Choose your primary color">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small text-muted">Secondary Color</label>
-                            <input type="color" class="form-control form-control-color w-100" name="secondary_color" id="secondaryColorInput"
-                                   value="{{ settings.secondary_color or '#6c757d' }}" title="Choose your secondary color">
-                        </div>
-                    </div>
-
-                    <hr>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Address <span class="text-muted small">(optional)</span></label>
-                        <textarea class="form-control" name="address" rows="2"
-                                  placeholder="e.g. Street 5, Model Town, Multan">{{ settings.address }}</textarea>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Phone <span class="text-muted small">(optional)</span></label>
-                        <input type="text" class="form-control" name="phone"
+            <section class="st-card">
+                <h2><i class="fas fa-address-book"></i>Contact Details</h2>
+                <p class="st-sub">Printed at the top of receipts and certificates. All three are optional.</p>
+                <div class="mb-3">
+                    <label class="form-label" for="stAddress">Address</label>
+                    <textarea class="form-control" id="stAddress" name="address" rows="2"
+                              placeholder="e.g. Street 5, Model Town, Multan">{{ settings.address }}</textarea>
+                </div>
+                <div class="row g-3">
+                    <div class="col-sm-6">
+                        <label class="form-label" for="stPhone">Phone</label>
+                        <input type="text" class="form-control" id="stPhone" name="phone"
                                value="{{ settings.phone }}" placeholder="e.g. 0300-1234567">
                     </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Email <span class="text-muted small">(optional)</span></label>
-                        <input type="email" class="form-control" name="email"
+                    <div class="col-sm-6">
+                        <label class="form-label" for="stEmail">Email</label>
+                        <input type="email" class="form-control" id="stEmail" name="email"
                                value="{{ settings.email }}" placeholder="e.g. info@school.pk">
                     </div>
+                </div>
+            </section>
 
-                    <div class="form-check form-switch mb-3">
-                        <input class="form-check-input" type="checkbox" role="switch" id="autoAdmissionNumber"
+            <section class="st-card">
+                <h2><i class="fas fa-hashtag"></i>Admission Numbers</h2>
+                <p class="st-sub">Every student gets a number like <b>FAIZ-26-0001</b>. You set the pattern once; the program does the rest.</p>
+                <div class="st-switch mb-3">
+                    <div class="form-check form-switch p-0 m-0">
+                        <input class="form-check-input ms-0" type="checkbox" role="switch" id="autoAdmissionNumber"
                                name="auto_admission_number" {% if auto_admission_number %}checked{% endif %}>
-                        <label class="form-check-label fw-bold" for="autoAdmissionNumber">Automatic Admission No</label>
-                        <div class="form-text">ON: every new student gets the next number of your pattern by itself.
-                            OFF: new students get no Admission No. Numbers already given are never changed.</div>
                     </div>
-                    <div class="row g-2 mb-1">
-                        <div class="col-sm-6">
-                            <label class="form-label small fw-bold text-muted mb-1">Prefix</label>
-                            <input type="text" class="form-control" id="admPrefix" name="admission_number_prefix" maxlength="30"
-                                   value="{{ admission_number_config.prefix }}" placeholder="e.g. FAIZ-{YY}-">
-                        </div>
-                        <div class="col-6 col-sm-3">
-                            <label class="form-label small fw-bold text-muted mb-1">Digits</label>
-                            <input type="number" min="1" max="8" class="form-control" id="admDigits" name="admission_number_digits"
-                                   value="{{ admission_number_config.digits }}">
-                        </div>
-                        <div class="col-6 col-sm-3">
-                            <label class="form-label small fw-bold text-muted mb-1">Start from</label>
-                            <input type="number" min="1" class="form-control" id="admStart" name="admission_number_start"
-                                   value="{{ admission_number_config.start }}">
-                        </div>
+                    <label for="autoAdmissionNumber" class="mb-0">
+                        <b>Automatic Admission No</b>
+                        <small>ON: every new student gets the next number of your pattern by itself.
+                            OFF: new students get no Admission No. Numbers already given are never changed.</small>
+                    </label>
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-sm-6">
+                        <label class="form-label" for="admPrefix">Starts with (prefix)</label>
+                        <input type="text" class="form-control" id="admPrefix" name="admission_number_prefix" maxlength="30"
+                               value="{{ admission_number_config.prefix }}" placeholder="e.g. FAIZ-{YY}-">
                     </div>
-                    <div class="form-text mb-2">Example: prefix <code>FAIZ-{YY}-</code>, 4 digits, start 1 gives
-                        <b>FAIZ-26-0001</b>, <b>FAIZ-26-0002</b> ... Use <code>{YY}</code> (26) or <code>{YYYY}</code> (2026) for the
-                        current year (it changes by itself every year). Next number now: <b id="admNext">{{ admission_number_next }}</b>
-                        <span class="text-muted">(updates after you save)</span>.</div>
-                    <div class="mb-3 small">Preview with the values above:
-                        <span class="badge bg-primary-subtle text-primary-emphasis border fs-6" id="admPreview">&mdash;</span></div>
+                    <div class="col-6 col-sm-3">
+                        <label class="form-label" for="admDigits">Digits</label>
+                        <input type="number" min="1" max="8" class="form-control" id="admDigits" name="admission_number_digits"
+                               value="{{ admission_number_config.digits }}">
+                    </div>
+                    <div class="col-6 col-sm-3">
+                        <label class="form-label" for="admStart">Start from</label>
+                        <input type="number" min="1" class="form-control" id="admStart" name="admission_number_start"
+                               value="{{ admission_number_config.start }}">
+                    </div>
+                </div>
+                <div class="form-text mb-3">Example: prefix <code>FAIZ-{YY}-</code>, 4 digits, start 1 gives
+                    <b>FAIZ-26-0001</b>, <b>FAIZ-26-0002</b> ... Use <code>{YY}</code> (26) or <code>{YYYY}</code> (2026) for the
+                    current year (it changes by itself every year). Next number now: <b id="admNext">{{ admission_number_next }}</b>
+                    <span class="text-muted">(updates after you save)</span>.</div>
+                <div class="mb-3 small">Preview with the values above:
+                    <span class="st-adm-preview" id="admPreview">&mdash;</span></div>
+                <div class="st-note"><i class="fas fa-lock"></i><span>The Admission No can never be typed or edited on the student forms &mdash;
+                    it only comes from this pattern and changes only here.</span></div>
+            </section>
 
-                    <div class="alert alert-secondary py-2 small mb-3">
-                        <i class="fas fa-lock me-1"></i> The Admission No can never be typed or edited on the student forms &mdash;
-                        it only comes from this pattern and changes only here.</div>
-
-                    <button type="submit" class="btn btn-success px-4">
-                        <i class="fas fa-save me-1"></i> Save School Info
-                    </button>
-                </form>
-
-                <hr class="my-4">
-                <h6 class="fw-bold mb-2"><i class="fas fa-hashtag me-1 text-primary"></i>Students without an Admission No</h6>
-                {% if missing_admission_count %}
-                <form method="post" action="{{ url_for('main.assign_missing_admission_numbers') }}"
-                      data-confirm="Give an Admission No to {{ missing_admission_count }} students who have none, using the saved pattern (oldest admission first)? Numbers already given are not changed.">
-                    <input type="hidden" name="return_to" value="settings">
-                    <p class="mb-2"><b>{{ missing_admission_count }}</b> students have no Admission No yet.
-                        <span class="text-muted small">Uses the saved pattern above &mdash; save it first if you just changed it.</span></p>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-wand-magic-sparkles me-1"></i> Give numbers to all {{ missing_admission_count }} students
-                    </button>
-                </form>
-                {% else %}
-                <p class="text-muted small mb-0"><i class="fas fa-circle-check text-success me-1"></i>Every student already has an Admission No.</p>
-                {% endif %}
-                <script>
-                (function () {
-                    var p = document.getElementById('admPrefix'), d = document.getElementById('admDigits'),
-                        s = document.getElementById('admStart'), out = document.getElementById('admPreview');
-                    if (!p || !d || !s || !out) return;
-                    function render() {
-                        var year = new Date().getFullYear();
-                        var prefix = (p.value || '').replace(/\{YYYY\}/g, String(year))
-                            .replace(/\{YY\}/g, String(year % 100).padStart(2, '0'));
-                        var digits = Math.min(8, Math.max(1, parseInt(d.value, 10) || 4));
-                        var start = Math.max(1, parseInt(s.value, 10) || 1);
-                        out.textContent = prefix + String(start).padStart(digits, '0');
-                    }
-                    ['input', 'change'].forEach(function (ev) {
-                        [p, d, s].forEach(function (el) { el.addEventListener(ev, render); });
-                    });
-                    render();
-                })();
-                </script>
+            <div class="st-savebar">
+                <span>Press Save to keep your changes in this tab.</span>
+                <button type="submit" class="btn btn-success px-4 fw-bold"><i class="fas fa-save me-1"></i> Save School Info</button>
             </div>
-        </div>
+        </form>
+
+        <section class="st-card">
+            <h2><i class="fas fa-wand-magic-sparkles"></i>Students without an Admission No</h2>
+            {% if missing_admission_count %}
+            <form method="post" action="{{ url_for('main.assign_missing_admission_numbers') }}" class="mt-3"
+                  data-confirm="Give an Admission No to {{ missing_admission_count }} students who have none, using the saved pattern (oldest admission first)? Numbers already given are not changed.">
+                <input type="hidden" name="return_to" value="settings">
+                <p class="mb-2"><b>{{ missing_admission_count }}</b> students have no Admission No yet.
+                    <span class="text-muted small">Uses the saved pattern above &mdash; save it first if you just changed it.</span></p>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-wand-magic-sparkles me-1"></i> Give numbers to all {{ missing_admission_count }} students
+                </button>
+            </form>
+            {% else %}
+            <div class="st-note st-ok mt-3"><i class="fas fa-circle-check"></i><span>Every student already has an Admission No.</span></div>
+            {% endif %}
+        </section>
     </div>
 
-    <!-- Live Preview -->
-    <div class="col-md-6">
-        <div class="card shadow-sm border-0 analytics-panel settings-card">
-            <div class="card-header bg-dark text-white fw-bold border-0">
-                <i class="fas fa-eye me-2"></i>Sidebar Preview
-            </div>
-            <div class="card-body bg-dark rounded" style="min-height:160px;">
-                <div class="text-center py-3 border-bottom border-secondary">
+    <div class="col-lg-5">
+        <section class="st-card st-preview-card">
+            <h2><i class="fas fa-eye"></i>Sidebar Preview</h2>
+            <p class="st-sub">This is how your school looks on the left menu. It changes as you type.</p>
+            <div class="st-preview">
+                <div class="st-prev-top">
                     <div id="previewLogo">
                         {% if settings.logo_filename %}
-                        <img src="{{ url_for('main.brand_logo') }}"
-                             style="max-height:60px;" class="mb-2 d-block mx-auto">
+                        <img src="{{ url_for('main.brand_logo') }}" style="max-height:60px;" class="mb-2 d-block mx-auto">
                         {% else %}
                         <i class="fas fa-school text-warning fa-2x mb-2 d-block" id="previewIcon"></i>
                         {% endif %}
@@ -216,427 +267,405 @@
                     <small class="text-secondary" id="previewTagline">{{ settings.tagline }}</small>
                 </div>
                 {% if settings.address or settings.phone or settings.email %}
-                <div class="mt-3 text-muted small text-center">
+                <div class="st-prev-meta">
                     {% if settings.address %}<div><i class="fas fa-map-marker-alt me-1"></i>{{ settings.address }}</div>{% endif %}
                     {% if settings.phone %}<div><i class="fas fa-phone me-1"></i>{{ settings.phone }}</div>{% endif %}
                     {% if settings.email %}<div><i class="fas fa-envelope me-1"></i>{{ settings.email }}</div>{% endif %}
                 </div>
                 {% endif %}
             </div>
-        </div>
+        </section>
     </div>
 </div>
-
 </section>
 
+{# =================== ACADEMIC =================== #}
 <section class="tab-pane fade {% if active_tab == 'academic' %}show active{% endif %}" id="academic-panel" role="tabpanel" aria-labelledby="academic-tab" tabindex="0">
-<div class="row g-4">
-    <div class="col-lg-6">
-        <div class="card shadow-sm border-0 analytics-panel settings-card">
-            <div class="card-header bg-info-subtle text-info-emphasis fw-bold">
-                <i class="fas fa-clock me-2"></i>School Schedule
-            </div>
-            <div class="card-body">
-                <form method="POST">
-                    <input type="hidden" name="action" value="save_academic_settings">
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Current Academic Session</label>
-                        <input type="text" class="form-control" name="academic_session"
+<div class="row g-3">
+    <div class="col-12">
+        <form method="POST" data-dirty-form>
+            <input type="hidden" name="action" value="save_academic_settings">
+            <div class="st-grid">
+
+            <section class="st-card">
+                <h2><i class="fas fa-calendar-day"></i>School Day</h2>
+                <p class="st-sub">The session and the daily timing are used to pre-fill reports, documents and attendance.</p>
+                <div class="row g-3">
+                    <div class="col-sm-6">
+                        <label class="form-label" for="stSession">Current Academic Session</label>
+                        <input type="text" class="form-control" id="stSession" name="academic_session"
                                value="{{ settings.academic_session or '' }}" placeholder="e.g. 2025-2026">
                         <div class="form-text">Used to pre-fill report and document filters.</div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Result Announcement Date <span class="text-muted fw-normal">(optional)</span></label>
-                        <input type="date" class="form-control" name="result_announcement_date"
+                    <div class="col-sm-6">
+                        <label class="form-label" for="stResultDate">Result Announcement Date <span class="st-opt">(optional)</span></label>
+                        <input type="date" class="form-control" id="stResultDate" name="result_announcement_date"
                                value="{{ settings.result_announcement_date or '' }}">
                     </div>
-                    <div class="row g-3 mb-3">
-                        <div class="col-sm-6">
-                            <label class="form-label fw-semibold">School Start Time</label>
-                            <input type="time" class="form-control" name="school_start_time" value="{{ settings.school_start_time or '08:30' }}">
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label fw-semibold">School End Time</label>
-                            <input type="time" class="form-control" name="school_end_time" value="{{ settings.school_end_time or '15:00' }}">
-                        </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="stStart">School Start Time</label>
+                        <input type="time" class="form-control" id="stStart" name="school_start_time" value="{{ settings.school_start_time or '08:30' }}">
                     </div>
-                    <hr class="my-3">
-                    <h6 class="fw-bold mb-1"><i class="fas fa-table-list text-primary me-2"></i>Timetable Periods</h6>
-                    <p class="text-muted small mb-3">Saved here once so the upcoming timetable feature can use them automatically.</p>
-                    <div class="row g-3 mb-3">
-                        <div class="col-sm-6">
-                            <label class="form-label fw-semibold">Periods per day</label>
-                            <input type="number" class="form-control" name="timetable_periods_per_day"
-                                   min="1" max="20" step="1"
-                                   value="{{ timetable_structure.periods_per_day }}">
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label fw-semibold">Minutes per period</label>
-                            <input type="number" class="form-control" name="timetable_period_minutes"
-                                   min="10" max="120" step="5"
-                                   value="{{ timetable_structure.period_minutes }}">
-                        </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="stEnd">School End Time</label>
+                        <input type="time" class="form-control" id="stEnd" name="school_end_time" value="{{ settings.school_end_time or '15:00' }}">
                     </div>
-                    <div class="row g-3 mb-3">
-                        <div class="col-sm-6">
-                            <label class="form-label fw-semibold">Break after period</label>
-                            <input type="number" class="form-control" name="timetable_break_after"
-                                   min="0" max="20" step="1"
-                                   value="{{ timetable_structure.break_after }}">
-                            <div class="form-text">0 = no break in the timetable.</div>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label fw-semibold">Break length</label>
-                            <div class="input-group">
-                                <input type="number" class="form-control" name="timetable_break_minutes"
-                                       min="0" max="180" step="5"
-                                       value="{{ timetable_structure.break_minutes }}">
-                                <span class="input-group-text">minutes</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Break label</label>
-                        <input type="text" class="form-control" name="timetable_break_label"
-                               maxlength="50" value="{{ timetable_structure.break_label }}"
-                               placeholder="Break">
-                        <div class="form-text">Shown as the grey band in the timetable (e.g. Break, Lunch, Short Break).</div>
-                    </div>
-                    <div class="row g-3 mb-3">
-                        <div class="col-sm-6">
-                            <label class="form-label fw-semibold">Assembly length</label>
-                            <div class="input-group">
-                                <input type="number" class="form-control" name="timetable_assembly_minutes"
-                                       min="0" max="60" step="5"
-                                       value="{{ timetable_structure.assembly_minutes }}">
-                                <span class="input-group-text">minutes</span>
-                            </div>
-                            <div class="form-text">0 = no assembly column. A short slot before the first period, like the reference chart.</div>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label fw-semibold">Assembly label</label>
-                            <input type="text" class="form-control" name="timetable_assembly_label"
-                                   maxlength="50" value="{{ timetable_structure.assembly_label }}"
-                                   placeholder="Assembly">
-                            <div class="form-text">Shown vertically in the grey column (e.g. Assembly, Morning Assembly).</div>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Late arrival grace period</label>
-                        <div class="input-group">
-                            <input type="number" class="form-control" name="attendance_grace_minutes"
+                </div>
+            </section>
+
+            <section class="st-card">
+                <h2><i class="fas fa-user-clock"></i>Attendance Rules</h2>
+                <p class="st-sub">How late arrivals are shown and how the attendance percentage is worked out.</p>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label" for="stGrace">Late arrival grace period</label>
+                        <div class="input-group" style="max-width: 18rem;">
+                            <input type="number" class="form-control" id="stGrace" name="attendance_grace_minutes"
                                    min="0" max="180" step="1"
                                    value="{{ settings.attendance_grace_minutes or 0 }}">
                             <span class="input-group-text">minutes</span>
                         </div>
                         <div class="form-text">Check-ins after school start plus this time are marked Late.</div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold" for="late_display">Students who arrive after the cutoff</label>
+                    <div class="col-md-6">
+                        <label class="form-label" for="late_display">Students who arrive after the cutoff</label>
                         <select class="form-select" id="late_display" name="late_display">
                             <option value="late" {% if settings.late_after_cutoff is not false %}selected{% endif %}>Show as Late</option>
                             <option value="present" {% if settings.late_after_cutoff is false %}selected{% endif %}>Show only as Present</option>
                         </select>
                         <div class="form-text">The arrival time is saved either way. A teacher can still choose Late by hand.</div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold" for="percent_basis">Attendance % counts</label>
+                    <div class="col-md-6">
+                        <label class="form-label" for="percent_basis">Attendance % counts</label>
                         <select class="form-select" id="percent_basis" name="percent_basis">
                             <option value="present_late" {% if settings.late_counts_as_present is not false %}selected{% endif %}>Present and Late both</option>
                             <option value="present_only" {% if settings.late_counts_as_present is false %}selected{% endif %}>Present only</option>
                         </select>
                         <div class="form-text">Used in the attendance summary, reports, student profile and daily QR report.</div>
                     </div>
-                    <div class="row g-3 mb-3">
-                        <div class="col-sm-6">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" role="switch" id="saturday_off" name="saturday_off" {% if settings.saturday_off is not false %}checked{% endif %}>
-                                <label class="form-check-label fw-semibold" for="saturday_off">Saturday off</label>
-                            </div>
-                        </div>
-                        <div class="col-sm-6">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" role="switch" id="sunday_off" name="sunday_off" {% if settings.sunday_off is not false %}checked{% endif %}>
-                                <label class="form-check-label fw-semibold" for="sunday_off">Sunday off</label>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Other Days Off <span class="text-muted fw-normal">(optional)</span></label>
-                        <input type="text" class="form-control" name="custom_off_days"
-                               value="{{ settings.custom_off_days or '' }}" placeholder="e.g. Friday">
-                        <div class="form-text">Separate multiple days with commas.</div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Holidays / Vacations <span class="text-muted fw-normal">(optional)</span></label>
-                        <div class="form-text mb-2">Date ranges when the school is closed. These days are excluded from attendance summaries and are never counted as attendance days.</div>
-                        <div class="table-responsive">
-                            <table class="table table-sm align-middle mb-2" style="max-width: 640px;">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Label (e.g. Summer Vacations)</th>
-                                        <th>From</th>
-                                        <th>To</th>
-                                        <th class="text-center">Remove</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="holiday-ranges-body">
-                                    {% for item in holiday_ranges %}
-                                    <tr>
-                                        <td><input type="text" class="form-control form-control-sm" name="holiday_label[]" value="{{ item.label }}"></td>
-                                        <td><input type="date" class="form-control form-control-sm" name="holiday_start[]" value="{{ item.start }}"></td>
-                                        <td><input type="date" class="form-control form-control-sm" name="holiday_end[]" value="{{ item.end }}"></td>
-                                        <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()" aria-label="Remove"><i class="fas fa-times"></i></button></td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="addHolidayRow()">
-                            <i class="fas fa-plus me-1"></i>Add Holiday Range
-                        </button>
-                    </div>
-                    <button type="submit" class="btn btn-success"><i class="fas fa-save me-1"></i> Save Academic Settings</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row g-4 mt-1">
-    <div class="col-12">
-        <div class="card shadow-sm border-0 analytics-panel settings-card">
-            <div class="card-header bg-warning-subtle text-dark fw-bold border-0">
-                <i class="fas fa-chart-line me-2"></i>Grading Scale
-            </div>
-            <div class="card-body">
-                <p class="text-muted small mb-3">Define the percentage required to achieve each grade. Enter the minimum percentage required for each.</p>
-                <form method="POST" action="{{ url_for('main.school_settings_grading') }}">
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-3" style="max-width: 500px;">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Grade (e.g. A+)</th>
-                                    <th>Min. % (e.g. 85)</th>
-                                    <th class="text-center">Remove</th>
-                                </tr>
-                            </thead>
-                            <tbody id="grading-scale-body">
-                                {% for item in grading_scale %}
-                                <tr>
-                                    <td><input type="text" class="form-control form-control-sm" name="grade[]" value="{{ item.grade }}" required></td>
-                                    <td><input type="number" step="0.1" class="form-control form-control-sm" name="min_pct[]" value="{{ item.min }}" required></td>
-                                    <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()" aria-label="Remove"><i class="fas fa-times"></i></button></td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <button type="button" class="btn btn-outline-primary btn-sm mb-3" onclick="addGradeRow()">
-                        <i class="fas fa-plus me-1"></i>Add Grade
-                    </button>
-                    <br>
-                    <button type="submit" class="btn btn-success px-4">
-                        <i class="fas fa-save me-1"></i> Save Grading Scale
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-</section>
-
-<section class="tab-pane fade {% if active_tab == 'custom-fields' %}show active{% endif %}" id="custom-fields-panel" role="tabpanel" aria-labelledby="custom-fields-tab" tabindex="0">
-<div class="row g-4 mt-1">
-    <div class="col-md-6">
-        <div class="card shadow-sm border-0 analytics-panel settings-card">
-            <div class="card-header bg-primary-subtle text-primary fw-bold border-0">
-                <i class="fas fa-user-graduate me-2"></i>Student Custom Fields
-            </div>
-            <div class="card-body">
-                <p class="text-muted small mb-3">Define custom fields for student profiles (e.g., Blood Group, Medical Conditions).</p>
-                <form method="POST" action="{{ url_for('main.school_settings_custom_fields', entity_type='student') }}">
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-3">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Field Name (internal) <span class="required-asterisk" aria-hidden="true">*</span></th>
-                                    <th>Display Label <span class="required-asterisk" aria-hidden="true">*</span></th>
-                                    <th>Type</th>
-                                    <th class="text-center">Required</th>
-                                    <th class="text-center">Remove</th>
-                                </tr>
-                            </thead>
-                            <tbody id="student-custom-fields-body">
-                                {% for field in student_custom_fields %}
-                                <tr>
-                                    <td><input type="text" class="form-control form-control-sm custom-field-name" name="field_name[]" value="{{ field.name }}" required></td>
-                                    <td><input type="text" class="form-control form-control-sm" name="field_label[]" value="{{ field.label }}" required></td>
-                                    <td>
-                                        <select class="form-select form-select-sm" name="field_type[]">
-                                            <option value="text" {% if field.type == 'text' %}selected{% endif %}>Text</option>
-                                            <option value="number" {% if field.type == 'number' %}selected{% endif %}>Number</option>
-                                            <option value="date" {% if field.type == 'date' %}selected{% endif %}>Date</option>
-                                        </select>
-                                    </td>
-                                    <td class="text-center"><input type="checkbox" class="form-check-input custom-field-required" name="field_required[]" value="{{ field.name }}" {% if field.get('is_mandatory') %}checked{% endif %} aria-label="Require {{ field.label }}"></td>
-                                    <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()" aria-label="Remove"><i class="fas fa-times"></i></button></td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <button type="button" class="btn btn-outline-primary btn-sm mb-3" onclick="addCustomFieldRow('student-custom-fields-body')">
-                        <i class="fas fa-plus me-1"></i>Add Field
-                    </button>
-                    <br>
-                    <button type="submit" class="btn btn-success px-4">
-                        <i class="fas fa-save me-1"></i> Save Student Fields
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-6">
-        <div class="card shadow-sm border-0 analytics-panel settings-card">
-            <div class="card-header bg-success-subtle text-success fw-bold border-0">
-                <i class="fas fa-chalkboard-teacher me-2"></i>Teacher Custom Fields
-            </div>
-            <div class="card-body">
-                <p class="text-muted small mb-3">Define custom fields for teacher profiles (e.g., Bank Account, Tax ID).</p>
-                <form method="POST" action="{{ url_for('main.school_settings_custom_fields', entity_type='teacher') }}">
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-3">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Field Name (internal) <span class="required-asterisk" aria-hidden="true">*</span></th>
-                                    <th>Display Label <span class="required-asterisk" aria-hidden="true">*</span></th>
-                                    <th>Type</th>
-                                    <th class="text-center">Required</th>
-                                    <th class="text-center">Remove</th>
-                                </tr>
-                            </thead>
-                            <tbody id="teacher-custom-fields-body">
-                                {% for field in teacher_custom_fields %}
-                                <tr>
-                                    <td><input type="text" class="form-control form-control-sm custom-field-name" name="field_name[]" value="{{ field.name }}" required></td>
-                                    <td><input type="text" class="form-control form-control-sm" name="field_label[]" value="{{ field.label }}" required></td>
-                                    <td>
-                                        <select class="form-select form-select-sm" name="field_type[]">
-                                            <option value="text" {% if field.type == 'text' %}selected{% endif %}>Text</option>
-                                            <option value="number" {% if field.type == 'number' %}selected{% endif %}>Number</option>
-                                            <option value="date" {% if field.type == 'date' %}selected{% endif %}>Date</option>
-                                        </select>
-                                    </td>
-                                    <td class="text-center"><input type="checkbox" class="form-check-input custom-field-required" name="field_required[]" value="{{ field.name }}" {% if field.get('is_mandatory') %}checked{% endif %} aria-label="Require {{ field.label }}"></td>
-                                    <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()" aria-label="Remove"><i class="fas fa-times"></i></button></td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <button type="button" class="btn btn-outline-primary btn-sm mb-3" onclick="addCustomFieldRow('teacher-custom-fields-body')">
-                        <i class="fas fa-plus me-1"></i>Add Field
-                    </button>
-                    <br>
-                    <button type="submit" class="btn btn-success px-4">
-                        <i class="fas fa-save me-1"></i> Save Teacher Fields
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-</section>
-
-<section class="tab-pane fade {% if active_tab == 'integrations' %}show active{% endif %}" id="integrations-panel" role="tabpanel" aria-labelledby="integrations-tab" tabindex="0">
-<div class="row g-4 mt-1 mb-4">
-    <div class="col-lg-6">
-        <div class="card shadow-sm border-0 settings-card">
-            <div class="card-header bg-success text-white fw-bold"><i class="fab fa-whatsapp me-2"></i>WhatsApp Messaging</div>
-            <div class="card-body d-flex flex-column">
-                <p class="text-muted">Manage QR Scan and official WhatsApp Cloud API connections, notification delivery, and message approvals.</p>
-                <div class="mt-auto">
-                    <a class="btn btn-outline-success" href="{{ url_for('main.automation_panel') }}"><i class="fas fa-arrow-up-right-from-square me-1"></i> Open WhatsApp Center</a>
                 </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-6">
-        <div class="card shadow-sm border-0 settings-card">
-            <div class="card-header bg-secondary text-white fw-bold"><i class="fas fa-database me-2"></i>Database Protection</div>
-            <div class="card-body">
-                <p class="text-muted">Create and download database backups. Automatic backups run {{ 'daily' if backup_state.enabled else 'when enabled' }}.</p>
-                <span class="badge {% if backup_state.enabled %}bg-success{% else %}bg-secondary{% endif %}">Automatic backups {{ 'on' if backup_state.enabled else 'off' }}</span>
-                {% if backup_state.latest %}<span class="badge bg-light text-dark border ms-1">Latest: {{ backup_state.latest.name }}</span>{% endif %}
-            </div>
-        </div>
-    </div>
-</div>
-<div class="row g-4 mt-1">
-    <div class="col-12">
-        <div class="card shadow-sm border-0 settings-card">
-            <div class="card-header bg-dark text-white fw-bold border-0 d-flex justify-content-between align-items-center">
-                <span><i class="fas fa-database me-2"></i>Backups</span>
-                <form method="POST" action="{{ url_for('main.run_backup_now') }}" class="m-0">
-                    <button class="btn btn-sm btn-light" type="submit">
-                        <i class="fas fa-download me-1"></i>Back up now
-                    </button>
-                </form>
-            </div>
-            <div class="card-body">
-                <p class="text-muted small mb-2">
-                    Automatic backup: {{ 'daily' if backup_state.enabled else 'disabled' }}
-                    (every {{ backup_state.interval_hours|int }}h, keeps the newest
-                    {{ backup_state.retention }} automatic copies). Manual backups are never deleted.
-                </p>
-                {% if backup_state.latest %}
-                <p class="small mb-3">
-                    Latest backup: <strong>{{ backup_state.latest.name }}</strong>
-                    ({{ backup_state.latest.created | localtime }},
-                    {{ (backup_state.latest.size / 1024) | round(0) | int }} KB)
-                    &middot; {{ backup_state.auto_count }} automatic,
-                    {{ backup_state.manual_count }} manual.
-                </p>
-                {% else %}
-                <p class="small mb-3 text-muted">No backups yet.</p>
-                {% endif %}
+            </section>
+
+            <section class="st-card">
+                <h2><i class="fas fa-umbrella-beach"></i>Days Off &amp; Holidays</h2>
+                <p class="st-sub">The school is closed on these days. They are never counted as attendance days.</p>
+                <div class="row g-3 mb-3">
+                    <div class="col-sm-6">
+                        <label class="st-switch" for="saturday_off">
+                            <input class="form-check-input" type="checkbox" role="switch" id="saturday_off" name="saturday_off" {% if settings.saturday_off is not false %}checked{% endif %}>
+                            <span><b>Saturday off</b><small>School is closed every Saturday.</small></span>
+                        </label>
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="st-switch" for="sunday_off">
+                            <input class="form-check-input" type="checkbox" role="switch" id="sunday_off" name="sunday_off" {% if settings.sunday_off is not false %}checked{% endif %}>
+                            <span><b>Sunday off</b><small>School is closed every Sunday.</small></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label" for="stOffDays">Other Days Off <span class="st-opt">(optional)</span></label>
+                    <input type="text" class="form-control" id="stOffDays" name="custom_off_days"
+                           value="{{ settings.custom_off_days or '' }}" placeholder="e.g. Friday">
+                    <div class="form-text">Separate multiple days with commas.</div>
+                </div>
+                <label class="form-label">Holidays / Vacations <span class="st-opt">(optional)</span></label>
+                <div class="form-text mb-2">Date ranges when the school is closed (for example summer vacations). These days are excluded from attendance summaries and are never counted as attendance days.</div>
                 <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead class="table-light">
+                    <table class="table table-sm align-middle mb-2">
+                        <thead>
                             <tr>
-                                <th>File</th>
-                                <th>Type</th>
-                                <th>Created (local)</th>
-                                <th class="text-end">Size</th>
-                                <th class="text-end">Download</th>
+                                <th>Name (e.g. Summer Vacations)</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th class="text-center">Remove</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            {% for item in backup_state.recent %}
+                        <tbody id="holiday-ranges-body">
+                            {% for item in holiday_ranges %}
                             <tr>
-                                <td class="font-monospace small">{{ item.name }}</td>
-                                <td><span class="badge {% if item.scope == 'auto' %}bg-primary{% else %}bg-secondary{% endif %}">{{ item.scope }}</span></td>
-                                <td class="small">{{ item.created | localtime }}</td>
-                                <td class="text-end small">{{ (item.size / 1024) | round(0) | int }} KB</td>
-                                <td class="text-end">
-                                    <a class="btn btn-sm btn-outline-primary"
-                                       href="{{ url_for('main.download_backup', filename=item.name) }}">
-                                        <i class="fas fa-download"></i>
-                                    </a>
-                                </td>
+                                <td><input type="text" class="form-control form-control-sm" name="holiday_label[]" value="{{ item.label }}"></td>
+                                <td><input type="date" class="form-control form-control-sm" name="holiday_start[]" value="{{ item.start }}"></td>
+                                <td><input type="date" class="form-control form-control-sm" name="holiday_end[]" value="{{ item.end }}"></td>
+                                <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()" aria-label="Remove"><i class="fas fa-times"></i></button></td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addHolidayRow()">
+                    <i class="fas fa-plus me-1"></i>Add Holiday Range
+                </button>
+            </section>
+
+            <section class="st-card">
+                <h2><i class="fas fa-table-list"></i>Timetable Periods</h2>
+                <p class="st-sub">Saved here once so the timetable can use them automatically.</p>
+                <div class="row g-3">
+                    <div class="col-sm-6">
+                        <label class="form-label" for="ttPeriods">Periods per day</label>
+                        <input type="number" class="form-control" id="ttPeriods" name="timetable_periods_per_day"
+                               min="1" max="20" step="1" value="{{ timetable_structure.periods_per_day }}">
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="ttMinutes">Minutes per period</label>
+                        <input type="number" class="form-control" id="ttMinutes" name="timetable_period_minutes"
+                               min="10" max="120" step="5" value="{{ timetable_structure.period_minutes }}">
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="ttBreakAfter">Break after period</label>
+                        <input type="number" class="form-control" id="ttBreakAfter" name="timetable_break_after"
+                               min="0" max="20" step="1" value="{{ timetable_structure.break_after }}">
+                        <div class="form-text">0 = no break in the timetable.</div>
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="ttBreakMin">Break length</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="ttBreakMin" name="timetable_break_minutes"
+                                   min="0" max="180" step="5" value="{{ timetable_structure.break_minutes }}">
+                            <span class="input-group-text">minutes</span>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="ttBreakLabel">Break label</label>
+                        <input type="text" class="form-control" id="ttBreakLabel" name="timetable_break_label"
+                               maxlength="50" value="{{ timetable_structure.break_label }}" placeholder="Break">
+                        <div class="form-text">Shown as the grey band in the timetable (e.g. Break, Lunch, Short Break).</div>
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="ttAsmMin">Assembly length</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="ttAsmMin" name="timetable_assembly_minutes"
+                                   min="0" max="60" step="5" value="{{ timetable_structure.assembly_minutes }}">
+                            <span class="input-group-text">minutes</span>
+                        </div>
+                        <div class="form-text">0 = no assembly column. A short slot before the first period, like the reference chart.</div>
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="ttAsmLabel">Assembly label</label>
+                        <input type="text" class="form-control" id="ttAsmLabel" name="timetable_assembly_label"
+                               maxlength="50" value="{{ timetable_structure.assembly_label }}" placeholder="Assembly">
+                        <div class="form-text">Shown vertically in the grey column (e.g. Assembly, Morning Assembly).</div>
+                    </div>
+                </div>
+            </section>
+
             </div>
-        </div>
+
+            <div class="st-savebar">
+                <span>Press Save to keep your changes in this tab.</span>
+                <button type="submit" class="btn btn-success px-4 fw-bold"><i class="fas fa-save me-1"></i> Save Academic Settings</button>
+            </div>
+        </form>
+
+        <section class="st-card">
+            <h2><i class="fas fa-chart-line"></i>Grading Scale</h2>
+            <p class="st-sub">Write the lowest percentage needed for each grade. For example, A+ from 85 means anyone with 85% or more gets A+.</p>
+            <form method="POST" action="{{ url_for('main.school_settings_grading') }}">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-3" style="max-width: 500px;">
+                        <thead>
+                            <tr>
+                                <th>Grade (e.g. A+)</th>
+                                <th>Min. % (e.g. 85)</th>
+                                <th class="text-center">Remove</th>
+                            </tr>
+                        </thead>
+                        <tbody id="grading-scale-body">
+                            {% for item in grading_scale %}
+                            <tr>
+                                <td><input type="text" class="form-control form-control-sm" name="grade[]" value="{{ item.grade }}" required></td>
+                                <td><input type="number" step="0.1" class="form-control form-control-sm" name="min_pct[]" value="{{ item.min }}" required></td>
+                                <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()" aria-label="Remove"><i class="fas fa-times"></i></button></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="addGradeRow()">
+                        <i class="fas fa-plus me-1"></i>Add Grade
+                    </button>
+                    <button type="submit" class="btn btn-success btn-sm px-3 fw-bold">
+                        <i class="fas fa-save me-1"></i> Save Grading Scale
+                    </button>
+                </div>
+            </form>
+        </section>
     </div>
 </div>
 </section>
+
+{# =================== CUSTOM FIELDS =================== #}
+<section class="tab-pane fade {% if active_tab == 'custom-fields' %}show active{% endif %}" id="custom-fields-panel" role="tabpanel" aria-labelledby="custom-fields-tab" tabindex="0">
+<div class="alert alert-light border st-note mb-3"><i class="fas fa-lightbulb"></i>
+    <span>Need an extra box on a form that the program does not have &mdash; like <b>Blood Group</b>? Add it here and it appears on the student or teacher form and profile.
+    Tick <b>Required</b> if it must always be filled in.</span></div>
+<div class="row g-3">
+    {% for entity, title, icon, hint, fields, body_id, save_label in (
+        ('student', 'Student Custom Fields', 'fa-user-graduate', 'Extra details for student profiles (e.g. Blood Group, Medical Conditions).', student_custom_fields, 'student-custom-fields-body', 'Save Student Fields'),
+        ('teacher', 'Teacher Custom Fields', 'fa-chalkboard-teacher', 'Extra details for teacher profiles (e.g. Bank Account, Tax ID).', teacher_custom_fields, 'teacher-custom-fields-body', 'Save Teacher Fields')) %}
+    <div class="col-lg-6">
+        <section class="st-card h-100">
+            <h2><i class="fas {{ icon }}"></i>{{ title }}</h2>
+            <p class="st-sub">{{ hint }}</p>
+            <form method="POST" action="{{ url_for('main.school_settings_custom_fields', entity_type=entity) }}">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-3">
+                        <thead>
+                            <tr>
+                                <th title="A short name with no spaces, e.g. blood_group. It is not shown on forms.">Short name <span class="required-asterisk" aria-hidden="true">*</span></th>
+                                <th title="The words people see on the form, e.g. Blood Group.">Label on form <span class="required-asterisk" aria-hidden="true">*</span></th>
+                                <th>Type</th>
+                                <th class="text-center">Required</th>
+                                <th class="text-center">Remove</th>
+                            </tr>
+                        </thead>
+                        <tbody id="{{ body_id }}">
+                            {% for field in fields %}
+                            <tr>
+                                <td><input type="text" class="form-control form-control-sm custom-field-name" name="field_name[]" value="{{ field.name }}" required></td>
+                                <td><input type="text" class="form-control form-control-sm" name="field_label[]" value="{{ field.label }}" required></td>
+                                <td>
+                                    <select class="form-select form-select-sm" name="field_type[]">
+                                        <option value="text" {% if field.type == 'text' %}selected{% endif %}>Text</option>
+                                        <option value="number" {% if field.type == 'number' %}selected{% endif %}>Number</option>
+                                        <option value="date" {% if field.type == 'date' %}selected{% endif %}>Date</option>
+                                    </select>
+                                </td>
+                                <td class="text-center"><input type="checkbox" class="form-check-input custom-field-required" name="field_required[]" value="{{ field.name }}" {% if field.get('is_mandatory') %}checked{% endif %} aria-label="Require {{ field.label }}"></td>
+                                <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove()" aria-label="Remove"><i class="fas fa-times"></i></button></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="addCustomFieldRow('{{ body_id }}')">
+                        <i class="fas fa-plus me-1"></i>Add Field
+                    </button>
+                    <button type="submit" class="btn btn-success btn-sm px-3 fw-bold">
+                        <i class="fas fa-save me-1"></i> {{ save_label }}
+                    </button>
+                </div>
+            </form>
+        </section>
+    </div>
+    {% endfor %}
 </div>
+</section>
+
+{# =================== INTEGRATIONS =================== #}
+<section class="tab-pane fade {% if active_tab == 'integrations' %}show active{% endif %}" id="integrations-panel" role="tabpanel" aria-labelledby="integrations-tab" tabindex="0">
+<section class="st-card">
+    <div class="st-int">
+        <span class="st-int-ico wa"><i class="fab fa-whatsapp"></i></span>
+        <div class="flex-grow-1">
+            <h2 class="h5 fw-bold mb-1">WhatsApp Messaging</h2>
+            <p class="text-muted small mb-3">Connect WhatsApp to send fee reminders and attendance messages, and to approve messages before they go out.</p>
+            <a class="btn btn-outline-success" href="{{ url_for('main.automation_panel') }}"><i class="fas fa-arrow-up-right-from-square me-1"></i> Open WhatsApp Center</a>
+        </div>
+    </div>
+</section>
+
+<section class="st-card">
+    <div class="st-int mb-3">
+        <span class="st-int-ico db"><i class="fas fa-database"></i></span>
+        <div class="flex-grow-1">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                <div>
+                    <h2 class="h5 fw-bold mb-1">Backups</h2>
+                    <p class="text-muted small mb-2">A backup is a safe copy of all your school data. Keep a recent one on a USB drive or another computer.</p>
+                </div>
+                <form method="POST" action="{{ url_for('main.run_backup_now') }}" class="m-0">
+                    <button class="btn btn-primary btn-sm" type="submit"><i class="fas fa-download me-1"></i>Back up now</button>
+                </form>
+            </div>
+            <span class="st-chip {% if backup_state.enabled %}on{% endif %}"><i class="fas {{ 'fa-circle-check' if backup_state.enabled else 'fa-circle-pause' }} me-1"></i>Automatic backups {{ 'on' if backup_state.enabled else 'off' }}</span>
+            {% if backup_state.latest %}<span class="st-chip dim ms-1">Latest: {{ backup_state.latest.name }}</span>{% endif %}
+        </div>
+    </div>
+    <p class="text-muted small mb-2">
+        Automatic backup: {{ 'daily' if backup_state.enabled else 'disabled' }}
+        (every {{ backup_state.interval_hours|int }}h, keeps the newest
+        {{ backup_state.retention }} automatic copies). Manual backups are never deleted.
+    </p>
+    {% if backup_state.latest %}
+    <p class="small mb-3">
+        Latest backup: <strong>{{ backup_state.latest.name }}</strong>
+        ({{ backup_state.latest.created | localtime }},
+        {{ (backup_state.latest.size / 1024) | round(0) | int }} KB)
+        &middot; {{ backup_state.auto_count }} automatic,
+        {{ backup_state.manual_count }} manual.
+    </p>
+    {% else %}
+    <p class="small mb-3 text-muted">No backups yet. Press <b>Back up now</b> to make the first one.</p>
+    {% endif %}
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>File</th>
+                    <th>Type</th>
+                    <th>Created (local)</th>
+                    <th class="text-end">Size</th>
+                    <th class="text-end">Download</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in backup_state.recent %}
+                <tr>
+                    <td class="font-monospace small">{{ item.name }}</td>
+                    <td><span class="st-bk-type {% if item.scope == 'auto' %}auto{% endif %}">{{ item.scope }}</span></td>
+                    <td class="small">{{ item.created | localtime }}</td>
+                    <td class="text-end small">{{ (item.size / 1024) | round(0) | int }} KB</td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.download_backup', filename=item.name) }}" aria-label="Download {{ item.name }}">
+                            <i class="fas fa-download"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+</section>
+</div>
+
+<script>
+(function () {
+    var p = document.getElementById('admPrefix'), d = document.getElementById('admDigits'),
+        s = document.getElementById('admStart'), out = document.getElementById('admPreview');
+    if (!p || !d || !s || !out) return;
+    function render() {
+        var year = new Date().getFullYear();
+        var prefix = (p.value || '').replace(/\{YYYY\}/g, String(year))
+            .replace(/\{YY\}/g, String(year % 100).padStart(2, '0'));
+        var digits = Math.min(8, Math.max(1, parseInt(d.value, 10) || 4));
+        var start = Math.max(1, parseInt(s.value, 10) || 1);
+        out.textContent = prefix + String(start).padStart(digits, '0');
+    }
+    ['input', 'change'].forEach(function (ev) {
+        [p, d, s].forEach(function (el) { el.addEventListener(ev, render); });
+    });
+    render();
+})();
+</script>
+
+<script>
+// The Save bar turns amber and says "You have unsaved changes" as soon as something is edited.
+(function () {
+    document.querySelectorAll('form[data-dirty-form]').forEach(function (form) {
+        var bar = form.querySelector('.st-savebar'); if (!bar) { return; }
+        var msg = bar.querySelector('span'), original = msg.textContent;
+        function dirty() { bar.classList.add('is-dirty'); msg.textContent = 'You have unsaved changes \u2014 press Save.'; }
+        form.addEventListener('input', dirty); form.addEventListener('change', dirty);
+        form.addEventListener('click', function (e) { if (e.target.closest('[onclick]')) { dirty(); } });
+        form.addEventListener('submit', function () { bar.classList.remove('is-dirty'); msg.textContent = original; });
+    });
+})();
+</script>
 
 <script>
 // Live preview as you type
@@ -712,4 +741,5 @@ function resetColors() {
     document.getElementById('secondaryColorInput').value = '#6c757d';
 }
 </script>
+
 {% endblock %}

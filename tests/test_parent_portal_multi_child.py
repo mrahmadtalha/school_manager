@@ -119,7 +119,7 @@ def test_users_admin_links_multiple_children(admin_client, app, seed):
 
     page = admin_client.get('/users').get_data(as_text=True)
     assert 'Child Alpha' in page and 'Child Beta' in page
-    assert f'linkChildrenModal{user_id}' in page
+    assert f'data-user-children="{user_id}"' in page  # one shared children window
 
     # Narrow the account to one child.
     edited = admin_client.post(f'/users/{user_id}/students', data={

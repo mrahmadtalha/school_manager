@@ -3,6 +3,7 @@ payments (mirrored into the reserved Salaries expense category) and payslips."""
 import io
 from calendar import monthrange
 from datetime import date, datetime
+from app.timeutil import utcnow
 
 from app.database import db
 from app.models import (AttendanceModel, Expense, ExpenseCategory, SalaryPayment,
@@ -304,12 +305,12 @@ def void_salary_payment(payment, reason, actor=None):
     _, username, _ = _actor(actor)
     payment.is_void = True
     payment.void_reason = (reason or 'No reason recorded')[:255]
-    payment.voided_at = datetime.utcnow()
+    payment.voided_at = utcnow()
     payment.voided_by_name = username or 'system'
     if payment.expense is not None and not payment.expense.is_void:
         payment.expense.is_void = True
         payment.expense.void_reason = 'Salary payment voided: %s' % payment.void_reason
-        payment.expense.voided_at = datetime.utcnow()
+        payment.expense.voided_at = utcnow()
         payment.expense.voided_by_name = username or 'system'
     record = payment.payroll
     if record is not None:

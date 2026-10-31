@@ -39,6 +39,16 @@ EVENT_TEMPLATES: Dict[str, str] = {
         "Grade: *{grade}*\n\n"
         "Regards,\nSchool Management"
     ),
+    'test_result': (
+        "Assalam-o-Alaikum,\n\nDear Parent,\n\n"
+        "Result summary for {student_name} ({test_title}, {date_value}):\n\n"
+        "{subjects}\n\n"
+        "Total: *{obtained}/{total}*\n"
+        "Percentage: *{percentage}%*\n"
+        "Grade: *{grade}*\n"
+        "Class average: {class_average}%\n\n"
+        "Regards,\nSchool Management"
+    ),
     'fee_due': (
         "Assalam-o-Alaikum,\n\nDear Parent,\n\n"
         "This is a reminder that the fee for {student_name} is due.\n"
@@ -170,6 +180,11 @@ def render_event_message(trigger: str, context: Dict[str, Any], template_overrid
         'total': context.get('total', ''),
         'percentage': context.get('percentage', ''),
         'test_type': context.get('test_type', 'Test'),
+        'test_title': context.get('test_title', context.get('test_type', 'Test')),
+        'subjects': context.get('subjects', ''),
+        'class_average': context.get('class_average', ''),
+        'position': context.get('position', ''),
+        'class_size': context.get('class_size', ''),
         'amount_due': context.get('amount_due', ''),
         'month_year': context.get('month_year', ''),
         'notice': context.get('notice', 'Important notice'),

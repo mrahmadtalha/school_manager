@@ -1,132 +1,271 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+<style>
+    /* ------------------------------------------------------------------
+       Audit Log — same family as the Students page (header, summary band,
+       filter bar, one clean table).  Scoped under .al- so nothing leaks.
+       ------------------------------------------------------------------ */
+    .al-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0.25rem 0 1.1rem; }
+    .al-head h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; margin: 0; line-height: 1.1; }
+    .al-head p { margin: 0.35rem 0 0; color: #64748b; font-size: 0.92rem; }
+    .al-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .al-tools .btn { box-shadow: none; }
+
+    .al-ribbon { display: grid; grid-template-columns: minmax(8rem, 0.7fr) minmax(14rem, 1.6fr) minmax(12rem, 1fr); background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .al-stat { padding: 0.85rem 1.2rem; display: flex; flex-direction: column; justify-content: center; gap: 0.2rem; min-width: 0; color: inherit; text-decoration: none; }
+    .al-stat + .al-stat { border-inline-start: 1px solid #eef2f7; }
+    .al-num { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .al-lab { font-size: 0.78rem; color: #64748b; }
+    .al-bar { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: #eef2f7; margin: 0.35rem 0 0.3rem; }
+    .al-bar i { display: block; height: 100%; }
+    .al-bar .a { background: #16a34a; }
+    .al-bar .c { background: #f59e0b; }
+    .al-bar .d { background: #dc2626; }
+    .al-bar .o { background: #94a3b8; }
+    .al-legend { display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; font-size: 0.8rem; color: #475569; font-variant-numeric: tabular-nums; }
+    .al-legend b { color: #0f172a; }
+    .al-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-inline-end: 0.3rem; vertical-align: middle; }
+    .al-watch { border-inline-start: 4px solid #94a3b8; background: #f8fafc; transition: background 0.15s ease; }
+    .al-watch.is-alert { border-inline-start-color: #dc2626; background: #fff5f5; }
+    .al-watch.is-alert:hover { background: #ffe9e9; color: inherit; }
+    .al-watch.is-alert .al-num { color: #b91c1c; }
+    .al-hint { background: #fff; border: 1px solid #e2e8f0; border-inline-start: 4px solid rgb(var(--bs-primary-rgb)); border-radius: 14px; color: #475569; font-size: 0.88rem; }
+    .al-hint b { color: #0f172a; }
+
+    .al-filters { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.7rem; margin-bottom: 0.9rem; }
+    .al-filters form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
+    .al-search { position: relative; flex: 1 1 16rem; min-width: 13rem; }
+    .al-search i { position: absolute; inset-inline-start: 0.95rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+    .al-search input { padding-inline-start: 2.5rem; height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background: #f8fafc; }
+    .al-search input:focus { background: #fff; }
+    .al-filters .form-select, .al-filters .form-control.al-date { height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background-color: #f8fafc; width: auto; min-width: 9.5rem; max-width: 14rem; }
+    .al-datebox { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: #64748b; font-weight: 600; }
+    .al-seg { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; }
+    .al-seg input { position: absolute; opacity: 0; pointer-events: none; }
+    .al-seg label { margin: 0; padding: 0.4rem 0.8rem; border-radius: 9px; font-size: 0.85rem; font-weight: 600; color: #475569; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; }
+    .al-seg input:checked + label { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+    .al-seg input:focus-visible + label { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 1px; }
+    .al-filters .btn { box-shadow: none; height: 2.7rem; padding-top: 0; padding-bottom: 0; display: inline-flex; align-items: center; }
+
+    .al-panel { border: 1px solid #e2e8f0 !important; box-shadow: none !important; }
+    .al-panel:hover { transform: none; }
+    .al-count { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.7rem 1.1rem; border-bottom: 1px solid #eef2f7; font-size: 0.86rem; color: #64748b; }
+    .al-count strong { color: #0f172a; }
+    .al-panel .table thead th { background: #f8fafc; color: #64748b; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.01em; text-transform: none; border-bottom: 1px solid #e2e8f0; }
+    .al-panel .table > :not(caption) > * > * { padding: 0.65rem 0.75rem; border-bottom-color: #f1f5f9; vertical-align: top; }
+    .al-when { white-space: nowrap; font-size: 0.85rem; color: #475569; font-variant-numeric: tabular-nums; }
+    .al-who { font-weight: 700; color: #0f172a; }
+    .al-role { display: inline-block; margin-inline-start: 0.35rem; padding: 0.1rem 0.5rem; border-radius: 99px; background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569; font-size: 0.72rem; font-weight: 600; }
+    .al-chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.18rem 0.65rem; border-radius: 99px; font-size: 0.78rem; font-weight: 700; white-space: nowrap; border: 1px solid transparent; }
+    .al-chip.ok { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+    .al-chip.warn { background: #fff4de; border-color: #fcd34d; color: #92400e; }
+    .al-chip.bad { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+    .al-chip.muted { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }
+    .al-on { font-size: 0.88rem; color: #334155; }
+    .al-on small { color: #94a3b8; }
+    .al-sum { font-size: 0.9rem; color: #0f172a; }
+    .al-more { margin-top: 0.35rem; }
+    .al-more > summary { cursor: pointer; font-size: 0.82rem; font-weight: 700; color: rgb(var(--bs-primary-rgb)); list-style: none; }
+    .al-more > summary::-webkit-details-marker { display: none; }
+    .al-more > summary::before { content: "\25B8"; display: inline-block; margin-inline-end: 0.3rem; transition: transform 0.15s ease; }
+    .al-more[open] > summary::before { transform: rotate(90deg); }
+    .al-diff { width: 100%; margin-top: 0.4rem; font-size: 0.82rem; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; border-collapse: separate; border-spacing: 0; }
+    .al-diff th { background: #f8fafc; color: #64748b; font-weight: 700; padding: 0.35rem 0.6rem; font-size: 0.74rem; }
+    .al-diff td { padding: 0.35rem 0.6rem; border-top: 1px solid #f1f5f9; word-break: break-word; }
+    .al-diff td:first-child { font-weight: 600; color: #334155; white-space: nowrap; }
+    .al-diff .was { color: #b91c1c; }
+    .al-diff .now { color: #047857; font-weight: 600; }
+    .al-empty { text-align: center; padding: 3.5rem 1rem; }
+    .al-empty .al-empty-icon { width: 76px; height: 76px; border-radius: 24px; margin: 0 auto 1rem; display: flex; align-items: center; justify-content: center; font-size: 1.9rem; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); }
+    .al-empty p { font-weight: 700; color: #334155; margin-bottom: 1rem; }
+
+    @media (max-width: 991.98px) {
+        .al-ribbon { grid-template-columns: 1fr 1fr; }
+        .al-ribbon .al-stat:nth-child(3) { grid-column: 1 / -1; border-inline-start: 4px solid #94a3b8; border-top: 1px solid #eef2f7; }
+        .al-ribbon .al-stat.is-alert:nth-child(3) { border-inline-start-color: #dc2626; }
+    }
+    @media (max-width: 575.98px) {
+        .al-ribbon { grid-template-columns: 1fr; }
+        .al-stat + .al-stat { border-inline-start: 0; border-top: 1px solid #eef2f7; }
+        .al-search { flex-basis: 100%; }
+        .al-seg { width: 100%; }
+        .al-seg label { flex: 1; text-align: center; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .al-seg label, .al-more > summary::before { transition: none; }
+    }
+</style>
+
+<div class="al-head">
     <div>
-        <p class="eyebrow mb-2">System</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-clipboard-list text-primary me-2"></i>Audit Log</h1>
-        <p class="text-muted small mb-0">
-            Every create, edit, delete and business action, with the actor, timestamp and before/after values.
-        </p>
+        <h1>Audit Log</h1>
+        <p>See who did what and when: every add, change, delete and sign-in is recorded here.</p>
     </div>
-    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
-    <a class="btn btn-dark btn-sm"
-       href="{{ url_for('main.audit_log_export') }}{% if request.query_string %}?{{ request.query_string.decode() }}{% endif %}">
-        <i class="fas fa-file-csv me-1"></i> Export CSV
-    </a>
+    <div class="al-tools btn-toolbar">
+        <a class="btn btn-outline-secondary btn-sm"
+           href="{{ url_for('main.audit_log_export') }}{% if request.query_string %}?{{ request.query_string.decode() }}{% endif %}">
+            <i class="fas fa-file-csv me-1"></i> Export CSV
+        </a>
     </div>
 </div>
 
-<form method="GET" action="{{ url_for('main.audit_log') }}" class="card card-body shadow-sm border-0 mb-3">
-    <div class="row g-2 align-items-end">
-        <div class="col-md-2">
-            <label class="form-label small fw-bold text-muted mb-1">Entity</label>
-            <select class="form-select form-select-sm" name="entity_type">
-                <option value="">All</option>
-                {% for item in entity_types %}
-                <option value="{{ item }}" {% if filters.entity_type == item %}selected{% endif %}>
-                    {{ entity_labels.get(item, item) }}
-                </option>
-                {% endfor %}
-            </select>
+<div class="alert alert-info al-hint py-2 px-3 no-print" role="status">
+    <b><i class="fas fa-circle-info me-1"></i>What to do now:</b>
+    {% if rows %}
+    Use the search and filters to find an entry, then press See what changed on a row to read the old and new values.
+    If something looks wrong, check Failed sign-ins and Deleted first.
+    {% else %}
+    Nothing is recorded for these filters. Choose Any time, or clear the filters.
+    {% endif %}
+</div>
+
+{% if rows %}
+{% set watch_action = 'login_failed' if stats.failed else 'delete' %}
+<section class="al-ribbon no-print" aria-label="Summary">
+    <div class="al-stat">
+        <span class="al-num">{{ stats.total }}</span>
+        <span class="al-lab">Entries on this list</span>
+    </div>
+    <div class="al-stat">
+        <div class="al-bar" role="img" aria-label="Added {{ stats.added }}, Changed {{ stats.changed }}, Deleted {{ stats.deleted }}, Other {{ stats.other }}">
+            {% if stats.added %}<i class="a" style="width: {{ (stats.added * 100 / stats.total) | round(1) }}%"></i>{% endif %}
+            {% if stats.changed %}<i class="c" style="width: {{ (stats.changed * 100 / stats.total) | round(1) }}%"></i>{% endif %}
+            {% if stats.deleted %}<i class="d" style="width: {{ (stats.deleted * 100 / stats.total) | round(1) }}%"></i>{% endif %}
+            {% if stats.other %}<i class="o" style="width: {{ (stats.other * 100 / stats.total) | round(1) }}%"></i>{% endif %}
         </div>
-        <div class="col-md-2">
-            <label class="form-label small fw-bold text-muted mb-1">Action</label>
-            <select class="form-select form-select-sm" name="action">
-                <option value="">All</option>
-                {% for item in actions %}
-                <option value="{{ item }}" {% if filters.action == item %}selected{% endif %}>{{ item }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="col-md-2">
-            <label class="form-label small fw-bold text-muted mb-1">User</label>
-            <select class="form-select form-select-sm" name="username">
-                <option value="">All</option>
-                {% for item in usernames %}
-                <option value="{{ item }}" {% if filters.username == item %}selected{% endif %}>{{ item }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="col-md-2">
-            <label class="form-label small fw-bold text-muted mb-1">From</label>
-            <input type="date" class="form-control form-control-sm" name="date_from"
-                   value="{{ filters.date_from.isoformat() if filters.date_from else '' }}">
-        </div>
-        <div class="col-md-2">
-            <label class="form-label small fw-bold text-muted mb-1">To</label>
-            <input type="date" class="form-control form-control-sm" name="date_to"
-                   value="{{ filters.date_to.isoformat() if filters.date_to else '' }}">
-        </div>
-        <div class="col-md-2 d-flex gap-2">
-            <input type="text" class="form-control form-control-sm" name="search"
-                   value="{{ filters.search or '' }}" placeholder="Search summary/user">
-            <button class="btn btn-sm btn-dark" type="submit" aria-label="Apply filters"><i class="fas fa-filter"></i></button>
+        <div class="al-legend">
+            <span><span class="dot" style="background:#16a34a"></span>Added <b>{{ stats.added }}</b></span>
+            <span><span class="dot" style="background:#f59e0b"></span>Changed <b>{{ stats.changed }}</b></span>
+            <span><span class="dot" style="background:#dc2626"></span>Deleted <b>{{ stats.deleted }}</b></span>
+            {% if stats.other %}<span><span class="dot" style="background:#94a3b8"></span>Other <b>{{ stats.other }}</b></span>{% endif %}
         </div>
     </div>
-</form>
+    <a class="al-stat al-watch{% if stats.failed or stats.deleted %} is-alert{% endif %}"
+       href="{{ url_for('main.audit_log', action=watch_action) }}"
+       title="{{ 'Show failed sign-ins' if stats.failed else 'Show deleted records' }}">
+        <span class="al-num">{{ stats.failed + stats.deleted }}</span>
+        <span class="al-lab"><span>To check:</span> <span>Failed sign-ins</span> <b>{{ stats.failed }}</b> · <span>Deleted</span> <b>{{ stats.deleted }}</b></span>
+    </a>
+</section>
+{% endif %}
 
-<div class="card shadow-sm border-0">
-    <div class="card-body p-0 table-responsive">
-        <table id="auditTable" class="table table-sm table-hover align-middle mb-0 datatable" data-order='[[0, "desc"]]'>
-            <thead class="table-light">
+<div class="al-filters no-print">
+    <form method="GET" action="{{ url_for('main.audit_log') }}" id="auditFilter">
+        <div class="al-search">
+            <i class="fas fa-search"></i>
+            <input type="text" class="form-control" name="search" value="{{ filters.search or '' }}"
+                   aria-label="Search" placeholder="Search a name or a sentence…" autocomplete="off">
+        </div>
+
+        <select class="form-select" name="entity_type" aria-label="What was it about" onchange="this.form.submit()">
+            <option value="">— All records —</option>
+            {% for item in entity_types %}
+            <option value="{{ item }}" {% if filters.entity_type == item %}selected{% endif %}>{{ entity_labels.get(item, item) }}</option>
+            {% endfor %}
+        </select>
+
+        <select class="form-select" name="action" aria-label="What happened" onchange="this.form.submit()">
+            <option value="">— Everything that happened —</option>
+            {% for item in actions %}
+            <option value="{{ item }}" {% if filters.action == item %}selected{% endif %}>{{ action_info[item][0] if item in action_info else item }}</option>
+            {% endfor %}
+        </select>
+
+        <select class="form-select" name="username" aria-label="Who did it" onchange="this.form.submit()">
+            <option value="">— All users —</option>
+            {% for item in usernames %}
+            <option value="{{ item }}" {% if filters.username == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+        </select>
+
+        <div class="al-seg" role="group" aria-label="When">
+            {% for val, label in (('', 'Any time'), ('today', 'Today'), ('7d', 'Last 7 days'), ('30d', 'Last 30 days')) %}
+            <input type="radio" name="range" id="rangeOpt{{ loop.index }}" value="{{ val }}"
+                   {% if (filters.range or '') == val %}checked{% endif %} onchange="this.form.submit()">
+            <label for="rangeOpt{{ loop.index }}">{{ label }}</label>
+            {% endfor %}
+        </div>
+
+        <span class="al-datebox">
+            <label for="alFrom" class="mb-0">From</label>
+            <input type="date" id="alFrom" class="form-control al-date" name="date_from"
+                   value="{{ request.args.get('date_from', '') }}">
+            <label for="alTo" class="mb-0">To</label>
+            <input type="date" id="alTo" class="form-control al-date" name="date_to"
+                   value="{{ request.args.get('date_to', '') }}">
+        </span>
+
+        <button type="submit" class="btn btn-dark"><i class="fas fa-filter me-1"></i> Filter</button>
+
+        {% if filters.active %}
+        <a href="{{ url_for('main.audit_log') }}" class="btn btn-outline-secondary" title="Clear filters" aria-label="Clear filters">
+            <i class="fas fa-times"></i>
+        </a>
+        {% endif %}
+    </form>
+</div>
+
+<div class="card border-0 al-panel">
+    {% if view_rows %}
+    <div class="al-count">
+        <span><strong>{{ stats.total }}</strong> <span>entries, newest first</span></span>
+        {% if filters.active %}
+        <a href="{{ url_for('main.audit_log') }}" class="btn btn-sm btn-outline-secondary no-print"><i class="fas fa-times me-1"></i> Clear filters</a>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <table id="auditTable" class="table table-hover align-middle mb-0 datatable" data-scroll-x="true" data-page-length="25" data-order='[[0, "desc"]]'>
+            <thead>
                 <tr>
-                    <th class="ps-3">When (local)</th>
-                    <th>Actor</th>
-                    <th>Action</th>
-                    <th>Entity</th>
-                    <th class="no-sort">Summary</th>
-                    <th class="no-sort">Changed fields</th>
+                    <th class="ps-3">When</th>
+                    <th>Who</th>
+                    <th>What happened</th>
+                    <th>About</th>
                     <th class="no-sort">Details</th>
                 </tr>
             </thead>
             <tbody>
-                {% for row in rows %}
+                {% for item in view_rows %}{% set row = item.row %}
                 <tr>
-                    <td class="ps-3 text-nowrap small text-muted">
-                        {{ row.created_at | localtime or '—' }}
-                    </td>
-                    <td class="small">
-                        <strong>{{ row.username }}</strong>
-                        <span class="badge bg-secondary ms-1">{{ row.role }}</span>
-                    </td>
+                    <td class="ps-3 al-when" data-order="{{ row.created_at.isoformat() if row.created_at else '' }}">{% if row.created_at %}<span>{{ row.created_at | localtime('%d %b %Y') }}</span> <span dir="ltr" class="text-muted">{{ row.created_at | localtime('%H:%M') }}</span>{% else %}—{% endif %}</td>
+                    <td><span class="al-who">{{ row.username }}</span>{% if row.role %}<span class="al-role">{{ row.role }}</span>{% endif %}</td>
+                    <td><span class="al-chip {{ item.tone }}"><i class="fas {{ item.icon }}"></i>{{ item.label }}</span></td>
+                    <td class="al-on">{{ entity_labels.get(row.entity_type, row.entity_type or '—') }}{% if row.entity_id %} <small>#{{ row.entity_id }}</small>{% endif %}</td>
                     <td>
-                        <span class="badge {% if row.action in ('delete', 'login_failed', 'void') %}bg-danger
-                            {% elif row.action in ('create', 'login', 'payment') %}bg-success
-                            {% elif row.action in ('update', 'settings_change', 'user_admin') %}bg-warning text-dark
-                            {% else %}bg-secondary{% endif %}">{{ row.action }}</span>
-                    </td>
-                    <td class="small">
-                        {{ entity_labels.get(row.entity_type, row.entity_type or '—') }}
-                        {% if row.entity_id %}<span class="text-muted">#{{ row.entity_id }}</span>{% endif %}
-                    </td>
-                    <td class="small">{{ row.summary }}</td>
-                    <td class="small text-muted">{{ row.changed_fields | join(', ') }}</td>
-                    <td>
-                        {% if row.before_json or row.after_json %}
-                        <details>
-                            <summary class="small text-primary" style="cursor:pointer;">before / after</summary>
-                            <div class="small mt-1">
-                                {% if row.before_json %}
-                                <div class="text-danger"><strong>before:</strong>
-                                    <code class="text-break">{{ row.before_json }}</code></div>
-                                {% endif %}
-                                {% if row.after_json %}
-                                <div class="text-success"><strong>after:</strong>
-                                    <code class="text-break">{{ row.after_json }}</code></div>
-                                {% endif %}
-                            </div>
+                        <div class="al-sum">{{ row.summary or '—' }}</div>
+                        {% if item.detail and item.detail['items'] %}
+                        <details class="al-more">
+                            <summary>See what changed</summary>
+                            <table class="al-diff">
+                                <thead>
+                                    <tr><th>Field</th>{% if item.detail['kind'] != 'added' %}<th>Before</th>{% endif %}{% if item.detail['kind'] != 'deleted' %}<th>After</th>{% endif %}</tr>
+                                </thead>
+                                <tbody>
+                                    {% for field, was, now in item.detail['items'] %}
+                                    <tr>
+                                        <td>{{ field }}</td>
+                                        {% if item.detail['kind'] != 'added' %}<td class="was">{{ was }}</td>{% endif %}
+                                        {% if item.detail['kind'] != 'deleted' %}<td class="now">{{ now }}</td>{% endif %}
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            {% if item.detail['more'] %}<div class="text-muted small mt-1">+{{ item.detail['more'] }} more fields in the CSV export.</div>{% endif %}
                         </details>
-                        {% else %}
-                        <span class="text-muted small">—</span>
                         {% endif %}
                     </td>
                 </tr>
-                {% else %}
-                <tr><td colspan="7" class="text-center text-muted py-4">No audit entries match these filters.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
+    {% else %}
+    <div class="al-empty">
+        <div class="al-empty-icon"><i class="fas fa-clipboard-list"></i></div>
+        <p>No audit entries match these filters.</p>
+        <a href="{{ url_for('main.audit_log') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-rotate-left me-1"></i> Show everything</a>
+    </div>
+    {% endif %}
 </div>
 <p class="text-muted small mt-2">Showing up to 500 most recent matching entries (CSV export is uncapped).</p>
 {% endblock %}

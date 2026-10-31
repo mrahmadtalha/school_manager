@@ -1,0 +1,36 @@
+"""inventory routes (split into focused sub-modules; every name is re-exported here)."""
+
+from app.routes.inventory.stock import (  # noqa: F401
+    INVENTORY_ROLES,
+    _feature_on,
+    _parse_date,
+    _canteen_month,
+    inventory_product_add,
+    inventory_purchase,
+    inventory_sell,
+    inventory_student_issue,
+    inventory_issue_void,
+    inventory_product_toggle,
+    _payment_args,
+    inventory_purchase_pay,
+    inventory_supplier_pay,
+    inventory_supplier_payment_void,
+    _sets_view,
+    inventory_page,
+    _set_form,
+    inventory_set_add,
+    inventory_set_edit,
+    inventory_set_toggle,
+)
+from app.routes.inventory.setup import (  # noqa: F401
+    inventory_set_buy,
+    inventory_set_sell,
+    inventory_opening_stock,
+    inventory_canteen_mode,
+    inventory_canteen_total,
+    inventory_canteen_entry_pay,
+    inventory_canteen_payment_void,
+    inventory_canteen_entry_void,
+    inventory_sale_void,
+    inventory_purchase_void,
+)

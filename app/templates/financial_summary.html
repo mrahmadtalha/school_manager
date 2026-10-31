@@ -6,19 +6,9 @@
     <div>
         <p class="eyebrow mb-2">Finance</p>
         <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-chart-line text-primary me-2"></i>Financial Overview</h1>
-        <p class="text-muted small mb-0">Monthly fee collection against payroll and expenses, with period comparison.</p>
+        <p class="text-muted small mb-0">How much money came in, how much went out, and what is left.</p>
     </div>
-    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
-        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary', month=prev_month) }}" title="Previous month">
-            <i class="fas fa-chevron-left"></i>
-        </a>
-        <form method="get" action="{{ url_for('main.financials_summary') }}" class="d-flex gap-2">
-            <input type="month" class="form-control form-control-sm" name="month" value="{{ month }}" style="width: 175px;">
-            <button class="btn btn-primary btn-sm">Show</button>
-        </form>
-        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary', month=next_month) }}" title="Next month">
-            <i class="fas fa-chevron-right"></i>
-        </a>
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2 no-print">
         <div class="btn-group">
             <button type="button" class="btn btn-outline-success btn-sm dropdown-toggle"
                     data-bs-toggle="dropdown" aria-expanded="false">
@@ -40,134 +30,390 @@
     </div>
 </div>
 
-<!-- Money cards: each states clearly whether it is CASH (money that moved) or ACCRUAL (amounts owed/expected) -->
-{% set cash_badge = '<span class="badge bg-dark ms-1" title="Money that actually moved">CASH</span>' | safe %}
-{% set accrual_badge = '<span class="badge bg-info text-dark ms-1" title="Amounts owed or expected, not money movement">ACCRUAL</span>' | safe %}
-<div class="row g-3 mb-3">
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Cash In {{ cash_badge }}</div>
-            <div class="h4 fw-bold mb-1 text-success">Rs. {{ '{:,.2f}'.format(snapshot.cash_in) }}</div>
-            <div class="text-muted small">all money received in {{ snapshot.label }}{% if inventory_enabled %} — fees, other income and sales{% endif %}</div>
-        </div></div>
+<style>
+    /* ------------------------------------------------------------------
+       Financial Overview — plain-language money page.
+       Same family as the Students page (.sd-): flat white panels, one
+       accent from the school's brand colour, big numbers, short words.
+       Everything is scoped under .fo- so nothing leaks to other pages.
+       ------------------------------------------------------------------ */
+    .fo-monthbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.7rem 0.9rem; margin-bottom: 0.9rem; }
+    .fo-monthbar .fo-now { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    .fo-monthbar .fo-month { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; color: #0f172a; min-width: 9.5rem; text-align: center; }
+    .fo-monthbar .btn { box-shadow: none; height: 2.5rem; display: inline-flex; align-items: center; border-radius: 12px; font-weight: 600; }
+    .fo-monthbar form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0; }
+    .fo-monthbar .form-control { height: 2.5rem; border-radius: 12px; border-color: #e2e8f0; background: #f8fafc; width: 11.5rem; }
+    .fo-hint { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid rgb(var(--bs-primary-rgb)); border-radius: 14px; color: #475569; font-size: 0.9rem; }
+    .fo-hint b { color: #0f172a; }
+
+    /* the answer: one band, three numbers */
+    .fo-hero { background: #fff; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; margin-bottom: 0.9rem; }
+    .fo-verdict { display: flex; align-items: center; gap: 0.9rem; padding: 1rem 1.3rem; border-bottom: 1px solid #eef2f7; }
+    .fo-verdict-icon { flex: none; width: 3rem; height: 3rem; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; }
+    .fo-hero.is-good .fo-verdict { background: #f0fdf7; }
+    .fo-hero.is-good .fo-verdict-icon { background: #d1fae5; color: #047857; }
+    .fo-hero.is-short .fo-verdict { background: #fff7f5; }
+    .fo-hero.is-short .fo-verdict-icon { background: #fee2e2; color: #b91c1c; }
+    .fo-hero.is-empty .fo-verdict-icon { background: #f1f5f9; color: #64748b; }
+    .fo-verdict-title { font-size: 1.12rem; font-weight: 800; color: #0f172a; line-height: 1.25; }
+    .fo-verdict-sub { font-size: 0.88rem; color: #475569; margin-top: 0.15rem; }
+    .fo-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .fo-tile { padding: 1rem 1.3rem; min-width: 0; }
+    .fo-tile + .fo-tile { border-left: 1px solid #eef2f7; }
+    .fo-tile .fo-lab { font-size: 0.8rem; font-weight: 700; color: #475569; display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+    .fo-tile .fo-num { font-size: clamp(1.45rem, 2.3vw, 1.9rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; font-variant-numeric: tabular-nums; margin-top: 0.15rem; }
+    .fo-tile .fo-help { font-size: 0.8rem; color: #64748b; margin-top: 0.2rem; }
+    .fo-tile.fo-in { box-shadow: inset 0 3px 0 #10b981; }
+    .fo-tile.fo-in .fo-num { color: #047857; }
+    .fo-tile.fo-out { box-shadow: inset 0 3px 0 #f59e0b; }
+    .fo-tile.fo-out .fo-num { color: #b45309; }
+    .fo-tile.fo-net.is-good { box-shadow: inset 0 3px 0 #0d9488; }
+    .fo-tile.fo-net.is-good .fo-num { color: #047857; }
+    .fo-tile.fo-net.is-short { box-shadow: inset 0 3px 0 #ef4444; }
+    .fo-tile.fo-net.is-short .fo-num { color: #b91c1c; }
+    .fo-versus { padding: 0.8rem 1.3rem 1rem; border-top: 1px solid #eef2f7; display: grid; gap: 0.4rem; }
+    .fo-vrow { display: grid; grid-template-columns: 5.6rem 1fr; align-items: center; gap: 0.7rem; font-size: 0.8rem; color: #475569; }
+    .fo-track { height: 10px; background: #eef2f7; border-radius: 99px; overflow: hidden; }
+    .fo-track i { display: block; height: 100%; border-radius: 99px; transform-origin: left center; animation: fo-grow 0.7s cubic-bezier(.2, .7, .2, 1) both; }
+    .fo-track .g { background: #10b981; }
+    .fo-track .o { background: #f59e0b; }
+    @keyframes fo-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+    .fo-badge { display: inline-block; padding: 0.05rem 0.45rem; border-radius: 6px; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.04em; vertical-align: middle; }
+    .fo-badge.cash { background: #0f172a; color: #fff; }
+    .fo-badge.accrual { background: #cffafe; color: #155e75; }
+    .fo-legend { font-size: 0.82rem; color: #475569; margin-bottom: 0.9rem; }
+    .fo-legend summary { cursor: pointer; color: rgb(var(--bs-primary-rgb)); font-weight: 600; }
+    .fo-legend p { margin: 0.45rem 0 0; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.6rem 0.9rem; }
+
+    /* panels */
+    .fo-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .fo-panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.8rem 1.15rem; border-bottom: 1px solid #eef2f7; }
+    .fo-panel-head h2 { font-size: 1rem; font-weight: 800; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+    .fo-panel-head h2 i { color: rgb(var(--bs-primary-rgb)); }
+    .fo-panel-head .fo-sub { font-size: 0.82rem; color: #64748b; }
+    .fo-panel-body { padding: 0.9rem 1.15rem 1rem; }
+    .fo-list { list-style: none; margin: 0; padding: 0; }
+    .fo-item { padding: 0.65rem 0; border-top: 1px solid #f1f5f9; }
+    .fo-item:first-child { border-top: 0; padding-top: 0.1rem; }
+    .fo-item-top { display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem; }
+    .fo-item-name { font-weight: 700; color: #0f172a; font-size: 0.95rem; }
+    .fo-item-amt { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; color: #0f172a; }
+    .fo-item-help { font-size: 0.8rem; color: #64748b; margin-top: 0.1rem; }
+    .fo-item .fo-track { margin-top: 0.4rem; height: 7px; }
+    .fo-total { display: flex; justify-content: space-between; gap: 0.75rem; border-top: 2px solid #e2e8f0; padding-top: 0.65rem; margin-top: 0.2rem; font-weight: 800; color: #0f172a; }
+    .fo-sm-links { font-size: 0.82rem; }
+    .fo-sm-links a { text-decoration: none; font-weight: 600; }
+
+    .fo-owed { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; margin-bottom: 0.9rem; }
+    .fo-owe { background: #fffbf3; border: 1px solid #fde4a8; border-left: 4px solid #f59e0b; border-radius: 16px; padding: 0.9rem 1.15rem; }
+    .fo-owe .fo-lab { font-size: 0.8rem; font-weight: 700; color: #92400e; }
+    .fo-owe .fo-num { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.03em; color: #92400e; font-variant-numeric: tabular-nums; line-height: 1.2; }
+    .fo-owe .fo-help { font-size: 0.8rem; color: #78510f; }
+
+    .fo-mini { display: flex; flex-wrap: wrap; gap: 0.8rem 1.6rem; margin-bottom: 0.7rem; }
+    .fo-mini .fo-mini-lab { font-size: 0.76rem; color: #64748b; font-weight: 600; }
+    .fo-mini .fo-mini-num { font-size: 1.05rem; font-weight: 800; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .fo-progress { height: 12px; background: #eef2f7; border-radius: 99px; overflow: hidden; }
+    .fo-progress i { display: block; height: 100%; background: #10b981; border-radius: 99px; }
+    .fo-note { font-size: 0.8rem; color: #64748b; margin-top: 0.6rem; }
+
+    .fo-shop { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.9rem; }
+    .fo-shop .fo-box { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.8rem 1rem; background: #f8fafc; }
+    .fo-shop .fo-lab { font-size: 0.78rem; font-weight: 700; color: #475569; }
+    .fo-shop .fo-num { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .fo-shop .fo-help { font-size: 0.78rem; color: #64748b; }
+
+    .fo-former { background: #fffbf3; border: 1px solid #fde4a8; border-left: 4px solid #f59e0b; border-radius: 16px; padding: 0.8rem 1.1rem; margin-bottom: 0.9rem; color: #475569; }
+    .fo-former b { color: #0f172a; }
+    .fo-pill { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 99px; background: #fff; border: 1px solid #e2e8f0; color: #334155; font-size: 0.78rem; font-weight: 600; margin: 0 0.3rem 0.3rem 0; }
+
+    .fo-alerts { list-style: none; margin: 0; padding: 0; }
+    .fo-alert { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; padding: 0.7rem 1.15rem; border-top: 1px solid #f1f5f9; border-left: 4px solid #cbd5e1; }
+    .fo-alert:first-child { border-top: 0; }
+    .fo-alert.warn { border-left-color: #f59e0b; background: #fffdf7; }
+    .fo-alert.info { border-left-color: #38bdf8; }
+    .fo-alert .fo-alert-text { flex: 1 1 18rem; font-size: 0.92rem; color: #1e293b; }
+    .fo-alert .btn { box-shadow: none; border-radius: 10px; font-weight: 600; }
+    .fo-changes { margin: 0; padding-left: 1.15rem; color: #1e293b; font-size: 0.95rem; }
+    .fo-changes li { margin-bottom: 0.4rem; }
+
+    /* comparison */
+    .fo-pills { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .fo-pills .btn { border-radius: 99px; font-size: 0.82rem; font-weight: 600; box-shadow: none; }
+    .fo-panel .table thead th { background: #f8fafc; color: #64748b; font-size: 0.76rem; font-weight: 700; border-bottom: 1px solid #e2e8f0; }
+    .fo-panel .table > :not(caption) > * > * { border-bottom-color: #f1f5f9; }
+    .fo-chart { height: 270px; }
+    .fo-chart-note { font-size: 0.8rem; color: #64748b; margin: -0.1rem 0 0.6rem; }
+
+    .fo-more { margin-bottom: 0.9rem; }
+    .fo-more > summary { cursor: pointer; list-style: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 0.85rem 1.15rem; font-weight: 700; color: rgb(var(--bs-primary-rgb)); }
+    .fo-more > summary::-webkit-details-marker { display: none; }
+    .fo-more > summary span { font-weight: 500; font-size: 0.82rem; color: #64748b; }
+    .fo-more[open] > summary { margin-bottom: 0.9rem; }
+    .fo-panel .table th:first-child { width: 34%; }
+    @media (max-width: 991.98px) {
+        .fo-tiles { grid-template-columns: 1fr; }
+        .fo-tile + .fo-tile { border-left: 0; border-top: 1px solid #eef2f7; }
+        .fo-shop { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 767.98px) {
+        .fo-owed { grid-template-columns: 1fr; }
+        .fo-monthbar { flex-direction: column; align-items: stretch; }
+        .fo-monthbar .fo-now { justify-content: space-between; }
+        .fo-monthbar form { width: 100%; }
+        .fo-monthbar .form-control { flex: 1 1 auto; width: auto; }
+    }
+    @media (prefers-reduced-motion: reduce) { .fo-track i { animation: none; } }
+</style>
+
+{% set cash_badge = '<span class="fo-badge cash" title="Money that really moved">CASH</span>' | safe %}
+{% set accrual_badge = '<span class="fo-badge accrual" title="Money that is owed — not moved yet">ACCRUAL</span>' | safe %}
+{% set cash_in = snapshot.cash_in %}
+{% set cash_out = snapshot.cash_out %}
+{% set net = snapshot.net_position %}
+{% set biggest = [cash_in, cash_out] | max %}
+{% set is_empty = (cash_in == 0 and cash_out == 0) %}
+
+<!-- Month bar -->
+<div class="fo-monthbar no-print">
+    <div class="fo-now">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary', month=prev_month) }}"><i class="fas fa-chevron-left me-2"></i>Previous month</a>
+        <span class="fo-month">{{ snapshot.label }}</span>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary', month=next_month) }}">Next month<i class="fas fa-chevron-right ms-2"></i></a>
     </div>
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Fee Collections {{ cash_badge }}</div>
-            <div class="h4 fw-bold mb-1 text-success">Rs. {{ '{:,.2f}'.format(snapshot.fee_income) }}</div>
-            <div class="text-muted small">fees received in {{ snapshot.label }} (other income counted separately)</div>
-        </div></div>
-    </div>
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Other Income {{ cash_badge }}</div>
-            <div class="h4 fw-bold mb-1">Rs. {{ '{:,.2f}'.format(snapshot.other_income) }}</div>
-            <div class="text-muted small">canteen, events, trips etc. received in {{ snapshot.label }} — <a href="{{ url_for('main.other_income_page') }}">record other income</a></div>
-            {% if snapshot.admission_fees %}
-            <div class="small mt-1"><i class="fas fa-door-open text-primary me-1"></i>of which admission fees: <b>Rs. {{ '{:,.2f}'.format(snapshot.admission_fees) }}</b> &middot; <a href="{{ url_for('main.admission_register') }}">register</a></div>
+    <form method="get" action="{{ url_for('main.financials_summary') }}">
+        <input type="month" class="form-control form-control-sm" name="month" value="{{ month }}" aria-label="Pick a month">
+        <button class="btn btn-primary btn-sm">Show month</button>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary') }}">This month</a>
+    </form>
+</div>
+
+<div class="alert alert-info fo-hint py-2 px-3 no-print" role="status">
+    <b><i class="fas fa-circle-info me-1"></i>What to do now:</b>
+    Look at the <b>3 big numbers</b> first. Scroll down to see the details.
+</div>
+
+<!-- The answer -->
+<section class="fo-hero {{ 'is-empty' if is_empty else ('is-good' if net >= 0 else 'is-short') }}" aria-label="Summary for {{ snapshot.label }}">
+    <div class="fo-verdict">
+        <span class="fo-verdict-icon"><i class="fas {{ 'fa-hourglass-start' if is_empty else ('fa-face-smile' if net >= 0 else 'fa-triangle-exclamation') }}"></i></span>
+        <div>
+            {% if is_empty %}
+            <div class="fo-verdict-title">Nothing has been recorded for {{ snapshot.label }} yet.</div>
+            <div class="fo-verdict-sub">When you collect fees, record income or pay expenses, the numbers will appear here by themselves.</div>
+            {% elif net >= 0 %}
+            <div class="fo-verdict-title">In {{ snapshot.label }} the school kept Rs {{ '{:,.0f}'.format(net) }} after paying its bills.</div>
+            <div class="fo-verdict-sub">More money came in than went out.{% if cash_in > 0 %} For every Rs 100 received, about Rs {{ (cash_out * 100 / cash_in) | round | int }} was paid out.{% endif %}</div>
+            {% else %}
+            <div class="fo-verdict-title">In {{ snapshot.label }} the school paid out Rs {{ '{:,.0f}'.format(net | abs) }} more than it received.</div>
+            <div class="fo-verdict-sub">{% if cash_in > 0 %}For every Rs 100 received, about Rs {{ (cash_out * 100 / cash_in) | round | int }} was paid out.{% else %}No money was received yet, but bills were paid.{% endif %}</div>
             {% endif %}
-        </div></div>
+        </div>
     </div>
-    <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Cash Out {{ cash_badge }}</div>
-            <div class="h4 fw-bold mb-1" style="color:#fd7e14;">Rs. {{ '{:,.2f}'.format(snapshot.cash_out) }}</div>
-            <div class="text-muted small">all money paid out: salaries + other expenses{% if inventory_enabled and snapshot.purchases %} + stock purchases Rs. {{ '{:,.2f}'.format(snapshot.purchases) }}{% endif %}</div>
-        </div></div>
+    <div class="fo-tiles">
+        <div class="fo-tile fo-in">
+            <div class="fo-lab">Cash In {{ cash_badge }}</div>
+            <div class="fo-num">Rs. {{ '{:,.2f}'.format(snapshot.cash_in) }}</div>
+            <div class="fo-help">Money received in {{ snapshot.label }}</div>
+        </div>
+        <div class="fo-tile fo-out">
+            <div class="fo-lab">Cash Out {{ cash_badge }}</div>
+            <div class="fo-num">Rs. {{ '{:,.2f}'.format(snapshot.cash_out) }}</div>
+            <div class="fo-help">Money paid out in {{ snapshot.label }}</div>
+        </div>
+        <div class="fo-tile fo-net {{ 'is-good' if net >= 0 else 'is-short' }}">
+            <div class="fo-lab">Net Position {{ cash_badge }}</div>
+            <div class="fo-num">Rs. {{ '{:,.2f}'.format(snapshot.net_position) }}</div>
+            <div class="fo-help">{{ 'Money left over' if net >= 0 else 'Money short' }} (Cash In − Cash Out)</div>
+        </div>
+    </div>
+    {% if biggest > 0 %}
+    <div class="fo-versus" role="img" aria-label="Received compared with paid out">
+        <div class="fo-vrow"><span>Received</span><div class="fo-track"><i class="g" style="width: {{ ([cash_in, 0] | max * 100 / biggest) | round(1) }}%"></i></div></div>
+        <div class="fo-vrow"><span>Paid out</span><div class="fo-track"><i class="o" style="width: {{ ([cash_out, 0] | max * 100 / biggest) | round(1) }}%"></i></div></div>
+    </div>
+    {% endif %}
+</section>
+
+<details class="fo-legend no-print">
+    <summary>What do CASH and ACCRUAL mean?</summary>
+    <p><span class="fo-badge cash">CASH</span> is money that really came in or went out of the school.
+       <span class="fo-badge accrual">ACCRUAL</span> is money that is <em>owed</em> but has not moved yet
+       (for example fees a parent has not paid, or salary not yet given). Owed money is never mixed into the three big numbers above.</p>
+</details>
+
+<!-- Alerts -->
+{% if alerts %}
+<div class="fo-panel">
+    <div class="fo-panel-head">
+        <h2><i class="fas fa-bell"></i>Alerts</h2>
+        <span class="fo-sub">Things that need your attention</span>
+    </div>
+    <ul class="fo-alerts">
+        {% for alert in alerts %}
+        <li class="fo-alert {{ 'warn' if alert.kind == 'warning' else 'info' }}">
+            <i class="fas fa-{{ 'triangle-exclamation' if alert.kind == 'warning' else 'circle-info' }} {{ 'text-warning' if alert.kind == 'warning' else 'text-info' }}"></i>
+            <span class="fo-alert-text">{{ alert.text }}</span>
+            <a class="btn btn-sm btn-outline-primary" href="{{ alert.url }}">{{ alert.link_text }}</a>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<!-- Where the money came from / went -->
+<div class="row g-3 mb-1">
+    <div class="col-lg-6">
+        <div class="fo-panel h-100">
+            <div class="fo-panel-head">
+                <h2><i class="fas fa-arrow-down"></i>Where the money came from</h2>
+                <span class="fo-sub">{{ snapshot.label }}</span>
+            </div>
+            <div class="fo-panel-body">
+                <ul class="fo-list">
+                    <li class="fo-item">
+                        <div class="fo-item-top"><span class="fo-item-name">Fee Collections</span><span class="fo-item-amt text-success">Rs. {{ '{:,.2f}'.format(snapshot.fee_income) }}</span></div>
+                        <div class="fo-item-help">Fees paid by students</div>
+                        <div class="fo-track"><i class="g" style="width: {{ (snapshot.fee_income * 100 / cash_in) | round(1) if cash_in > 0 and snapshot.fee_income > 0 else 0 }}%"></i></div>
+                    </li>
+                    <li class="fo-item">
+                        <div class="fo-item-top"><span class="fo-item-name">Other Income</span><span class="fo-item-amt">Rs. {{ '{:,.2f}'.format(snapshot.other_income) }}</span></div>
+                        <div class="fo-item-help">Canteen, events, trips — <a href="{{ url_for('main.other_income_page') }}">record other income</a></div>
+                        {% if snapshot.admission_fees %}
+                        <div class="fo-item-help"><i class="fas fa-door-open text-primary me-1"></i>of which admission fees: <b>Rs. {{ '{:,.2f}'.format(snapshot.admission_fees) }}</b> &middot; <a href="{{ url_for('main.admission_register') }}">register</a></div>
+                        {% endif %}
+                        <div class="fo-track"><i class="g" style="width: {{ (snapshot.other_income * 100 / cash_in) | round(1) if cash_in > 0 and snapshot.other_income > 0 else 0 }}%"></i></div>
+                    </li>
+                    {% if inventory_enabled and snapshot.sales %}
+                    <li class="fo-item">
+                        <div class="fo-item-top"><span class="fo-item-name">Shop sales</span><span class="fo-item-amt">Rs. {{ '{:,.2f}'.format(snapshot.sales) }}</span></div>
+                        <div class="fo-item-help">Uniforms and books sold</div>
+                        <div class="fo-track"><i class="g" style="width: {{ (snapshot.sales * 100 / cash_in) | round(1) if cash_in > 0 and snapshot.sales > 0 else 0 }}%"></i></div>
+                    </li>
+                    {% endif %}
+                </ul>
+                <div class="fo-total"><span>Total received</span><span>Rs. {{ '{:,.2f}'.format(snapshot.cash_in) }}</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="fo-panel h-100">
+            <div class="fo-panel-head">
+                <h2><i class="fas fa-arrow-up"></i>Where the money went</h2>
+                <span class="fo-sub">{{ snapshot.label }}</span>
+            </div>
+            <div class="fo-panel-body">
+                <ul class="fo-list">
+                    <li class="fo-item">
+                        <div class="fo-item-top"><span class="fo-item-name">Salaries Paid</span><span class="fo-item-amt text-primary">Rs. {{ '{:,.2f}'.format(snapshot.salaries_paid) }}</span></div>
+                        <div class="fo-item-help">Teachers' and staff salaries paid</div>
+                        <div class="fo-track"><i class="o" style="width: {{ (snapshot.salaries_paid * 100 / cash_out) | round(1) if cash_out > 0 and snapshot.salaries_paid > 0 else 0 }}%"></i></div>
+                    </li>
+                    <li class="fo-item">
+                        <div class="fo-item-top"><span class="fo-item-name">Other Expenses</span><span class="fo-item-amt">Rs. {{ '{:,.2f}'.format(snapshot.other_expenses) }}</span></div>
+                        <div class="fo-item-help">Bills, rent, repairs — <a href="{{ url_for('main.expenses_list') }}">open expenses</a></div>
+                        <div class="fo-track"><i class="o" style="width: {{ (snapshot.other_expenses * 100 / cash_out) | round(1) if cash_out > 0 and snapshot.other_expenses > 0 else 0 }}%"></i></div>
+                    </li>
+                    {% if inventory_enabled and snapshot.purchases %}
+                    <li class="fo-item">
+                        <div class="fo-item-top"><span class="fo-item-name">Stock bought</span><span class="fo-item-amt">Rs. {{ '{:,.2f}'.format(snapshot.purchases) }}</span></div>
+                        <div class="fo-item-help">Items bought to sell later</div>
+                        <div class="fo-track"><i class="o" style="width: {{ (snapshot.purchases * 100 / cash_out) | round(1) if cash_out > 0 and snapshot.purchases > 0 else 0 }}%"></i></div>
+                    </li>
+                    {% endif %}
+                </ul>
+                <div class="fo-total"><span>Total paid out</span><span>Rs. {{ '{:,.2f}'.format(snapshot.cash_out) }}</span></div>
+            </div>
+        </div>
     </div>
 </div>
-<div class="row g-3 mb-3">
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Salaries Paid {{ cash_badge }}</div>
-            <div class="h4 fw-bold mb-1 text-primary">Rs. {{ '{:,.2f}'.format(snapshot.salaries_paid) }}</div>
-            <div class="text-muted small">salary payments made in {{ snapshot.label }} (part of Cash Out)</div>
-        </div></div>
+
+{% if inventory_enabled and (snapshot.sales or snapshot.sales_cogs or snapshot.purchases) %}
+<!-- Shop / stock -->
+<div class="fo-panel mt-3">
+    <div class="fo-panel-head">
+        <h2><i class="fas fa-boxes-stacked"></i>Shop and stock</h2>
+        <span class="fo-sub fo-sm-links"><a href="{{ url_for('main.inventory_page') }}">open inventory</a></span>
     </div>
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Other Expenses {{ cash_badge }}</div>
-            <div class="h4 fw-bold mb-1" style="color:#fd7e14;">Rs. {{ '{:,.2f}'.format(snapshot.other_expenses) }}</div>
-            <div class="text-muted small">expenses other than salaries (part of Cash Out)</div>
-        </div></div>
-    </div>
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Net Position {{ cash_badge }}</div>
-            <div class="h4 fw-bold mb-1 {{ 'text-success' if snapshot.net_position >= 0 else 'text-danger' }}">Rs. {{ '{:,.2f}'.format(snapshot.net_position) }}</div>
-            <div class="text-muted small">Cash In minus Cash Out — actual money movement</div>
-        </div></div>
-    </div>
-</div>
-{% if inventory_enabled %}
-<div class="row g-3 mb-3">
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Sales Revenue {{ cash_badge }}</div>
-            <div class="h4 fw-bold mb-1 text-success">Rs. {{ '{:,.2f}'.format(snapshot.sales) }}</div>
-            <div class="text-muted small">uniforms / books / stationery sold in {{ snapshot.label }} — already inside Cash In · <a href="{{ url_for('main.inventory_page') }}">open inventory</a></div>
-        </div></div>
-    </div>
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Cost of Goods Sold</div>
-            <div class="h4 fw-bold mb-1" style="color:#fd7e14;">Rs. {{ '{:,.2f}'.format(snapshot.sales_cogs) }}</div>
-            <div class="text-muted small">cost of the items that left the shelf — never an expense while stock sits on the shelf</div>
-            <div class="small mt-1"><span class="text-muted">Profit on items sold separately:</span> <strong class="{{ 'text-success' if snapshot.gross_profit >= 0 else 'text-danger' }}">Rs. {{ '{:,.2f}'.format(snapshot.gross_profit) }}</strong></div>
-            {% if snapshot.package_cogs %}<div class="small text-muted">Rs. {{ '{:,.2f}'.format(snapshot.package_cogs) }} of this cost is books/uniform given inside admission packages — already paid for in the admission fee, not a loss.</div>{% endif %}
-        </div></div>
-    </div>
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Estimated Net Operating Position</div>
-            <div class="h4 fw-bold mb-1 {{ 'text-success' if snapshot.operating_position >= 0 else 'text-danger' }}">Rs. {{ '{:,.2f}'.format(snapshot.operating_position) }}</div>
-            <div class="text-muted small">Revenue − Salaries − Operating Expenses − Cost of Goods Sold · an operating estimate, not money movement (stock bought but not sold is excluded)</div>
-        </div></div>
+    <div class="fo-panel-body">
+        <div class="fo-shop">
+            <div class="fo-box">
+                <div class="fo-lab">Sales Revenue {{ cash_badge }}</div>
+                <div class="fo-num text-success">Rs. {{ '{:,.2f}'.format(snapshot.sales) }}</div>
+                <div class="fo-help">Uniforms and books sold in {{ snapshot.label }}</div>
+            </div>
+            <div class="fo-box">
+                <div class="fo-lab">Cost of Goods Sold</div>
+                <div class="fo-num" style="color:#b45309;">Rs. {{ '{:,.2f}'.format(snapshot.sales_cogs) }}</div>
+                <div class="fo-help">What the sold items cost the school.</div>
+            </div>
+            <div class="fo-box">
+                <div class="fo-lab">Estimated Net Operating Position</div>
+                <div class="fo-num {{ 'text-success' if snapshot.operating_position >= 0 else 'text-danger' }}">Rs. {{ '{:,.2f}'.format(snapshot.operating_position) }}</div>
+                <div class="fo-help">Rough profit after all costs. Only an estimate.</div>
+            </div>
+        </div>
+        <div class="fo-note">
+            <span class="text-muted">Profit on items sold separately:</span>
+            <strong class="{{ 'text-success' if snapshot.gross_profit >= 0 else 'text-danger' }}">Rs. {{ '{:,.2f}'.format(snapshot.gross_profit) }}</strong>
+            {% if snapshot.package_cogs %}<br>Rs. {{ '{:,.2f}'.format(snapshot.package_cogs) }} of the cost is books/uniform given inside admission packages — already paid for in the admission fee, not a loss.{% endif %}
+        </div>
     </div>
 </div>
 {% endif %}
-<div class="row g-3 mb-3">
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Fees Remaining {{ accrual_badge }}</div>
-            <div class="h4 fw-bold mb-1 text-danger">Rs. {{ '{:,.2f}'.format(snapshot.fees_remaining) }}</div>
-            <div class="text-muted small">all fees still owed by students, school-wide · not money movement</div>
-        </div></div>
+
+<!-- Still owed (accrual) -->
+<div class="fo-owed mt-3">
+    <div class="fo-owe">
+        <div class="fo-lab">Fees Remaining {{ accrual_badge }}</div>
+        <div class="fo-num">Rs. {{ '{:,.2f}'.format(snapshot.fees_remaining) }}</div>
+        <div class="fo-help">Fees students have not paid yet.
+            <a href="{{ url_for('main.financials_student_outstanding') }}">See who owes</a></div>
     </div>
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small text-uppercase fw-bold">Salary Remaining {{ accrual_badge }}</div>
-            <div class="h4 fw-bold mb-1 text-danger">Rs. {{ '{:,.2f}'.format(salary_remaining) }}</div>
-            <div class="text-muted small">salaries still owed to staff, including the running month · not part of Cash Out or Net Position</div>
-        </div></div>
+    <div class="fo-owe">
+        <div class="fo-lab">Salary Remaining {{ accrual_badge }}</div>
+        <div class="fo-num">Rs. {{ '{:,.2f}'.format(salary_remaining) }}</div>
+        <div class="fo-help">Salary not yet paid to staff.</div>
     </div>
 </div>
 
 <div class="row g-3 mb-3">
     <div class="col-lg-6">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white border-0 fw-bold pt-3"><i class="fas fa-coins text-success me-2"></i>This month's fees — {{ fee_month.label }}</div>
-            <div class="card-body pt-0">
-                <div class="d-flex flex-wrap gap-3">
-                    <div><div class="text-muted small">Expected {{ accrual_badge }}</div><div class="h6 fw-bold mb-0">Rs. {{ '{:,.2f}'.format(fee_month.expected) }}</div></div>
-                    <div><div class="text-muted small">Collected {{ cash_badge }}</div><div class="h6 fw-bold mb-0 text-success">Rs. {{ '{:,.2f}'.format(fee_month.collected) }}</div></div>
-                    <div><div class="text-muted small">Remaining {{ accrual_badge }}</div><div class="h6 fw-bold mb-0 text-danger">Rs. {{ '{:,.2f}'.format(fee_month.remaining) }}</div></div>
-                    <div><div class="text-muted small">Collection rate</div><div class="h6 fw-bold mb-0">{{ '{:,.1f}'.format(fee_month.rate) + '%' if fee_month.rate is not none else '—' }}</div></div>
+        <div class="fo-panel h-100 mb-0">
+            <div class="fo-panel-head">
+                <h2><i class="fas fa-coins"></i>This month's fees — {{ fee_month.label }}</h2>
+            </div>
+            <div class="fo-panel-body">
+                <div class="fo-mini">
+                    <div><div class="fo-mini-lab">Expected {{ accrual_badge }}</div><div class="fo-mini-num">Rs. {{ '{:,.2f}'.format(fee_month.expected) }}</div></div>
+                    <div><div class="fo-mini-lab">Collected {{ cash_badge }}</div><div class="fo-mini-num text-success">Rs. {{ '{:,.2f}'.format(fee_month.collected) }}</div></div>
+                    <div><div class="fo-mini-lab">Remaining {{ accrual_badge }}</div><div class="fo-mini-num text-danger">Rs. {{ '{:,.2f}'.format(fee_month.remaining) }}</div></div>
+                    <div><div class="fo-mini-lab">Collection rate</div><div class="fo-mini-num">{{ '{:,.1f}'.format(fee_month.rate) + '%' if fee_month.rate is not none else '—' }}</div></div>
                 </div>
-                <div class="text-muted small mt-2">Arrears recovered {{ cash_badge }}: Rs. {{ '{:,.2f}'.format(fee_month.arrears) }} — older months' fees collected this month, always shown separately and never counted as this month's collection.</div>
+                {% if fee_month.rate is not none %}
+                <div class="fo-progress" role="img" aria-label="{{ '{:,.0f}'.format(fee_month.rate) }} percent of this month's fees collected"><i style="width: {{ [[fee_month.rate, 0] | max, 100] | min }}%"></i></div>
+                {% endif %}
+                <div class="fo-note">Arrears recovered {{ cash_badge }}: Rs. {{ '{:,.2f}'.format(fee_month.arrears) }} — older months' fees collected this month. They are always shown separately and never counted as this month's collection.</div>
             </div>
         </div>
     </div>
     <div class="col-lg-6">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-white border-0 fw-bold pt-3"><i class="fas fa-user-tie text-primary me-2"></i>Salaries — {{ snapshot.label }}</div>
-            <div class="card-body pt-0">
-                <div class="d-flex flex-wrap gap-3">
-                    <div><div class="text-muted small">Total payable {{ accrual_badge }}</div><div class="h6 fw-bold mb-0">Rs. {{ '{:,.2f}'.format(snapshot.payroll) }}</div></div>
-                    <div><div class="text-muted small">Paid {{ cash_badge }}</div><div class="h6 fw-bold mb-0 text-success">Rs. {{ '{:,.2f}'.format(snapshot.payroll_paid) }}</div></div>
-                    <div><div class="text-muted small">Remaining {{ accrual_badge }}</div><div class="h6 fw-bold mb-0 text-danger">Rs. {{ '{:,.2f}'.format(snapshot.payroll_pending) }}</div></div>
+        <div class="fo-panel h-100 mb-0">
+            <div class="fo-panel-head">
+                <h2><i class="fas fa-user-tie"></i>Salaries — {{ snapshot.label }}</h2>
+                <span class="fo-sub fo-sm-links"><a href="{{ url_for('main.payroll_page', month=month) }}">open salaries</a></span>
+            </div>
+            <div class="fo-panel-body">
+                <div class="fo-mini">
+                    <div><div class="fo-mini-lab">Total payable {{ accrual_badge }}</div><div class="fo-mini-num">Rs. {{ '{:,.2f}'.format(snapshot.payroll) }}</div></div>
+                    <div><div class="fo-mini-lab">Paid {{ cash_badge }}</div><div class="fo-mini-num text-success">Rs. {{ '{:,.2f}'.format(snapshot.payroll_paid) }}</div></div>
+                    <div><div class="fo-mini-lab">Remaining {{ accrual_badge }}</div><div class="fo-mini-num text-danger">Rs. {{ '{:,.2f}'.format(snapshot.payroll_pending) }}</div></div>
                 </div>
-                <div class="text-muted small mt-2">Teachers: {{ snapshot.payroll_paid_count }} fully paid · {{ snapshot.payroll_partial_count }} partly paid · {{ snapshot.payroll_unpaid_count }} unpaid. Salary remaining is never counted in Cash Out or Net Position.</div>
+                {% if snapshot.payroll > 0 %}
+                <div class="fo-progress" role="img" aria-label="{{ '{:,.0f}'.format(snapshot.payroll_paid * 100 / snapshot.payroll) }} percent of salaries paid"><i style="width: {{ [snapshot.payroll_paid * 100 / snapshot.payroll, 100] | min }}%"></i></div>
+                {% endif %}
+                <div class="fo-note">Teachers: {{ snapshot.payroll_paid_count }} fully paid · {{ snapshot.payroll_partial_count }} partly paid · {{ snapshot.payroll_unpaid_count }} unpaid. Salary remaining is never counted in Cash Out or Net Position.</div>
             </div>
         </div>
     </div>
@@ -175,27 +421,27 @@
 
 {% set former = former_students_summary() %}
 {% if former.count %}
-<div class="alert {% if former.count %}alert-warning{% else %}alert-light border{% endif %} py-2 px-3">
+<div class="fo-former">
     <div class="d-flex flex-wrap gap-3 align-items-center">
         <span><i class="fas fa-user-graduate me-1"></i><b>{{ former.count }}</b> former student(s) with outstanding dues totaling
         <b>Rs. {{ '{:,.2f}'.format(former.total) }}</b></span>
-        {% if features.advance_credit_writeoff %}<span class="text-muted small">Written off so far: Rs. {{ '{:,.2f}'.format(former.written_off) }}</span>{% endif %}
+        {% if features.advance_credit_writeoff %}<span class="small">Written off so far: Rs. {{ '{:,.2f}'.format(former.written_off) }}</span>{% endif %}
         <a class="btn btn-sm btn-outline-dark ms-auto" href="{{ url_for('main.financials_student_outstanding', status='former') }}">View their dues</a>
     </div>
     {% if revenue_impact and (revenue_impact.slc_issued.count or revenue_impact.struck_off.count) %}
-    <div class="small text-muted border-top pt-2 mt-2">
+    <div class="small border-top pt-2 mt-2">
         Estimated monthly revenue impact:
-        {% if revenue_impact.slc_issued.count %}<span class="badge bg-light text-dark border">{{ revenue_impact.slc_issued.label }}: {{ revenue_impact.slc_issued.count }} student(s) · Rs {{ '{:,.2f}'.format(revenue_impact.slc_issued.monthly) }}/month</span>{% endif %}
-        {% if revenue_impact.struck_off.count %}<span class="badge bg-light text-dark border">{{ revenue_impact.struck_off.label }}: {{ revenue_impact.struck_off.count }} student(s) · Rs {{ '{:,.2f}'.format(revenue_impact.struck_off.monthly) }}/month</span>{% endif %}
+        {% if revenue_impact.slc_issued.count %}<span class="fo-pill">{{ revenue_impact.slc_issued.label }}: {{ revenue_impact.slc_issued.count }} student(s) · Rs {{ '{:,.2f}'.format(revenue_impact.slc_issued.monthly) }}/month</span>{% endif %}
+        {% if revenue_impact.struck_off.count %}<span class="fo-pill">{{ revenue_impact.struck_off.label }}: {{ revenue_impact.struck_off.count }} student(s) · Rs {{ '{:,.2f}'.format(revenue_impact.struck_off.monthly) }}/month</span>{% endif %}
         (an estimate, not a loss)
     </div>
     {% endif %}
     {% if former.by_status %}
-    <div class="d-flex flex-wrap gap-2 mt-2 small">
+    <div class="d-flex flex-wrap gap-1 mt-2 small">
         {% for status in ['slc_issued', 'struck_off', 'graduated'] %}
         {% set entry = former.by_status.get(status) %}
         {% if entry %}
-        <span class="badge bg-light text-dark border">{{ entry.label }}: {{ entry.count }} · Rs. {{ '{:,.2f}'.format(entry.total) }}</span>
+        <span class="fo-pill">{{ entry.label }}: {{ entry.count }} · Rs. {{ '{:,.2f}'.format(entry.total) }}</span>
         {% endif %}
         {% endfor %}
     </div>
@@ -204,11 +450,11 @@
 {% endif %}
 
 {% macro comparison_table(pack) %}
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-primary text-white fw-bold border-0">{{ pack.title }}</div>
-    <div class="card-body p-0 table-responsive">
+<div class="fo-panel">
+    <div class="fo-panel-head"><h2><i class="fas fa-code-compare"></i>{{ pack.title }}</h2></div>
+    <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
-            <thead class="table-light">
+            <thead>
                 <tr>
                     <th class="ps-3">Metric</th>
                     <th class="text-end">{{ pack.current.label }}</th>
@@ -237,30 +483,16 @@
 </div>
 {% endmacro %}
 
-<!-- Alerts -->
-{% if alerts %}
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-dark text-white fw-bold border-0"><i class="fas fa-bell me-2"></i>Alerts</div>
-    <div class="card-body p-0">
-        <ul class="list-group list-group-flush">
-            {% for alert in alerts %}
-            <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <span><i class="fas fa-{{ 'triangle-exclamation' if alert.kind == 'warning' else 'circle-info' }} me-2 {{ 'text-warning' if alert.kind == 'warning' else 'text-info' }}"></i>{{ alert.text }}</span>
-                <a class="btn btn-sm btn-outline-primary" href="{{ alert.url }}">{{ alert.link_text }}</a>
-            </li>
-            {% endfor %}
-        </ul>
-    </div>
-</div>
-{% endif %}
-
 <!-- What changed (owner insights) -->
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-dark text-white fw-bold border-0"><i class="fas fa-lightbulb me-2"></i>What changed</div>
-    <div class="card-body py-3">
+<div class="fo-panel">
+    <div class="fo-panel-head">
+        <h2><i class="fas fa-lightbulb"></i>What changed</h2>
+        <span class="fo-sub">Compared with last month</span>
+    </div>
+    <div class="fo-panel-body">
         {% if insights.enough_history %}
-        <ul class="mb-0 ps-3">
-            {% for line in insights.lines %}<li class="mb-1">{{ line }}</li>{% endfor %}
+        <ul class="fo-changes">
+            {% for line in insights.lines %}<li>{{ line }}</li>{% endfor %}
         </ul>
         {% else %}
         <p class="mb-0 text-muted">Not enough history yet.</p>
@@ -268,17 +500,19 @@
     </div>
 </div>
 
+<details class="fo-more" {% if comparison or comparison_message or custom_comparison or range_start %}open{% endif %}>
+    <summary><i class="fas fa-scale-balanced me-2"></i>Compare with other months or years <span>(tap to open)</span></summary>
 <!-- Compare periods: pick what to see side by side -->
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-primary text-white fw-bold border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <span><i class="fas fa-scale-balanced me-2"></i>Compare periods</span>
-        <span class="small fw-normal opacity-75">Pick two or more months, whole years or sessions to see them side by side.</span>
+<div class="fo-panel">
+    <div class="fo-panel-head">
+        <h2><i class="fas fa-scale-balanced"></i>Compare periods</h2>
+        <span class="fo-sub">Pick two or more months, whole years or sessions to see them side by side.</span>
     </div>
-    <div class="card-body">
+    <div class="fo-panel-body">
         <form method="get" action="{{ url_for('main.financials_summary') }}" class="row g-3 align-items-end">
             <div class="col-lg-7">
-                <label class="form-label small fw-bold mb-1">Quick comparisons</label>
-                <div class="d-flex flex-wrap gap-2">
+                <label class="form-label small fw-bold mb-1">Quick comparisons — tap one</label>
+                <div class="fo-pills">
                     <a class="btn btn-sm {{ 'btn-primary' if comparison_preset == 'this_vs_last' else 'btn-outline-primary' }}"
                        href="{{ url_for('main.financials_summary', preset='this_vs_last') }}">This month vs last month</a>
                     <a class="btn btn-sm {{ 'btn-primary' if comparison_preset == 'this_vs_last_year' else 'btn-outline-primary' }}"
@@ -305,8 +539,8 @@
                 </div>
             </div>
             <div class="col-lg-5">
-                <label class="form-label small fw-bold mb-1">Or tick any months (then Apply)</label>
-                <details class="border rounded p-2" {% if comparison and not comparison_preset %}open{% endif %}>
+                <label class="form-label small fw-bold mb-1">Or tick any months, then press the button</label>
+                <details class="border rounded-3 p-2" {% if comparison and not comparison_preset %}open{% endif %}>
                     <summary class="small text-primary" style="cursor:pointer;">Choose months…</summary>
                     <div class="row row-cols-2 row-cols-md-3 g-1 mt-2" style="max-height: 200px; overflow-y: auto;">
                         {% set selected_keys = comparison.period_key_list %}
@@ -322,7 +556,7 @@
                         {% endfor %}
                     </div>
                 </details>
-                <div class="form-text">Up to {{ max_comparison_periods }} periods at once. Whole years and sessions can be added as buttons above.</div>
+                <div class="form-text">Up to {{ max_comparison_periods }} periods at once. Whole years and sessions can be added with the buttons on the left.</div>
                 <button class="btn btn-dark btn-sm mt-2 w-100"><i class="fas fa-scale-balanced me-1"></i>Compare selected</button>
             </div>
         </form>
@@ -334,19 +568,19 @@
 
 {% if comparison %}
 <!-- Comparison result -->
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-dark text-white fw-bold border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <span><i class="fas fa-table-columns me-2"></i>Side-by-side comparison</span>
-        <div class="d-flex gap-2">
-            <a class="btn btn-sm btn-outline-light" href="{{ url_for('main.financials_export_csv', periods=comparison.period_keys) }}">
+<div class="fo-panel">
+    <div class="fo-panel-head">
+        <h2><i class="fas fa-table-columns"></i>Side-by-side comparison</h2>
+        <div class="d-flex gap-2 no-print">
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('main.financials_export_csv', periods=comparison.period_keys) }}">
                 <i class="fas fa-file-csv me-1"></i>Export CSV
             </a>
-            <a class="btn btn-sm btn-outline-light" href="{{ url_for('main.financials_export_pdf', periods=comparison.period_keys) }}">
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('main.financials_export_pdf', periods=comparison.period_keys) }}">
                 <i class="fas fa-file-pdf me-1"></i>Export PDF
             </a>
         </div>
     </div>
-    <div class="card-body">
+    <div class="fo-panel-body">
         {% if comparison.show_difference and comparison.highlight %}
         {% set h = comparison.highlight[0] %}
         <div class="alert {{ 'alert-success' if h.improved else 'alert-danger' }} py-2 px-3 mb-3">
@@ -358,7 +592,7 @@
 
         <div class="table-responsive">
             <table class="table table-sm align-middle mb-3" id="comparisonTable">
-                <thead class="table-light">
+                <thead>
                     <tr>
                         <th style="min-width: 190px;">Metric</th>
                         {% for s in comparison.snapshots %}
@@ -398,7 +632,7 @@
             </table>
         </div>
 
-        <div style="height: 320px;"><canvas id="comparisonChart"></canvas></div>
+        <div class="fo-chart" style="height: 320px;"><canvas id="comparisonChart"></canvas></div>
 
         {% set expandable = comparison.snapshots | selectattr('monthly') | list %}
         {% if expandable %}
@@ -415,7 +649,7 @@
                     <div class="accordion-body p-0">
                         <div class="table-responsive">
                             <table class="table table-sm mb-0">
-                                <thead class="table-light">
+                                <thead>
                                     <tr><th>Month</th><th class="text-end">Fee Collections</th>
                                         <th class="text-end">Staff Payroll</th>
                                         <th class="text-end">Expenses</th><th class="text-end">Net</th></tr>
@@ -448,18 +682,21 @@
 {{ comparison_table(comparisons[1]) }}
 
 <!-- Custom range comparison -->
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-primary text-white fw-bold border-0">Custom range vs preceding period</div>
-    <div class="card-body">
+<div class="fo-panel">
+    <div class="fo-panel-head">
+        <h2><i class="fas fa-calendar-days"></i>Custom range vs preceding period</h2>
+        <span class="fo-sub">Choose two dates to compare them with the same number of days just before.</span>
+    </div>
+    <div class="fo-panel-body">
         <form method="get" action="{{ url_for('main.financials_summary') }}" class="row g-2 align-items-end">
             <input type="hidden" name="month" value="{{ month }}">
             <div class="col-md-3">
-                <label class="form-label small fw-bold mb-1">From</label>
-                <input type="date" class="form-control" name="range_start" value="{{ range_start }}">
+                <label class="form-label small fw-bold mb-1" for="rangeFrom">From</label>
+                <input type="date" class="form-control" id="rangeFrom" name="range_start" value="{{ range_start }}">
             </div>
             <div class="col-md-3">
-                <label class="form-label small fw-bold mb-1">To</label>
-                <input type="date" class="form-control" name="range_end" value="{{ range_end }}">
+                <label class="form-label small fw-bold mb-1" for="rangeTo">To</label>
+                <input type="date" class="form-control" id="rangeTo" name="range_end" value="{{ range_end }}">
             </div>
             <div class="col-md-2 d-grid">
                 <button class="btn btn-primary btn-sm">Compare</button>
@@ -472,45 +709,44 @@
         {% endif %}
     </div>
 </div>
+
+</details>
+
 <!-- Charts (last 12 months) -->
 <div class="row g-3 mb-3">
     <div class="col-lg-6">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-dark text-white fw-bold border-0">
-                <i class="fas fa-chart-column me-2"></i>Cash In vs Cash Out — last 12 months
-            </div>
-            <div class="card-body">
-                <div style="height: 280px;"><canvas id="cashInOutChart"></canvas></div>
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-6">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-dark text-white fw-bold border-0">
-                <i class="fas fa-chart-line me-2"></i>Fee Collection Trend
-            </div>
-            <div class="card-body">
-                <div style="height: 280px;"><canvas id="collectionChart"></canvas></div>
+        <div class="fo-panel h-100 mb-0">
+            <div class="fo-panel-head"><h2><i class="fas fa-chart-column"></i>Cash In vs Cash Out — last 12 months</h2></div>
+            <div class="fo-panel-body">
+                <p class="fo-chart-note">Green is money received, orange is money paid out. When green is taller, the school kept money that month.</p>
+                <div class="fo-chart"><canvas id="cashInOutChart"></canvas></div>
             </div>
         </div>
     </div>
     <div class="col-lg-6">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-dark text-white fw-bold border-0">
-                <i class="fas fa-chart-area me-2"></i>Outstanding Fees Trend
-            </div>
-            <div class="card-body">
-                <div style="height: 280px;"><canvas id="outstandingChart"></canvas></div>
+        <div class="fo-panel h-100 mb-0">
+            <div class="fo-panel-head"><h2><i class="fas fa-chart-line"></i>Fee Collection Trend</h2></div>
+            <div class="fo-panel-body">
+                <p class="fo-chart-note">How much fee money was collected each month. A line going up is good news.</p>
+                <div class="fo-chart"><canvas id="collectionChart"></canvas></div>
             </div>
         </div>
     </div>
     <div class="col-lg-6">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-dark text-white fw-bold border-0">
-                <i class="fas fa-tags me-2"></i>Expense Breakdown by Category — {{ snapshot.label }} (salaries excluded)
+        <div class="fo-panel h-100 mb-0">
+            <div class="fo-panel-head"><h2><i class="fas fa-chart-area"></i>Outstanding Fees Trend</h2></div>
+            <div class="fo-panel-body">
+                <p class="fo-chart-note">Fees that students still owe, by month. A line going down means parents are paying.</p>
+                <div class="fo-chart"><canvas id="outstandingChart"></canvas></div>
             </div>
-            <div class="card-body">
-                <div style="height: 280px;"><canvas id="categoryChart"></canvas></div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="fo-panel h-100 mb-0">
+            <div class="fo-panel-head"><h2><i class="fas fa-tags"></i>Expense Breakdown by Category — {{ snapshot.label }}</h2></div>
+            <div class="fo-panel-body">
+                <p class="fo-chart-note">Where the school's other expenses went. Salaries are left out because they are shown above.</p>
+                <div class="fo-chart"><canvas id="categoryChart"></canvas></div>
             </div>
         </div>
     </div>
@@ -519,14 +755,12 @@
 <!-- Breakdown + payroll -->
 <div class="row g-3 mb-4">
     <div class="col-lg-5">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-secondary text-white fw-bold border-0">
-                <i class="fas fa-tags me-2"></i>Expense Breakdown — {{ snapshot.label }}
-            </div>
-            <div class="card-body">
+        <div class="fo-panel h-100 mb-0">
+            <div class="fo-panel-head"><h2><i class="fas fa-tags"></i>Expense Breakdown — {{ snapshot.label }}</h2></div>
+            <div class="fo-panel-body">
                 <div class="table-responsive">
                     <table class="table table-sm align-middle mb-0">
-                        <thead class="table-light">
+                        <thead>
                             <tr><th>Category</th><th class="text-end">Entries</th><th class="text-end">Total (Rs.)</th></tr>
                         </thead>
                         <tbody>
@@ -549,19 +783,17 @@
                         {% endif %}
                     </table>
                 </div>
-                {% if not breakdown %}<p class="text-muted small mb-0">No expenses logged this month.</p>{% endif %}
+                {% if not breakdown %}<p class="text-muted small mb-0">No expenses logged this month. <a href="{{ url_for('main.expenses_list') }}">Open expenses</a> to add one.</p>{% endif %}
             </div>
         </div>
     </div>
     <div class="col-lg-7">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-secondary text-white fw-bold border-0">
-                <i class="fas fa-money-check-dollar me-2"></i>Payroll — {{ snapshot.label }}
-            </div>
-            <div class="card-body">
+        <div class="fo-panel h-100 mb-0">
+            <div class="fo-panel-head"><h2><i class="fas fa-money-check-dollar"></i>Payroll — {{ snapshot.label }}</h2></div>
+            <div class="fo-panel-body">
                 <div class="table-responsive">
                     <table class="table table-sm align-middle mb-0">
-                        <thead class="table-light">
+                        <thead>
                             <tr>
                                 <th>Teacher</th>
                                 <th class="text-end">Net Salary (Rs.)</th>
@@ -574,7 +806,7 @@
                             {% for record in payroll_records %}
                             <tr>
                                 <td class="fw-bold">{{ record.teacher.teacher_name if record.teacher else '—' }}
-                                    <div class="text-muted small">{{ record.teacher.teacher_id_str if record.teacher else '' }}</div>
+                                    <div class="text-muted small fw-normal">{{ record.teacher.teacher_id_str if record.teacher else '' }}</div>
                                 </td>
                                 <td class="text-end">{{ '{:,.2f}'.format(record.net_salary or 0) }}</td>
                                 <td>
@@ -583,7 +815,7 @@
                                 </td>
                                 <td class="small">{{ record.payment_date.strftime('%d %b %Y') if record.payment_date else '—' }}</td>
                                 <td class="text-center">
-                                    <a class="btn btn-sm btn-outline-dark" href="{{ url_for('main.payroll_payslip_pdf', id=record.id) }}" title="Payslip PDF">
+                                    <a class="btn btn-sm btn-outline-dark" href="{{ url_for('main.payroll_payslip_pdf', id=record.id) }}" title="Payslip PDF" aria-label="Payslip PDF">
                                         <i class="fas fa-file-invoice"></i>
                                     </a>
                                 </td>
@@ -607,15 +839,22 @@
 document.addEventListener('DOMContentLoaded', function () {
     if (!window.Chart) return;
     var data = JSON.parse(document.getElementById('summaryChartsPayload').textContent);
-    var money = { callback: function (value) { return 'Rs ' + Number(value).toLocaleString(); } };
+    var fmt = function (value) { return 'Rs ' + Number(value).toLocaleString(); };
+    var money = { callback: fmt };
+    var tip = { callbacks: { label: function (ctx) {
+        var name = ctx.dataset.label ? ctx.dataset.label + ': ' : '';
+        var v = ctx.parsed.y !== undefined && ctx.parsed.y !== null && ctx.chart.options.indexAxis !== 'y' ? ctx.parsed.y : ctx.parsed.x;
+        return name + fmt(v);
+    } } };
 
     new Chart(document.getElementById('cashInOutChart'), {
         type: 'bar',
         data: { labels: data.labels, datasets: [
-            { label: 'Cash In', data: data.cash_in, backgroundColor: '#198754' },
-            { label: 'Cash Out', data: data.cash_out, backgroundColor: '#dc3545' }
+            { label: 'Cash In', data: data.cash_in, backgroundColor: '#10b981', borderRadius: 4 },
+            { label: 'Cash Out', data: data.cash_out, backgroundColor: '#f59e0b', borderRadius: 4 }
         ]},
         options: { responsive: true, maintainAspectRatio: false,
+                   plugins: { legend: { position: 'bottom' }, tooltip: tip },
                    scales: { y: { beginAtZero: true, ticks: money } } }
     });
 
@@ -623,10 +862,11 @@ document.addEventListener('DOMContentLoaded', function () {
         type: 'line',
         data: { labels: data.labels, datasets: [
             { label: 'Fee Collection', data: data.collection,
-              borderColor: '#0d6efd', backgroundColor: 'rgba(13, 110, 253, 0.15)',
+              borderColor: '#0d6efd', backgroundColor: 'rgba(13, 110, 253, 0.12)',
               fill: true, tension: 0.3 }
         ]},
         options: { responsive: true, maintainAspectRatio: false,
+                   plugins: { legend: { display: false }, tooltip: tip },
                    scales: { y: { beginAtZero: true, ticks: money } } }
     });
 
@@ -634,20 +874,21 @@ document.addEventListener('DOMContentLoaded', function () {
         type: 'line',
         data: { labels: data.labels, datasets: [
             { label: 'Fees Outstanding', data: data.outstanding,
-              borderColor: '#dc3545', backgroundColor: 'rgba(220, 53, 69, 0.15)',
+              borderColor: '#dc3545', backgroundColor: 'rgba(220, 53, 69, 0.12)',
               fill: true, tension: 0.3 }
         ]},
         options: { responsive: true, maintainAspectRatio: false,
+                   plugins: { legend: { display: false }, tooltip: tip },
                    scales: { y: { beginAtZero: true, ticks: money } } }
     });
 
     new Chart(document.getElementById('categoryChart'), {
         type: 'bar',
         data: { labels: data.category_labels, datasets: [
-            { label: 'Expenses (Rs)', data: data.category_values, backgroundColor: '#fd7e14' }
+            { label: 'Expenses', data: data.category_values, backgroundColor: '#f59e0b', borderRadius: 4 }
         ]},
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-                   plugins: { legend: { display: false } },
+                   plugins: { legend: { display: false }, tooltip: tip },
                    scales: { x: { beginAtZero: true, ticks: money } } }
     });
 
@@ -661,9 +902,9 @@ document.addEventListener('DOMContentLoaded', function () {
             data: {
                 labels: cmp.labels || [],
                 datasets: [
-                    { label: 'Cash In (Fees)', data: cmp.revenue || [], backgroundColor: '#198754' },
+                    { label: 'Cash In (Fees)', data: cmp.revenue || [], backgroundColor: '#10b981' },
                     { label: 'Staff Payroll', data: cmp.payroll || [], backgroundColor: '#0d6efd' },
-                    { label: 'Expenses', data: cmp.expenses || [], backgroundColor: '#fd7e14' },
+                    { label: 'Expenses', data: cmp.expenses || [], backgroundColor: '#f59e0b' },
                     { label: 'Net', data: cmp.net || [], backgroundColor: '#6f42c1' }
                 ]
             },
@@ -671,9 +912,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 responsive: true, maintainAspectRatio: false,
                 plugins: {
                     legend: { position: 'bottom' },
-                    title: { display: true, text: 'Selected periods compared' }
+                    title: { display: true, text: 'Selected periods compared' },
+                    tooltip: tip
                 },
-                scales: { y: { beginAtZero: true } }
+                scales: { y: { beginAtZero: true, ticks: money } }
             }
         });
     }

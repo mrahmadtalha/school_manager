@@ -1,338 +1,573 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+<style>
+    /* ------------------------------------------------------------------
+       This page - same family as Students / Class Tests: a plain header
+       (title + one line + buttons), one summary band, one tool bar, then the
+       marks table. Colours come from the school's brand (--bs-primary-rgb).
+       Everything is scoped under .cr- so nothing leaks to other pages.
+       ------------------------------------------------------------------ */
+    .cr-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0.25rem 0 1.1rem; }
+    .cr-head h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; margin: 0; line-height: 1.1; }
+    .cr-head p { margin: 0.35rem 0 0; color: #64748b; font-size: 0.92rem; }
+    .cr-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .cr-tools .btn { box-shadow: none; font-weight: 700; border-radius: 12px; }
+    .cr-tools .btn-outline-secondary { background: #fff; }
+    .cr-tools .btn-outline-secondary:hover, .cr-tools .btn-outline-secondary:focus,
+    .cr-tools .btn-outline-secondary.show { background: #f1f5f9 !important; color: #0f172a !important; border-color: #cbd5e1 !important; }
+
+    /* class / test type pickers */
+    .cr-pick { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.8rem; margin-bottom: 0.9rem; }
+    .cr-pick-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.7rem; }
+    .cr-field { display: flex; flex-direction: column; gap: 0.25rem; min-width: 11rem; flex: 0 1 15rem; }
+    .cr-field label { font-size: 0.78rem; font-weight: 700; color: #64748b; margin: 0; }
+    .cr-field .form-select, .cr-field .form-control { height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background-color: #f8fafc; }
+    .cr-field .form-select:focus, .cr-field .form-control:focus { background-color: #fff; }
+    .cr-pick-info { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem; font-size: 0.82rem; color: #64748b; }
+    .cr-chip { display: inline-flex; align-items: center; gap: 0.35rem; background: #f1f5f9; border-radius: 99px; padding: 0.25rem 0.75rem; font-weight: 600; color: #475569; white-space: nowrap; }
+    .cr-chip b { color: #0f172a; font-weight: 800; }
+    .cr-details-btn { font-weight: 700; text-decoration: none; padding: 0.25rem 0.5rem; white-space: nowrap; }
+    .cr-details { margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px dashed #e2e8f0; }
+    .cr-details .cr-help { flex: 1 1 100%; font-size: 0.82rem; color: #64748b; margin: 0; }
+
+    .cr-hint { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid rgb(var(--bs-primary-rgb)); border-radius: 14px; color: #475569; font-size: 0.88rem; }
+    .cr-hint b { color: #0f172a; }
+    .cr-hint.is-good { border-left-color: #16a34a; background: #f3fbf6; }
+
+    /* summary ribbon */
+    .cr-tiles { display: grid; grid-template-columns: repeat(4, 1fr); background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .cr-tile { padding: 0.85rem 1.2rem; display: flex; align-items: center; gap: 0.8rem; min-width: 0; }
+    .cr-tile + .cr-tile { border-left: 1px solid #eef2f7; }
+    .cr-ico { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-size: 1.05rem; }
+    .cr-ico.b { background: #dbeafe; color: #1d4ed8; } .cr-ico.v { background: #ede9fe; color: #6d28d9; }
+    .cr-ico.g { background: #dcfce7; color: #15803d; } .cr-ico.o { background: #fef3c7; color: #b45309; }
+    .cr-ico.r { background: #fee2e2; color: #b91c1c; }
+    .cr-num { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .cr-num.is-name { font-size: 1.05rem; letter-spacing: -0.01em; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cr-lab { font-size: 0.78rem; color: #64748b; margin-top: 0.15rem; }
+    .cr-tile > div:last-child { min-width: 0; }
+    .cr-tile.is-good { background: #f3fbf6; }
+    .cr-tile.is-warn { background: #fffbf3; box-shadow: inset 4px 0 0 #f59e0b; }
+    .cr-tile.is-bad { background: #fff7f7; box-shadow: inset 4px 0 0 #dc2626; }
+
+    /* tool bar */
+    .cr-toolbar { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.7rem; margin-bottom: 0.9rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
+    .cr-search { position: relative; flex: 1 1 14rem; min-width: 11rem; }
+    .cr-search i { position: absolute; left: 0.95rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+    .cr-search input { padding-left: 2.5rem; height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background: #f8fafc; }
+    .cr-search input:focus { background: #fff; }
+    .cr-toolbar .form-select { height: 2.7rem; width: auto; min-width: 9.5rem; max-width: 15rem; border-radius: 12px; border-color: #e2e8f0; background-color: #f8fafc; }
+    .cr-seg { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+    .cr-seg button { border: 0; background: transparent; padding: 0.45rem 0.85rem; border-radius: 9px; font-size: 0.85rem; font-weight: 600; color: #475569; white-space: nowrap; transition: background 0.15s ease, color 0.15s ease; }
+    .cr-seg button:hover { color: #0f172a; }
+    .cr-seg button:focus-visible { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 1px; }
+    .cr-seg button.active { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+    .cr-seg button .n { font-variant-numeric: tabular-nums; opacity: 0.7; margin-left: 0.2rem; }
+    .cr-seg button.bad.active { background: #fde2e2; color: #991b1b; }
+    .cr-clear { font-weight: 700; text-decoration: none; padding: 0.3rem 0.5rem; white-space: nowrap; }
+    .cr-count { font-size: 0.86rem; color: #64748b; margin: 0 0.2rem 0.7rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.8rem; }
+    .cr-count strong { color: #0f172a; }
+    .cr-count details { margin-left: auto; }
+    .cr-count summary { cursor: pointer; font-weight: 700; color: rgb(var(--bs-primary-rgb)); list-style: none; }
+    .cr-count summary::-webkit-details-marker { display: none; }
+    .cr-legend { position: absolute; z-index: 5; background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; box-shadow: 0 14px 28px rgba(15, 23, 42, 0.12); padding: 0.8rem 1rem; margin-top: 0.4rem; right: 0; min-width: 15rem; color: #475569; }
+    .cr-count details { position: relative; }
+    .cr-legend div { display: flex; align-items: center; gap: 0.6rem; padding: 0.15rem 0; }
+    .cr-legend p { margin: 0.5rem 0 0; font-size: 0.78rem; color: #64748b; }
+
+    /* marks table */
+    .cr-reg { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; overflow: hidden; }
+    .cr-reg .table-responsive { max-height: 75vh; }
+    .cr-reg .table { margin: 0; --bs-table-bg: transparent; }
+    .cr-reg .table thead th { position: sticky; top: 0; z-index: 3; background: #f8fafc; color: #64748b; font-size: 0.74rem; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding: 0.65rem 0.8rem; vertical-align: bottom; white-space: nowrap; }
+    .cr-reg .table > :not(caption) > * > * { padding: 0.65rem 0.8rem; border-bottom-color: #f1f5f9; }
+    .cr-reg .table tbody tr:last-child > * { border-bottom: 0; }
+    .cr-reg .cr-stick { position: sticky; left: 0; z-index: 2; background: #fff; box-shadow: 1px 0 0 #eef2f7; min-width: 13rem; max-width: 17rem; }
+    .cr-reg thead .cr-stick { z-index: 4; background: #f8fafc; }
+    .cr-reg tbody tr:hover > * { background: #f8fbff; }
+    .cr-row.is-fail > .cr-stick { box-shadow: inset 4px 0 0 #dc2626, 1px 0 0 #eef2f7; }
+    .cr-row.is-top > .cr-stick { box-shadow: inset 4px 0 0 #f59e0b, 1px 0 0 #eef2f7; }
+    .cr-stu { display: flex; align-items: center; gap: 0.65rem; }
+    .cr-rank { flex: 0 0 auto; width: 2rem; height: 2rem; border-radius: 10px; background: #f1f5f9; color: #475569; font-weight: 800; font-size: 0.82rem; display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
+    .cr-rank.medal { background: #fef3c7; font-size: 1.05rem; }
+    .cr-name { font-weight: 800; color: #0f172a; line-height: 1.2; display: block; }
+    .cr-sub { display: flex; flex-wrap: wrap; gap: 0 0.5rem; font-size: 0.76rem; color: #64748b; margin-top: 0.15rem; }
+    .cr-sub .roll { font-weight: 700; color: rgb(var(--bs-primary-rgb)); font-variant-numeric: tabular-nums; }
+    .cr-sub-name { font-weight: 700; color: #0f172a; font-size: 0.8rem; white-space: normal; line-height: 1.2; display: block; max-width: 7.5rem; margin: 0 auto; }
+    .cr-sub-test { font-weight: 500; font-size: 0.7rem; color: #94a3b8; display: block; max-width: 7.5rem; margin: 0.1rem auto 0; overflow: hidden; text-overflow: ellipsis; }
+    .cr-sub-max { font-weight: 600; font-size: 0.7rem; color: #64748b; display: block; margin-top: 0.1rem; }
+
+    .cr-mark { display: inline-block; min-width: 2.5rem; padding: 0.2rem 0.55rem; border-radius: 9px; font-weight: 800; font-size: 0.9rem; font-variant-numeric: tabular-nums; background: color-mix(in srgb, var(--tone) 14%, #fff); color: color-mix(in srgb, var(--tone) 78%, #000); }
+    .cr-mark.abs { font-size: 0.75rem; letter-spacing: 0.03em; }
+    .cr-none { color: #cbd5e1; }
+    .g-top { --tone: #16a34a; } .g-2 { --tone: #2563eb; } .g-3 { --tone: #0891b2; }
+    .g-4 { --tone: #d97706; } .g-5 { --tone: #64748b; } .g-low { --tone: #dc2626; } .g-abs { --tone: #f59e0b; } .g-na { --tone: #94a3b8; }
+    .cr-total { font-weight: 800; color: #0f172a; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .cr-total small { display: block; font-weight: 600; font-size: 0.72rem; color: #b45309; }
+    .cr-pct { font-weight: 800; font-variant-numeric: tabular-nums; }
+    .cr-pct.ok { color: #15803d; } .cr-pct.mid { color: #b45309; } .cr-pct.low { color: #b91c1c; }
+    .cr-grade { display: inline-flex; align-items: center; justify-content: center; min-width: 2.4rem; height: 2rem; padding: 0 0.6rem; border-radius: 99px; font-weight: 800; background: color-mix(in srgb, var(--tone) 14%, #fff); color: color-mix(in srgb, var(--tone) 78%, #000); }
+    .cr-pill { display: inline-block; padding: 0.15rem 0.7rem; border-radius: 99px; font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
+    .cr-pill.pass { background: #dcfce7; color: #166534; } .cr-pill.fail { background: #fee2e2; color: #991b1b; }
+    .cr-pill.absent { background: #fef3c7; color: #92400e; }
+    .cr-remark { min-width: 12rem; border-radius: 10px; border-color: #e2e8f0; background: #f8fafc; }
+    .cr-remark:focus { background: #fff; }
+    .cr-remark.is-changed { border-color: #f59e0b; background: #fffbf3; }
+    .cr-card-btn { border-radius: 10px; font-weight: 700; white-space: nowrap; width: 2.3rem; padding-left: 0; padding-right: 0; }
+
+    /* "remarks changed" save bar */
+    .cr-savebar { position: sticky; bottom: 0.8rem; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem; margin-top: 0.9rem; background: #0f172a; color: #fff; border-radius: 16px; padding: 0.7rem 0.8rem 0.7rem 1.1rem; box-shadow: 0 14px 30px rgba(15, 23, 42, 0.28); }
+    .cr-savebar[hidden] { display: none !important; }
+    .cr-savebar .btn { font-weight: 700; border-radius: 12px; }
+
+    .cr-empty { text-align: center; padding: 3.5rem 1rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; }
+    .cr-empty .cr-empty-icon { width: 76px; height: 76px; border-radius: 24px; margin: 0 auto 1rem; display: flex; align-items: center; justify-content: center; font-size: 1.9rem; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); }
+    .cr-empty p { font-weight: 700; color: #334155; margin-bottom: 0.4rem; }
+    .cr-empty .cr-empty-sub { font-weight: 500; color: #64748b; font-size: 0.9rem; margin-bottom: 1.1rem; }
+    .cr-nomatch { text-align: center; padding: 2rem 1rem; color: #64748b; font-weight: 600; }
+
+    html[dir="rtl"] .cr-search i { left: auto; right: 0.95rem; }
+    html[dir="rtl"] .cr-search input { padding-left: 0.75rem; padding-right: 2.5rem; }
+    html[dir="rtl"] .cr-pick-info { margin-left: 0; margin-right: auto; }
+    html[dir="rtl"] .cr-tile + .cr-tile { border-left: 0; border-right: 1px solid #eef2f7; }
+    html[dir="rtl"] .cr-tile.is-warn { box-shadow: inset -4px 0 0 #f59e0b; }
+    html[dir="rtl"] .cr-tile.is-bad { box-shadow: inset -4px 0 0 #dc2626; }
+    html[dir="rtl"] .cr-hint { border-left-width: 1px; border-right: 4px solid rgb(var(--bs-primary-rgb)); }
+    html[dir="rtl"] .cr-hint.is-good { border-right-color: #16a34a; }
+    html[dir="rtl"] .cr-count details { margin-left: 0; margin-right: auto; }
+    html[dir="rtl"] .cr-legend { right: auto; left: 0; }
+    html[dir="rtl"] .cr-reg .cr-stick { left: auto; right: 0; box-shadow: -1px 0 0 #eef2f7; }
+    html[dir="rtl"] .cr-row.is-fail > .cr-stick { box-shadow: inset -4px 0 0 #dc2626, -1px 0 0 #eef2f7; }
+    html[dir="rtl"] .cr-row.is-top > .cr-stick { box-shadow: inset -4px 0 0 #f59e0b, -1px 0 0 #eef2f7; }
+
+    @media (max-width: 991.98px) {
+        .cr-tiles { grid-template-columns: 1fr 1fr; }
+        .cr-tile:nth-child(odd) { border-left: 0; }
+        .cr-tile:nth-child(n+3) { border-top: 1px solid #eef2f7; }
+        html[dir="rtl"] .cr-tile:nth-child(odd) { border-right: 0; }
+        .cr-pick-info { margin: 0; flex: 1 1 100%; }
+    }
+    @media (max-width: 575.98px) {
+        .cr-tiles { grid-template-columns: 1fr; }
+        .cr-tile + .cr-tile { border-left: 0; border-top: 1px solid #eef2f7; }
+        html[dir="rtl"] .cr-tile + .cr-tile { border-right: 0; }
+        .cr-field { flex: 1 1 100%; }
+        .cr-toolbar .form-select, .cr-toolbar .cr-seg { width: 100%; max-width: none; }
+        .cr-seg button { flex: 1; padding: 0.6rem 0.4rem; }
+        .cr-reg .cr-stick { min-width: 10.5rem; max-width: 11rem; }
+        .cr-tools .btn, .cr-tools .dropdown { flex: 1 1 auto; }
+        .cr-savebar { bottom: 0.5rem; }
+    }
+    @media (prefers-reduced-motion: reduce) { .cr-seg button { transition: none; } }
+</style>
+
+{# grade -> colour group. The grade letters come from the school's grading scale. #}
+{% set grade_tone = {'A+': 'g-top', 'A': 'g-2', 'B': 'g-3', 'C': 'g-4', 'D': 'g-5', 'F': 'g-low'} %}
+
+<div class="cr-head">
     <div>
-        <p class="eyebrow mb-2">Results matrix</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-chart-line text-primary me-2"></i>Class Result Matrix</h1>
-        <p class="text-muted small mb-0">Compare performance across students and subjects for the selected class.</p>
+        <h1>Class Results</h1>
+        <p>See how every student did, write a remark and print the report cards.</p>
     </div>
-    {% if selected_class_id and matrix_data %}
-    <div class="d-flex gap-2 flex-wrap">
-        <a href="{{ url_for('main.export_class_tabulation_pdf', class_id=selected_class_id,
-                            test_type=selected_type, session=session_value, announce_date=announce_value) }}"
-           class="btn btn-sm btn-dark">
-            <i class="fas fa-file-pdf me-1"></i> Export Whole Class Result (PDF)
-        </a>
-        <a href="{{ url_for('main.export_class_results_excel', class_id=selected_class_id) }}"
-           class="btn btn-sm btn-outline-success">
-            <i class="fas fa-file-excel me-1"></i> Excel
-        </a>
-        <a href="{{ url_for('main.export_class_results_csv', class_id=selected_class_id) }}"
-           class="btn btn-sm btn-outline-primary">
-            <i class="fas fa-file-csv me-1"></i> CSV
-        </a>
+    {% if selected_class_id and matrix_data and class_tests %}
+    <div class="cr-tools btn-toolbar">
         <a href="{{ url_for('main.export_all_report_cards_pdf', class_id=selected_class_id,
                             test_type=selected_type, session=session_value, announce_date=announce_value) }}"
-           class="btn btn-sm btn-danger">
+           class="btn btn-primary btn-sm">
             <i class="fas fa-file-pdf me-1"></i> All Report Cards PDF
         </a>
+        <div class="dropdown">
+            <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-download me-1"></i> More downloads
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                <li><a class="dropdown-item" href="{{ url_for('main.export_class_tabulation_pdf', class_id=selected_class_id,
+                                    test_type=selected_type, session=session_value, announce_date=announce_value) }}">
+                    <i class="fas fa-file-pdf text-danger me-2"></i>Export Whole Class Result (PDF)</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_class_results_excel', class_id=selected_class_id) }}">
+                    <i class="fas fa-file-excel text-success me-2"></i>Excel</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.export_class_results_csv', class_id=selected_class_id) }}">
+                    <i class="fas fa-file-csv text-primary me-2"></i>CSV</a></li>
+            </ul>
+        </div>
     </div>
     {% endif %}
 </div>
 
-<!-- Filter Bar -->
-<div class="card shadow-sm mb-4 bg-light border-0">
-    <div class="card-body py-2">
-        <form method="GET" action="{{ url_for('main.class_results_matrix') }}" class="row g-2 align-items-end">
-            <div class="col-md-3">
-                <label class="form-label fw-bold small text-muted mb-1">Class</label>
-                <select class="form-select" name="class_id" onchange="this.form.submit()">
-                    {% for c in classes %}
-                    <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label fw-bold small text-muted mb-1">Test Type</label>
-                <select class="form-select" name="test_type" onchange="this.form.submit()">
-                    <option value="">— All Types —</option>
-                    {% for tt in test_types %}
-                    <option value="{{ tt }}" {% if selected_type == tt %}selected{% endif %}>{{ tt }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label fw-bold small text-muted mb-1">Academic Session</label>
-                <input type="text" class="form-control" name="session" value="{{ session_value }}" placeholder="e.g. 2025-2026">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label fw-bold small text-muted mb-1">Announcement Date</label>
-                <input type="date" class="form-control" name="announce_date" value="{{ announce_value }}">
-            </div>
-            <div class="col-md-2">
-                <button type="submit" class="btn btn-dark w-100">
-                    <i class="fas fa-filter me-1"></i> Filter
-                </button>
-            </div>
-            {% if selected_type %}
-            <div class="col-auto">
-                <a href="{{ url_for('main.class_results_matrix', class_id=selected_class_id,
-                                    session=session_value, announce_date=announce_value) }}"
-                   class="btn btn-outline-secondary">
-                    <i class="fas fa-times"></i> Clear
-                </a>
-            </div>
-            {% endif %}
-        </form>
-    </div>
+{% if not classes %}
+<div class="cr-empty">
+    <div class="cr-empty-icon"><i class="fas fa-school"></i></div>
+    <p>No classes yet.</p>
+    <div class="cr-empty-sub">Add your classes and students first, then come back here to see results.</div>
+    <a class="btn btn-primary" href="{{ url_for('main.classes_list') }}"><i class="fas fa-arrow-right me-1"></i> Go to Classes</a>
 </div>
+{% else %}
 
-{% if selected_class_id %}
-<!-- Result header metadata -->
-<div class="card shadow-sm border-0 mb-4">
-    <div class="card-body py-2 d-flex flex-wrap gap-4 small align-items-center">
-        <span><span class="text-muted fw-bold">Academic Session:</span> {{ session_value or '—' }}</span>
-        <span><span class="text-muted fw-bold">Exam Type:</span> {{ selected_type or 'All Types' }}</span>
-        <span><span class="text-muted fw-bold">Result Announcement Date:</span> {{ announce_display or '—' }}</span>
-    </div>
-</div>
-{% endif %}
-
-{% if summary %}
-<!-- Summary Cards -->
-<div class="row g-3 mb-4">
-    <div class="col-6 col-md-2">
-        <div class="card border-0 shadow-sm text-center py-3">
-            <div class="fs-4 fw-bold text-primary">{{ summary.total_students }}</div>
-            <div class="small text-muted">Students</div>
+<!-- Pick the class and the kind of test -->
+<form method="GET" action="{{ url_for('main.class_results_matrix') }}" class="cr-pick" id="crPick">
+    <div class="cr-pick-row">
+        <div class="cr-field">
+            <label for="crClass">Class</label>
+            <select class="form-select" id="crClass" name="class_id" onchange="this.form.elements.test_type.value=''; this.form.submit()">
+                {% for c in classes %}
+                <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+            </select>
         </div>
-    </div>
-    <div class="col-6 col-md-2">
-        <div class="card border-0 shadow-sm text-center py-3">
-            <div class="fs-4 fw-bold text-secondary">{{ summary.total_tests }}</div>
-            <div class="small text-muted">Tests</div>
+        <div class="cr-field">
+            <label for="crType">Test Type</label>
+            <select class="form-select" id="crType" name="test_type" onchange="this.form.submit()">
+                <option value="">All Types</option>
+                {% for tt in test_types %}
+                <option value="{{ tt }}" {% if selected_type == tt %}selected{% endif %}>{{ tt }}</option>
+                {% endfor %}
+            </select>
         </div>
-    </div>
-    <div class="col-6 col-md-2">
-        <div class="card border-0 shadow-sm text-center py-3">
-            <div class="fs-4 fw-bold text-info">{{ summary.class_avg }}%</div>
-            <div class="small text-muted">Class Avg</div>
-        </div>
-    </div>
-    <div class="col-6 col-md-2">
-        <div class="card border-0 shadow-sm text-center py-3">
-            <div class="fs-4 fw-bold {% if summary.pass_rate >= 80 %}text-success{% elif summary.pass_rate >= 50 %}text-warning{% else %}text-danger{% endif %}">
-                {{ summary.pass_rate }}%
-            </div>
-            <div class="small text-muted">Pass Rate</div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm py-3 px-3 bg-success bg-opacity-10">
-            <div class="small text-muted fw-bold"><i class="fas fa-trophy text-warning me-1"></i> Top Scorer</div>
-            <div class="fw-bold text-dark">{{ summary.top_scorer }}</div>
-            <div class="small text-success fw-bold">{{ summary.top_pct }}%</div>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-{% if matrix_data %}
-<!-- Grade legend -->
-<div class="d-flex gap-3 mb-2 flex-wrap small">
-    <span><span class="badge bg-success px-2">A+</span> ≥85%</span>
-    <span><span class="badge bg-primary px-2">A</span> ≥70%</span>
-    <span><span class="badge bg-info text-dark px-2">B</span> ≥60%</span>
-    <span><span class="badge bg-warning text-dark px-2">C</span> ≥50%</span>
-    <span><span class="badge bg-secondary px-2">D</span> ≥40%</span>
-    <span><span class="badge bg-danger px-2">F</span> &lt;40%</span>
-    <span class="text-muted ms-2"><i class="fas fa-info-circle me-1"></i>Hover over marks to see grade</span>
-    <span class="text-muted ms-auto"><i class="fas fa-sort me-1"></i>Click column headers to sort</span>
-</div>
-
-<!-- Matrix Table -->
-<div class="card shadow-sm border-0">
-    <form method="POST" action="{{ url_for('main.save_class_result_remarks') }}">
-        <input type="hidden" name="class_id" value="{{ selected_class_id }}">
-        <input type="hidden" name="test_type" value="{{ selected_type }}">
-        <input type="hidden" name="session" value="{{ session_value }}">
-        <input type="hidden" name="announce_date" value="{{ announce_value }}">
-        <div class="d-flex justify-content-between align-items-center gap-2 px-3 pt-3">
-            <span class="text-muted small"><i class="fas fa-comment-dots me-1"></i>Type teacher remarks in the table below, then save.</span>
-            <button type="submit" class="btn btn-sm btn-primary">
-                <i class="fas fa-save me-1"></i> Save Remarks
+        <div class="cr-pick-info">
+            <span class="cr-chip"><i class="fas fa-calendar-days text-primary"></i>Academic Session: <b>{{ session_value or '—' }}</b></span>
+            <span class="cr-chip"><i class="fas fa-bullhorn text-primary"></i>Result Announcement Date: <b>{{ announce_display or '—' }}</b></span>
+            <button type="button" class="btn btn-link btn-sm cr-details-btn" data-bs-toggle="collapse" data-bs-target="#crDetails" aria-expanded="false" aria-controls="crDetails">
+                <i class="fas fa-pen me-1"></i>Change
             </button>
         </div>
-        <div class="card-body table-responsive p-0">
-            <table class="table table-striped table-hover align-middle mb-0" id="resultsTable">
-            <thead class="table-dark text-nowrap">
-                <tr>
-                    <th class="py-3 ps-3 sortable" data-col="0" style="cursor:pointer">
-                        Rank <i class="fas fa-sort ms-1 text-secondary"></i>
-                    </th>
-                    <th class="py-3 sortable" data-col="1" style="cursor:pointer">
-                        Roll No <i class="fas fa-sort ms-1 text-secondary"></i>
-                    </th>
-                    <th class="py-3 sortable" data-col="2" style="cursor:pointer">
-                        Student Name <i class="fas fa-sort ms-1 text-secondary"></i>
-                    </th>
-                    <th class="py-3">Father Name</th>
-                    {% for test in class_tests %}
-                    <th class="text-center py-3" title="Batch: {{ test.test_title }} — {{ test.test_date.strftime('%d %b %Y') if test.test_date else 'No Date' }} (Max: {{ test.total_marks }})">
-                        <div class="small fw-bold text-primary" style="max-width:80px; white-space:normal; line-height:1.2;">
-                            {{ test.subject_info.name if test.subject_info else 'Unknown Subject' }}
-                        </div>
-                        <div class="text-muted" style="font-size:0.65rem; margin-bottom: 2px;">
-                            {{ test.test_title | truncate(15, true, '…') }}<br>
-                            {{ test.test_date.strftime('%d %b') if test.test_date else '' }}
-                        </div>
-                        <span class="badge bg-secondary" style="font-size:0.65rem;">{{ test.test_type }} / {{ test.total_marks }}</span>
-                    </th>
-                    {% endfor %}
-                    <th class="text-center py-3 sortable" data-col="{{ class_tests|length + 4 }}" style="cursor:pointer">
-                        Total <i class="fas fa-sort ms-1 text-secondary"></i>
-                    </th>
-                    <th class="text-center py-3 sortable" data-col="{{ class_tests|length + 5 }}" style="cursor:pointer">
-                        % <i class="fas fa-sort ms-1 text-secondary"></i>
-                    </th>
-                    <th class="text-center py-3">Grade</th>
-                    <th class="text-center py-3">Result</th>
-                    <th class="py-3" style="min-width:220px;">Teacher Remarks</th>
-                    <th class="text-center py-3 pe-3">Report</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in matrix_data %}
-                {% set pct = row.percentage %}
-                <tr class="{% if pct >= 85 %}table-success{% elif pct < 40 and row.total_max > 0 %}table-danger{% endif %}">
-                    <td class="ps-3 text-center fw-bold">
-                        {% if row.rank == 1 %}<span class="text-warning">🥇</span>
-                        {% elif row.rank == 2 %}<span class="text-secondary">🥈</span>
-                        {% elif row.rank == 3 %}<span style="color:#cd7f32">🥉</span>
-                        {% else %}<span class="text-muted">{{ row.rank_label }}</span>{% endif %}
-                    </td>
-                    <td class="font-monospace fw-bold text-primary">{{ row.student.roll_number }}</td>
-                    <td class="fw-bold text-dark">{{ row.student.student_name }}</td>
-                    <td class="text-muted small">{{ row.student.father_name }}</td>
-
-                    {% for test in class_tests %}
-                    {% set score = row.scores.get(test.id) %}
-                    {% set grade = row.grades.get(test.id) %}
-                    <td class="text-center">
-                        {% if row.absent.get(test.id) %}
-                        <span class="badge bg-warning text-dark px-2 py-1" title="Absent — not counted in total or grade" data-bs-toggle="tooltip">ABS</span>
-                        {% elif score is not none %}
-                        <span class="badge
-                            {% if grade == 'A+' %}bg-success
-                            {% elif grade == 'A' %}bg-primary
-                            {% elif grade == 'B' %}bg-info text-dark
-                            {% elif grade == 'C' %}bg-warning text-dark
-                            {% elif grade == 'D' %}bg-secondary
-                            {% else %}bg-danger{% endif %}
-                            px-2 py-1"
-                            title="{{ grade }} — {{ score }}/{{ test.total_marks }}"
-                            data-bs-toggle="tooltip">
-                            {{ score }}
-                        </span>
-                        {% else %}
-                        <span class="text-muted">—</span>
-                        {% endif %}
-                    </td>
-                    {% endfor %}
-
-                    <td class="text-center fw-bold">
-                        {% if row.all_absent %}—{% else %}{{ row.total_obtained | int }} / {{ row.total_max | int }}{% endif %}
-                        {% if row.absent_count and not row.all_absent %}<div class="small fw-normal text-warning-emphasis">absent in {{ row.absent_count }}</div>{% endif %}
-                    </td>
-                    <td class="text-center fw-bold
-                        {% if pct >= 70 %}text-success
-                        {% elif pct >= 40 %}text-warning
-                        {% else %}text-danger{% endif %}">
-                        {% if row.all_absent %}—{% else %}{{ '%s%%'|format(pct) }}{% endif %}
-                    </td>
-                    <td class="text-center">
-                        <span class="badge
-                            {% if row.overall_grade == 'A+' %}bg-success
-                            {% elif row.overall_grade == 'A' %}bg-primary
-                            {% elif row.overall_grade == 'B' %}bg-info text-dark
-                            {% elif row.overall_grade == 'C' %}bg-warning text-dark
-                            {% elif row.overall_grade == 'D' %}bg-secondary
-                            {% elif row.overall_grade == 'F' %}bg-danger
-                            {% else %}bg-light text-muted{% endif %}
-                            px-2 py-1 fs-6">
-                            {{ row.overall_grade }}
-                        </span>
-                    </td>
-                    <td class="text-center">
-                        {% if row.status == 'Pass' %}
-                        <span class="badge bg-success px-2 py-1">Pass</span>
-                        {% elif row.status == 'Fail' %}
-                        <span class="badge bg-danger px-2 py-1">Fail</span>
-                        {% elif row.status == 'Absent' %}
-                        <span class="badge bg-warning text-dark px-2 py-1">Absent</span>
-                        {% else %}
-                        <span class="text-muted">—</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <input type="text" class="form-control form-control-sm" name="remark_{{ row.student.id }}"
-                               value="{{ row.remarks or '' }}" placeholder="Remark...">
-                    </td>
-                    <td class="text-center pe-3">
-                        <a href="{{ url_for('main.student_report_card_pdf', student_id=row.student.id,
-                                            class_id=selected_class_id, test_type=selected_type,
-                                            session=session_value, announce_date=announce_value) }}"
-                           class="btn btn-sm btn-outline-danger" title="Individual Report Card PDF">
-                            <i class="fas fa-file-pdf"></i>
-                        </a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        </div>
-    </form>
-</div>
-
-{% else %}
-<div class="card shadow-sm border-0 text-center py-5">
-    <div class="card-body">
-        <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
-        <h5 class="text-muted">No results found.</h5>
-        <p class="text-muted small">
-            {% if selected_type %}No tests of type "{{ selected_type }}" found. <a href="{{ url_for('main.class_results_matrix', class_id=selected_class_id) }}">Clear filter</a>.
-            {% else %}Create tests and enter student marks to see results here.{% endif %}
-        </p>
     </div>
+    <div class="collapse cr-details" id="crDetails">
+        <div class="cr-pick-row">
+            <p class="cr-help">These two details are printed on the report cards and the class result sheet.</p>
+            <div class="cr-field">
+                <label for="crSession">Academic Session</label>
+                <input type="text" class="form-control" id="crSession" name="session" value="{{ session_value }}" placeholder="e.g. 2025-2026">
+            </div>
+            <div class="cr-field">
+                <label for="crAnnounce">Announcement Date</label>
+                <input type="date" class="form-control" id="crAnnounce" name="announce_date" value="{{ announce_value }}">
+            </div>
+            <button type="submit" class="btn btn-primary" style="height:2.7rem;border-radius:12px;font-weight:700;">
+                <i class="fas fa-check me-1"></i> Apply
+            </button>
+        </div>
+    </div>
+</form>
+
+{% if matrix_data and class_tests %}
+{% set fail_count = matrix_data | selectattr('status', 'equalto', 'Fail') | list | length %}
+{% set absent_rows = matrix_data | selectattr('status', 'equalto', 'Absent') | list | length %}
+{% set pass_rows = matrix_data | selectattr('status', 'equalto', 'Pass') | list | length %}
+
+{% if fail_count > 0 %}
+<div class="alert cr-hint py-2 px-3" role="status">
+    <b><i class="fas fa-circle-info me-1"></i>What to do now:</b> <b>{{ fail_count }}</b> student(s) did not pass. Press <b>Not passed</b> to see them, then write a remark for each.
 </div>
+{% else %}
+<div class="alert cr-hint is-good py-2 px-3" role="status">
+    <i class="fas fa-circle-check text-success me-1"></i>Everyone who sat the tests has passed. You can print the report cards now.
+</div>
+{% endif %}
+
+<!-- Summary -->
+<section class="cr-tiles" aria-label="Summary">
+    <div class="cr-tile">
+        <span class="cr-ico b"><i class="fas fa-users"></i></span>
+        <div><div class="cr-num">{{ summary.total_students }}</div><div class="cr-lab">Students</div><div class="cr-lab">{{ summary.total_tests }} tests</div></div>
+    </div>
+    <div class="cr-tile">
+        <span class="cr-ico v"><i class="fas fa-chart-simple"></i></span>
+        <div><div class="cr-num">{{ summary.class_avg }}%</div><div class="cr-lab">Class average</div></div>
+    </div>
+    <div class="cr-tile {% if summary.pass_rate >= 80 %}is-good{% elif summary.pass_rate >= 50 %}is-warn{% else %}is-bad{% endif %}">
+        <span class="cr-ico {% if summary.pass_rate >= 80 %}g{% elif summary.pass_rate >= 50 %}o{% else %}r{% endif %}"><i class="fas fa-user-check"></i></span>
+        <div><div class="cr-num">{{ summary.pass_rate }}%</div><div class="cr-lab">Pass Rate</div><div class="cr-lab">{{ summary.pass_count }} passed, {{ fail_count }} not passed</div></div>
+    </div>
+    <div class="cr-tile">
+        <span class="cr-ico o"><i class="fas fa-trophy"></i></span>
+        <div><div class="cr-num is-name" title="{{ summary.top_scorer }}">{{ summary.top_scorer }}</div><div class="cr-lab">Top Scorer</div><div class="cr-lab">{{ summary.top_pct }}%</div></div>
+    </div>
+</section>
+
+<!-- Tools -->
+<div class="cr-toolbar">
+    <div class="cr-search">
+        <i class="fas fa-search"></i>
+        <input type="text" class="form-control" id="crSearch" aria-label="Find a student"
+               placeholder="Find a student by name or roll no…" autocomplete="off">
+    </div>
+    <div class="cr-seg" id="crModes" role="group" aria-label="Show">
+        <button type="button" class="active" data-mode="all">All students <span class="n">{{ matrix_data | length }}</span></button>
+        <button type="button" data-mode="pass">Passed <span class="n">{{ pass_rows }}</span></button>
+        <button type="button" class="bad" data-mode="fail">Not passed <span class="n">{{ fail_count }}</span></button>
+        {% if absent_rows %}<button type="button" data-mode="absent">Absent <span class="n">{{ absent_rows }}</span></button>{% endif %}
+    </div>
+    <select class="form-select" id="crSort" aria-label="Sort by">
+        <option value="rank">Position (1st first)</option>
+        <option value="name">Name (A to Z)</option>
+        <option value="roll">Roll No</option>
+        <option value="high">Highest marks first</option>
+        <option value="low">Lowest marks first</option>
+    </select>
+    <button type="button" class="btn btn-link btn-sm cr-clear" id="crClear" hidden>
+        <i class="fas fa-rotate-left me-1"></i>Clear filters
+    </button>
+</div>
+
+<div class="cr-count">
+    <span>Showing <strong id="crCount">{{ matrix_data | length }}</strong> of <strong>{{ matrix_data | length }}</strong> students</span>
+    <details>
+        <summary><i class="fas fa-circle-question me-1"></i>How grades work</summary>
+        <div class="cr-legend">
+            {% for item in grading_scale %}
+            <div>
+                <span class="cr-grade {{ grade_tone.get(item.grade, 'g-na') }}" dir="ltr">{{ item.grade }}</span>
+                {% if loop.last and not loop.first %}<span>Below {{ '%g'|format(grading_scale[loop.index0 - 1].min | float) }}%</span>
+                {% else %}<span>{{ '%g'|format(item.min | float) }}% and above</span>{% endif %}
+            </div>
+            {% endfor %}
+            <p>A student passes with any grade except F.</p>
+        </div>
+    </details>
+</div>
+
+<!-- Marks table -->
+<form method="POST" action="{{ url_for('main.save_class_result_remarks') }}" id="crForm">
+    <input type="hidden" name="class_id" value="{{ selected_class_id }}">
+    <input type="hidden" name="test_type" value="{{ selected_type }}">
+    <input type="hidden" name="session" value="{{ session_value }}">
+    <input type="hidden" name="announce_date" value="{{ announce_value }}">
+
+    <div class="cr-reg">
+        <div class="table-responsive">
+            <table class="table align-middle" id="resultsTable">
+                <thead>
+                    <tr>
+                        <th class="cr-stick">Student</th>
+                        {% for test in class_tests %}
+                        <th class="text-center" title="{{ test.test_title }} — {{ test.test_date.strftime('%d %b %Y') if test.test_date else '' }}">
+                            <span class="cr-sub-name">{{ test.subject_info.name if test.subject_info else 'Unknown Subject' }}</span>
+                            <span class="cr-sub-test">{{ test.test_title }}</span>
+                            <span class="cr-sub-max">out of {{ '%g'|format(test.total_marks) }}</span>
+                        </th>
+                        {% endfor %}
+                        <th class="text-center">Total</th>
+                        <th class="text-center">%</th>
+                        <th class="text-center">Grade</th>
+                        <th class="text-center">Result</th>
+                        <th>Teacher Remarks</th>
+                        <th class="text-center">Report</th>
+                    </tr>
+                </thead>
+                <tbody id="crBody">
+                    {% for row in matrix_data %}
+                    {% set pct = row.percentage %}
+                    {% set rank_key = row.rank if row.rank else 9999 %}
+                    {% set has_marks = row.total_max > 0 and not row.all_absent %}
+                    <tr class="cr-row {% if row.status == 'Fail' %}is-fail{% elif row.rank == 1 %}is-top{% endif %}"
+                        data-status="{{ row.status | lower if row.status in ('Pass', 'Fail', 'Absent') else 'none' }}"
+                        data-rank="{{ rank_key }}"
+                        data-name="{{ row.student.student_name | lower }}"
+                        data-roll="{{ row.student.roll_number }}"
+                        data-pct="{{ pct if has_marks else -1 }}"
+                        data-search="{{ (row.student.student_name ~ ' ' ~ (row.student.father_name or '') ~ ' ' ~ row.student.roll_number) | lower }}">
+                        <td class="cr-stick">
+                            <div class="cr-stu">
+                                {% if row.rank in (1, 2, 3) %}
+                                <span class="cr-rank medal" title="{{ row.rank_label }}">{% if row.rank == 1 %}🥇{% elif row.rank == 2 %}🥈{% else %}🥉{% endif %}</span>
+                                {% else %}
+                                <span class="cr-rank">{{ row.rank_label if row.rank_label else '—' }}</span>
+                                {% endif %}
+                                <div style="min-width:0;">
+                                    <span class="cr-name">{{ row.student.student_name }}</span>
+                                    <div class="cr-sub">
+                                        <span class="roll">Roll {{ row.student.roll_number }}</span>
+                                        {% if row.student.father_name %}<span title="Father Name">{{ row.student.father_name }}</span>{% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+
+                        {% for test in class_tests %}
+                        {% set score = row.scores.get(test.id) %}
+                        {% set grade = row.grades.get(test.id) %}
+                        <td class="text-center">
+                            {% if row.absent.get(test.id) %}
+                            <span class="cr-mark abs g-abs" title="Absent — not counted in total or grade">ABS</span>
+                            {% elif score is not none %}
+                            <span class="cr-mark {{ grade_tone.get(grade, 'g-na') }}" dir="ltr" title="{{ grade }} — {{ '%g'|format(score) }}/{{ '%g'|format(test.total_marks) }}">{{ '%g'|format(score) }}</span>
+                            {% else %}
+                            <span class="cr-none">—</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+
+                        <td class="text-center">
+                            <div class="cr-total" dir="ltr">
+                                {% if row.all_absent %}—{% else %}{{ '%g'|format(row.total_obtained) }} / {{ '%g'|format(row.total_max) }}{% endif %}
+                                {% if row.absent_count and not row.all_absent %}<small>absent in {{ row.absent_count }}</small>{% endif %}
+                            </div>
+                        </td>
+                        <td class="text-center">
+                            {% if has_marks %}
+                            <span dir="ltr" class="cr-pct {% if pct >= 70 %}ok{% elif pct >= 40 %}mid{% else %}low{% endif %}">{{ '%s%%'|format(pct) }}</span>
+                            {% else %}<span class="cr-none">—</span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if row.overall_grade and row.overall_grade != 'N/A' %}
+                            <span class="cr-grade {{ grade_tone.get(row.overall_grade, 'g-na') }}" dir="ltr">{{ row.overall_grade }}</span>
+                            {% else %}<span class="cr-none">—</span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if row.status == 'Pass' %}<span class="cr-pill pass">Pass</span>
+                            {% elif row.status == 'Fail' %}<span class="cr-pill fail">Fail</span>
+                            {% elif row.status == 'Absent' %}<span class="cr-pill absent">Absent</span>
+                            {% else %}<span class="cr-none">—</span>{% endif %}
+                        </td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm cr-remark" name="remark_{{ row.student.id }}"
+                                   value="{{ row.remarks or '' }}" data-orig="{{ row.remarks or '' }}"
+                                   aria-label="Teacher Remarks" placeholder="Write a remark…">
+                        </td>
+                        <td class="text-center">
+                            <a href="{{ url_for('main.student_report_card_pdf', student_id=row.student.id,
+                                                class_id=selected_class_id, test_type=selected_type,
+                                                session=session_value, announce_date=announce_value) }}"
+                               class="btn btn-sm btn-outline-danger cr-card-btn" title="Individual Report Card PDF" aria-label="Individual Report Card PDF">
+                                <i class="fas fa-file-pdf"></i><span class="visually-hidden">PDF</span>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="cr-nomatch" id="crNoMatch" hidden>No student matches your search.</div>
+    </div>
+
+    <div class="cr-savebar" id="crSaveBar" hidden role="status">
+        <span><i class="fas fa-pen-to-square me-2"></i><strong id="crDirty">0</strong> remark(s) not saved yet</span>
+        <button type="submit" class="btn btn-light btn-sm"><i class="fas fa-save me-1"></i> Save Remarks</button>
+    </div>
+</form>
+
+{% elif class_tests %}
+<div class="cr-empty">
+    <div class="cr-empty-icon"><i class="fas fa-user-graduate"></i></div>
+    <p>This class has no students yet.</p>
+    <div class="cr-empty-sub">Add students to this class and their results will appear here.</div>
+    <a class="btn btn-primary" href="{{ url_for('main.students_list') }}"><i class="fas fa-arrow-right me-1"></i> Go to Students</a>
+</div>
+{% else %}
+<div class="cr-empty">
+    <div class="cr-empty-icon"><i class="fas fa-clipboard-list"></i></div>
+    {% if selected_type %}
+    <p>No tests of this type for this class.</p>
+    <div class="cr-empty-sub">Choose another test type, or show all of them.</div>
+    <a class="btn btn-primary" href="{{ url_for('main.class_results_matrix', class_id=selected_class_id, session=session_value, announce_date=announce_value) }}"><i class="fas fa-eye me-1"></i> Show all test types</a>
+    {% else %}
+    <p>No tests for this class yet.</p>
+    <div class="cr-empty-sub">Make a test and enter the marks. The results will appear here by themselves.</div>
+    <a class="btn btn-primary" href="{{ url_for('main.tests_list') }}"><i class="fas fa-arrow-right me-1"></i> Go to Class Tests</a>
+    {% endif %}
+</div>
+{% endif %}
 {% endif %}
 
 <script>
-// Enable Bootstrap tooltips
-document.addEventListener('DOMContentLoaded', function () {
-    var tooltips = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    tooltips.forEach(function (el) { new bootstrap.Tooltip(el); });
-});
+(function () {
+    var body = document.getElementById('crBody');
+    if (!body) return;
+    var rows = [].slice.call(body.querySelectorAll('tr.cr-row'));
+    var box = document.getElementById('crSearch');
+    var sortBox = document.getElementById('crSort');
+    var clearBtn = document.getElementById('crClear');
+    var counter = document.getElementById('crCount');
+    var noMatch = document.getElementById('crNoMatch');
+    var mode = 'all';
+    var KEY = 'sm.resultsFilters';
+    var CLASS_ID = '{{ selected_class_id }}';
+    var restoring = false;
 
-// Sortable table
-document.querySelectorAll('.sortable').forEach(function(th) {
-    th.addEventListener('click', function() {
-        var table = document.getElementById('resultsTable');
-        var tbody = table.querySelector('tbody');
-        var col   = parseInt(this.dataset.col);
-        var rows  = Array.from(tbody.querySelectorAll('tr'));
-        var asc   = this.dataset.order !== 'asc';
-        this.dataset.order = asc ? 'asc' : 'desc';
+    function num(row, name) { return parseFloat(row.dataset[name]) || 0; }
+    var sorters = {
+        rank: function (a, b) { return num(a, 'rank') - num(b, 'rank') || a.dataset.name.localeCompare(b.dataset.name); },
+        name: function (a, b) { return a.dataset.name.localeCompare(b.dataset.name); },
+        roll: function (a, b) { return a.dataset.roll.localeCompare(b.dataset.roll, undefined, {numeric: true}); },
+        high: function (a, b) { return num(b, 'pct') - num(a, 'pct'); },
+        low: function (a, b) {
+            var x = num(a, 'pct'), y = num(b, 'pct');
+            if (x < 0 && y >= 0) return 1;      // students with no marks go last
+            if (y < 0 && x >= 0) return -1;
+            return x - y;
+        }
+    };
 
-        // Reset all sort icons
-        document.querySelectorAll('.sortable i').forEach(function(i) {
-            i.className = 'fas fa-sort ms-1 text-secondary';
+    function apply() {
+        var needle = (box.value || '').trim().toLowerCase();
+        var shown = 0;
+        rows.sort(sorters[sortBox.value] || sorters.rank).forEach(function (row) {
+            body.appendChild(row);
+            var ok = (!needle || row.dataset.search.indexOf(needle) !== -1) &&
+                     (mode === 'all' || row.dataset.status === mode);
+            row.hidden = !ok;
+            if (ok) shown++;
         });
-        this.querySelector('i').className = 'fas fa-sort-' + (asc ? 'up' : 'down') + ' ms-1 text-warning';
+        counter.textContent = shown;
+        noMatch.hidden = shown !== 0;
+        clearBtn.hidden = !(needle || mode !== 'all');
+        if (!restoring) {
+            try { sessionStorage.setItem(KEY, JSON.stringify({cls: CLASS_ID, q: needle, mode: mode, sort: sortBox.value})); } catch (e) {}
+        }
+    }
 
-        rows.sort(function(a, b) {
-            var aVal = a.cells[col] ? a.cells[col].innerText.trim() : '';
-            var bVal = b.cells[col] ? b.cells[col].innerText.trim() : '';
-            var aNum = parseFloat(aVal.replace('%','').replace('/',''));
-            var bNum = parseFloat(bVal.replace('%','').replace('/',''));
-            if (!isNaN(aNum) && !isNaN(bNum)) {
-                return asc ? aNum - bNum : bNum - aNum;
-            }
-            return asc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    function setMode(next) {
+        mode = next;
+        document.querySelectorAll('#crModes button').forEach(function (btn) {
+            btn.classList.toggle('active', btn.dataset.mode === mode);
         });
-        rows.forEach(function(r) { tbody.appendChild(r); });
+        apply();
+    }
+
+    document.querySelectorAll('#crModes button').forEach(function (btn) {
+        btn.addEventListener('click', function () { setMode(btn.dataset.mode); });
     });
-});
+    box.addEventListener('input', apply);
+    sortBox.addEventListener('change', apply);
+    clearBtn.addEventListener('click', function () { box.value = ''; setMode('all'); });
+
+    // Remember the search / filter for this browser tab, so after Save Remarks the
+    // same students are still on screen. A new tab starts fresh.
+    try {
+        var saved = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+        if (saved && saved.cls === CLASS_ID) {
+            restoring = true;
+            if (saved.q) box.value = saved.q;
+            if (sorters[saved.sort]) sortBox.value = saved.sort;
+            if (['pass', 'fail', 'absent'].indexOf(saved.mode) !== -1 &&
+                document.querySelector('#crModes button[data-mode="' + saved.mode + '"]')) mode = saved.mode;
+            restoring = false;
+        }
+    } catch (e) { restoring = false; }
+    setMode(mode);
+
+    // Bar that counts the remarks still waiting to be saved + a warning before leaving the page with unsaved remarks.
+    var form = document.getElementById('crForm');
+    var bar = document.getElementById('crSaveBar');
+    var dirtyN = document.getElementById('crDirty');
+    var submitting = false;
+    function countDirty() {
+        var n = 0;
+        form.querySelectorAll('.cr-remark').forEach(function (inp) {
+            var changed = inp.value !== inp.dataset.orig;
+            inp.classList.toggle('is-changed', changed);
+            if (changed) n++;
+        });
+        dirtyN.textContent = n;
+        bar.hidden = n === 0;
+        return n;
+    }
+    form.addEventListener('input', function (e) { if (e.target.classList.contains('cr-remark')) countDirty(); });
+    form.addEventListener('submit', function () { submitting = true; });
+    window.addEventListener('beforeunload', function (e) {
+        if (!submitting && countDirty() > 0) { e.preventDefault(); e.returnValue = ''; }
+    });
+})();
 </script>
 {% endblock %}

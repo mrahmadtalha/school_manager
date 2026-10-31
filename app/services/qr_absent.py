@@ -23,6 +23,7 @@ Only one check runs per school day (``QrAbsentRun.run_date`` is unique).
 
 import logging
 from datetime import date, datetime, timedelta
+from app.timeutil import utcnow
 
 from app.database import db
 from app.models import AttendanceModel, MessageQueue, StudentModel
@@ -117,7 +118,7 @@ def _utc_after(minutes, now):
     """UTC send time for a local ``now`` plus ``minutes`` (queue times are UTC)."""
     if not minutes:
         return None
-    local_offset = datetime.now() - datetime.utcnow()
+    local_offset = datetime.now() - utcnow()
     return (now - local_offset) + timedelta(minutes=minutes)
 
 
@@ -190,7 +191,7 @@ def _apply(run, students, now, config, decided_by):
             date=today, status='Absent', is_locked=student.class_id in locked_classes))
         marked += 1
     run.marked_count = marked
-    run.decided_at = datetime.utcnow()
+    run.decided_at = utcnow()
     run.decided_by = decided_by
     run.status = 'applied'
     db.session.commit()        # the attendance is safe before any message is attempted
@@ -236,7 +237,7 @@ def reject_run(run_id, user_name='admin'):
     if run is None or run.status != 'pending':
         return False
     run.status = 'rejected'
-    run.decided_at = datetime.utcnow()
+    run.decided_at = utcnow()
     run.decided_by = user_name
     db.session.commit()
     return True

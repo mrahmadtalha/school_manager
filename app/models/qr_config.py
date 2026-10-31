@@ -6,6 +6,7 @@ restored backup or a new computer keeps every printed ID card valid.
 
 import secrets
 from datetime import datetime
+from app.timeutil import utcnow
 
 from app.database import db
 
@@ -28,7 +29,7 @@ class QrConfig(db.Model):
     secret = db.Column(db.String(128), nullable=False)
     # Let guard phones on the same Wi-Fi reach this computer (needs a restart).
     lan_access = db.Column(db.Boolean, nullable=False, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow)
 
     # -- Auto-absent (phase 3) --------------------------------------------
     # Off by default: nobody is marked absent unless the school switches it on.
@@ -76,6 +77,6 @@ class QrAbsentRun(db.Model):
     attended_count = db.Column(db.Integer, nullable=False, default=0)
     candidate_count = db.Column(db.Integer, nullable=False, default=0)
     marked_count = db.Column(db.Integer, nullable=False, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow)
     decided_at = db.Column(db.DateTime, nullable=True)
     decided_by = db.Column(db.String(80), nullable=True)

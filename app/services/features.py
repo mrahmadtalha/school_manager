@@ -129,7 +129,12 @@ def feature_for_endpoint(endpoint, module=None):
     feature = ENDPOINT_FEATURES.get(endpoint)
     if feature:
         return feature
-    return MODULE_FEATURES.get(module or '')
+    feature = MODULE_FEATURES.get(module or '')
+    if feature or not module:
+        return feature
+    # A route module that was split into a package ('app.routes.term_exams.results')
+    # belongs to the same feature as its package ('app.routes.term_exams').
+    return MODULE_FEATURES.get(module.rsplit('.', 1)[0])
 
 
 def normalize_features(value):

@@ -25,6 +25,7 @@ import hmac
 import json
 import os
 from datetime import date, datetime, time as dtime, timedelta, timezone
+from app.timeutil import utcnow
 from pathlib import Path
 
 from sqlalchemy import func
@@ -122,7 +123,7 @@ def _in_flight():
     from app.database import db
     from app.models import MessageQueue
 
-    cutoff = datetime.utcnow() - IN_FLIGHT_MAX_AGE
+    cutoff = utcnow() - IN_FLIGHT_MAX_AGE
     return (db.session.query(func.count(MessageQueue.id))
             .filter(MessageQueue.status.in_(['sending', 'sending_auto']),
                     MessageQueue.updated_at >= cutoff)

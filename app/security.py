@@ -32,6 +32,8 @@ PUBLIC_ENDPOINTS = {
     'auth.recover_reset',
     # The English / Urdu button on the login page (the route only stores the choice).
     'main.set_language',
+    # The school logo shown on the login page (it is only the logo picture).
+    'main.brand_logo',
     'static',
     'main.healthz',
     # Guard app sign-in (the route checks the password itself).

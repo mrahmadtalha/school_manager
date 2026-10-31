@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.timeutil import utcnow
 
 from flask_login import UserMixin
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -58,7 +59,7 @@ class AdminUser(UserMixin, db.Model):
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow)
     last_login_at = db.Column(db.DateTime, nullable=True)
 
     student = db.relationship('StudentModel', foreign_keys=[student_id], lazy='joined')

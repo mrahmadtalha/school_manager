@@ -1,5 +1,6 @@
 """Other Income service (Phase 3a)."""
 from datetime import datetime
+from app.timeutil import utcnow
 
 from app.database import db
 from app.models import OtherIncome, OtherIncomeCategory
@@ -98,7 +99,7 @@ def void_income(row, reason, actor=None):
         raise ValueError('This record is already voided.')
     row.is_void = True
     row.void_reason = reason[:255]
-    row.voided_at = datetime.utcnow()
+    row.voided_at = utcnow()
     row.voided_by_name = getattr(actor, 'username', None) or 'system'
     return row
 

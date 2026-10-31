@@ -64,7 +64,15 @@ def test_trial_size_threshold_covers_known_big_modules():
            if (PROJECT_ROOT / 'app' / rel).stat().st_size > TRIAL_BIG_SCRIPT_BYTES]
     for rel in big:
         assert (PROJECT_ROOT / 'app' / rel).stat().st_size > TRIAL_BIG_SCRIPT_BYTES
-    assert {'bootstrap.py', 'routes/reports.py', 'routes/students.py',
-            'routes/teachers.py', 'routes/term_exams.py',
-            'services/seed_generator.py'} <= set(big)
-    assert 'routes/settings.py' in set(big)  # grew past the limit in Phase 6
+    # bootstrap / reports / students were split into sub-modules (all under the
+    # trial limit), so they now ship obfuscated and are no longer in this set.
+    assert {'services/seed_generator.py'} <= set(big)
+    split_modules = {'bootstrap.py'}
+    for pkg in ('reports', 'students', 'fees', 'teachers', 'settings',
+                'term_exams', 'inventory'):
+        split_modules |= {f'routes/{pkg}/__init__.py'}
+    assert not split_modules & set(big)
+    assert not [rel for rel in big if rel.startswith(
+        ('routes/reports/', 'routes/students/', 'routes/fees/', 'routes/teachers/',
+         'routes/settings/', 'routes/term_exams/', 'routes/inventory/', 'migrations/'))]
+    # routes/settings used to be over the limit; it is now a package of small modules.

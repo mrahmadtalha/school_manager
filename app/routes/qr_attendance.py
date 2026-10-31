@@ -7,6 +7,7 @@ computer is refused for them - only the guard API is reachable from outside.
 
 import secrets
 from datetime import date, datetime
+from app.timeutil import utcnow
 
 from flask import (flash, g, jsonify, redirect, render_template, request,
                    send_file, session, url_for, abort)
@@ -78,7 +79,7 @@ def _start_guard_session(user, how):
     """Sign the guard in and answer the app (shared by password, QR and device sign-in)."""
     login_user(user)
     session.permanent = True
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = utcnow()
     log_action('login', entity_type='AdminUser', entity_id=user.id,
                summary=f'User "{user.username}" logged in from the guard app ({how})')
     db.session.commit()

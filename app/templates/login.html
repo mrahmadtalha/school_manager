@@ -3,63 +3,257 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login — School Manager</title>
+    <title>Sign In — {{ school.school_name if school and school.school_name else 'School Manager' }}</title>
     <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}">
     <style>
-        body { background: #1a1a2e; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-        .login-card { width: 100%; max-width: 420px; }
-        .login-header { background: #212529; color: #fff; border-radius: 12px 12px 0 0; padding: 2rem; text-align: center; position: relative; }
-        .login-lang { position: absolute; top: .75rem; inset-inline-end: .75rem; }
-        .login-body { background: #fff; border-radius: 0 0 12px 12px; padding: 2rem; }
+        :root {
+            --lg-navy: #0f3d62;
+            --lg-blue: #1b6ca8;
+            --lg-green: #198754;
+            --lg-green-dark: #146c43;
+            --lg-ink: #1f2937;
+            --lg-muted: #5b6573;
+            --lg-line: #d5dbe3;
+        }
+        * { box-sizing: border-box; }
+        body {
+            min-height: 100vh; margin: 0; padding: 1.25rem;
+            display: flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #e8f1f9 0%, #f4f8fb 55%, #e9f5ee 100%);
+            color: var(--lg-ink); font-size: 1.05rem;
+        }
+        .lg-shell {
+            width: 100%; max-width: 940px; display: grid; grid-template-columns: 1fr 1.05fr;
+            background: #fff; border-radius: 22px; overflow: hidden;
+            box-shadow: 0 18px 50px rgba(15, 61, 98, .18);
+        }
+
+        /* ---- left: the school ---- */
+        .lg-brand {
+            background: linear-gradient(160deg, var(--lg-navy) 0%, var(--lg-blue) 100%);
+            color: #fff; padding: 2.5rem 2rem; text-align: center;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem;
+        }
+        .lg-logo {
+            width: 150px; height: 150px; border-radius: 28px; background: #fff;
+            display: flex; align-items: center; justify-content: center; padding: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+        }
+        .lg-logo img { max-width: 100%; max-height: 100%; object-fit: contain; display: none; }
+        .lg-logo i { display: block; font-size: 4rem; color: var(--lg-blue); }
+        .lg-logo.has-logo img { display: block; }
+        .lg-logo.has-logo i { display: none; }
+        .lg-logo.has-logo.img-failed img { display: none; }
+        .lg-logo.has-logo.img-failed i { display: block; }
+        .lg-school { font-size: 1.7rem; font-weight: 800; line-height: 1.25; margin: .25rem 0 0; }
+        .lg-contact { font-size: .95rem; color: rgba(255, 255, 255, .85); line-height: 1.6; }
+        .lg-contact i { margin-inline-end: .4rem; opacity: .8; }
+        .lg-welcome {
+            margin-top: .5rem; padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, .25);
+            font-size: 1.05rem; color: rgba(255, 255, 255, .92); max-width: 300px;
+        }
+
+        /* ---- right: the form ---- */
+        .lg-form-side { padding: 2.5rem 2.25rem; position: relative; }
+        .lg-lang { position: absolute; top: 1rem; inset-inline-end: 1rem; font-weight: 600; }
+        .lg-title { font-size: 1.9rem; font-weight: 800; margin: .5rem 0 .25rem; color: var(--lg-navy); }
+        .lg-sub { color: var(--lg-muted); margin-bottom: 1.5rem; font-size: 1rem; }
+        .lg-label { display: block; font-weight: 700; margin-bottom: .35rem; font-size: 1.05rem; }
+        .lg-field { position: relative; }
+        .lg-field > i.lg-ico {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            inset-inline-start: 1rem; color: #7b8794; font-size: 1.1rem; pointer-events: none;
+        }
+        .lg-input {
+            width: 100%; min-height: 56px; font-size: 1.1rem; color: var(--lg-ink);
+            border: 2px solid var(--lg-line); border-radius: 12px; background: #fff;
+            padding-block: .6rem; padding-inline: 2.8rem 1rem; transition: border-color .15s, box-shadow .15s;
+        }
+        .lg-input::placeholder { color: #9aa4b2; }
+        .lg-input:focus { outline: none; border-color: var(--lg-blue); box-shadow: 0 0 0 4px rgba(27, 108, 168, .18); }
+        .lg-input.has-eye { padding-inline-end: 6rem; }
+        .lg-eye {
+            position: absolute; top: 50%; transform: translateY(-50%); inset-inline-end: .5rem;
+            border: 0; background: #eef2f6; color: var(--lg-ink); border-radius: 8px;
+            padding: .4rem .75rem; font-weight: 600; font-size: .92rem; cursor: pointer;
+        }
+        .lg-eye:hover { background: #e1e8ef; }
+        .lg-eye:focus-visible { outline: 3px solid rgba(27, 108, 168, .5); }
+        .lg-eye .on-hide { display: none; }
+        .lg-eye.is-shown .on-show { display: none; }
+        .lg-eye.is-shown .on-hide { display: inline; }
+        .lg-caps {
+            display: none; margin-top: .5rem; padding: .5rem .75rem; border-radius: 10px;
+            background: #fff4d6; color: #7a5400; font-size: .92rem; font-weight: 600;
+        }
+        .lg-caps.show { display: block; }
+        .lg-btn {
+            width: 100%; min-height: 58px; border: 0; border-radius: 12px; cursor: pointer;
+            background: var(--lg-green); color: #fff; font-size: 1.2rem; font-weight: 800;
+            display: flex; align-items: center; justify-content: center; gap: .6rem;
+            transition: background .15s, transform .05s;
+        }
+        .lg-btn:hover { background: var(--lg-green-dark); }
+        .lg-btn:active { transform: translateY(1px); }
+        .lg-btn:focus-visible { outline: 4px solid rgba(25, 135, 84, .35); }
+        .lg-btn[disabled] { opacity: .75; cursor: wait; }
+        .lg-btn .on-busy { display: none; }
+        .lg-btn.is-busy .on-idle { display: none; }
+        .lg-btn.is-busy .on-busy { display: inline; }
+        .lg-forgot { display: block; text-align: center; margin-top: 1.1rem; font-weight: 600; color: var(--lg-blue); text-decoration: none; }
+        .lg-forgot:hover { text-decoration: underline; }
+        .lg-first {
+            margin-top: 1.5rem; padding: .9rem 1rem; border-radius: 12px;
+            background: #eef6fd; border: 1px dashed #9cc4e4; font-size: .95rem;
+        }
+        .lg-first strong { display: block; margin-bottom: .35rem; color: var(--lg-navy); }
+        .lg-first code { direction: ltr; unicode-bidi: isolate; font-size: 1rem; background: #fff; border-radius: 6px; padding: .1rem .45rem; color: #b02a37; }
+        .lg-first .lg-note { color: var(--lg-muted); margin-top: .4rem; font-size: .88rem; }
+        .lg-foot { margin-top: 1.25rem; text-align: center; color: var(--lg-muted); font-size: .9rem; }
+        .lg-alert { border-radius: 12px; font-size: 1rem; font-weight: 600; padding: .75rem 1rem; }
+
+        /* ---- phones and small tablets: school on top, form below ---- */
+        @media (max-width: 767.98px) {
+            body { padding: 0; align-items: stretch; background: #fff; }
+            .lg-shell { grid-template-columns: 1fr; border-radius: 0; box-shadow: none; min-height: 100vh; align-content: start; }
+            .lg-brand { padding: 1.25rem 1rem; gap: 1rem; flex-direction: row; text-align: start; justify-content: flex-start; }
+            .lg-logo { width: 84px; height: 84px; border-radius: 18px; padding: 8px; flex: 0 0 auto; }
+            .lg-logo i { font-size: 2.4rem; }
+            .lg-school { font-size: 1.25rem; margin: 0; }
+            .lg-contact, .lg-welcome { display: none; }
+            .lg-form-side { padding: 1.5rem 1.25rem 2rem; }
+            .lg-lang { position: static; display: inline-block; margin-bottom: .5rem; }
+            .lg-title { font-size: 1.6rem; }
+        }
+        @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
     </style>
 </head>
 <body>
-<div class="login-card shadow-lg">
-    <div class="login-header">
+<div class="lg-shell">
+
+    <aside class="lg-brand">
+        <div class="lg-logo{% if school and school.logo_filename %} has-logo{% endif %}" id="lgLogo">
+            {% if school and school.logo_filename %}
+            <img src="{{ url_for('main.brand_logo') }}" alt="School logo"
+                 onerror="this.parentNode.classList.add('img-failed')">
+            {% endif %}
+            <i class="fas fa-school" aria-hidden="true"></i>
+        </div>
+        <div>
+            <h1 class="lg-school">{{ school.school_name if school and school.school_name else 'School Manager' }}</h1>
+            {% if school and (school.address or school.phone) %}
+            <div class="lg-contact">
+                {% if school.address %}<div><i class="fas fa-location-dot"></i>{{ school.address }}</div>{% endif %}
+                {% if school.phone %}<div><i class="fas fa-phone"></i><span dir="ltr">{{ school.phone }}</span></div>{% endif %}
+            </div>
+            {% endif %}
+            <p class="lg-welcome mb-0 mx-auto">Welcome! Sign in to open your school records.</p>
+        </div>
+    </aside>
+
+    <main class="lg-form-side">
         {% if has_feature('language_switch') %}
-        <a class="btn btn-sm btn-outline-light login-lang" id="loginLang"
+        <a class="btn btn-sm btn-outline-secondary lg-lang" id="loginLang"
            href="{{ url_for('main.set_language', code=('en' if ui_lang == 'ur' else 'ur')) }}"
            title="{{ 'English' if ui_lang == 'ur' else 'اردو' }}">
             <i class="fas fa-language me-1"></i>{{ 'English' if ui_lang == 'ur' else 'اردو' }}
         </a>
         {% endif %}
-        <i class="fas fa-school fa-3x text-warning mb-3"></i>
-        <h4 class="fw-bold mb-0">School Manager</h4>
-        <p class="text-secondary small mt-1 mb-0">Sign in to continue</p>
-    </div>
-    <div class="login-body">
+
+        <h2 class="lg-title">Sign In</h2>
+        <p class="lg-sub">Type your username and password, then press the green button.</p>
+
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
-              <div class="alert alert-{{ category }} py-2 small">{{ message }}</div>
+              <div class="alert alert-{{ category }} lg-alert" role="alert">{{ message }}</div>
             {% endfor %}
           {% endif %}
         {% endwith %}
 
-        <form method="POST" action="{{ url_for('auth.login') }}">
+        <form method="POST" action="{{ url_for('auth.login', next=request.args.get('next')) }}" id="lgForm" autocomplete="on">
             <div class="mb-3">
-                <label class="form-label fw-bold">Username</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="fas fa-user"></i></span>
-                    <input type="text" class="form-control" name="username" placeholder="Enter username" required autofocus>
+                <label class="lg-label" for="lgUser">Username</label>
+                <div class="lg-field">
+                    <i class="fas fa-user lg-ico" aria-hidden="true"></i>
+                    <input type="text" class="lg-input" id="lgUser" name="username" value="{{ typed_username or '' }}"
+                           placeholder="Type your username" required autocomplete="username"
+                           autocapitalize="none" spellcheck="false" {% if not typed_username %}autofocus{% endif %}>
                 </div>
             </div>
             <div class="mb-4">
-                <label class="form-label fw-bold">Password</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="fas fa-lock"></i></span>
-                    <input type="password" class="form-control" name="password" placeholder="Enter password" required>
+                <label class="lg-label" for="lgPass">Password</label>
+                <div class="lg-field">
+                    <i class="fas fa-lock lg-ico" aria-hidden="true"></i>
+                    <input type="password" class="lg-input has-eye" id="lgPass" name="password"
+                           placeholder="Type your password" required autocomplete="current-password"
+                           {% if typed_username %}autofocus{% endif %}>
+                    <button type="button" class="lg-eye" id="lgEye" aria-controls="lgPass">
+                        <span class="on-show"><i class="fas fa-eye me-1"></i>Show</span>
+                        <span class="on-hide"><i class="fas fa-eye-slash me-1"></i>Hide</span>
+                    </button>
                 </div>
+                <div class="lg-caps" id="lgCaps" role="status"><i class="fas fa-triangle-exclamation me-1"></i>Caps Lock is on. Your password may be typed in capital letters.</div>
             </div>
-            <button type="submit" class="btn btn-dark w-100 py-2 fw-bold">
-                <i class="fas fa-sign-in-alt me-2"></i> Sign In
+            <button type="submit" class="lg-btn" id="lgSubmit">
+                <i class="fas fa-right-to-bracket"></i>
+                <span class="on-idle">Sign In</span>
+                <span class="on-busy">Signing in…</span>
             </button>
         </form>
-        <p class="text-center small mt-3 mb-0"><a href="{{ url_for('auth.recover') }}" class="text-muted"><i class="fas fa-question-circle me-1"></i>Forgot username / password?</a></p>
-        <p class="text-muted text-center small mt-3 mb-0">Default: <code>admin</code> / <code>admin123</code></p>
-    </div>
+
+        <a href="{{ url_for('auth.recover') }}" class="lg-forgot"><i class="fas fa-circle-question me-1"></i>Forgot username / password?</a>
+
+        {% if show_default_hint %}
+        <div class="lg-first">
+            <strong><i class="fas fa-circle-info me-1"></i>First time here? Use this starting login:</strong>
+            <div><span>Username:</span> <code>admin</code></div>
+            <div><span>Password:</span> <code>admin123</code></div>
+            <div class="lg-note">Please change this password after you sign in.</div>
+        </div>
+        {% endif %}
+
+        <p class="lg-foot mb-0">Need help? Ask your school administrator.</p>
+    </main>
 </div>
+
 <script src="{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
+<script>
+(function () {
+    try {
+        var pass = document.getElementById('lgPass');
+        var eye = document.getElementById('lgEye');
+        var caps = document.getElementById('lgCaps');
+        var form = document.getElementById('lgForm');
+        var btn = document.getElementById('lgSubmit');
+
+        eye.addEventListener('click', function () {
+            var show = pass.type === 'password';
+            pass.type = show ? 'text' : 'password';
+            eye.classList.toggle('is-shown', show);
+            pass.focus();
+        });
+
+        function checkCaps(e) {
+            if (e.getModifierState) { caps.classList.toggle('show', e.getModifierState('CapsLock')); }
+        }
+        pass.addEventListener('keydown', checkCaps);
+        pass.addEventListener('keyup', checkCaps);
+        pass.addEventListener('blur', function () { caps.classList.remove('show'); });
+
+        // One press only: stops a second click from sending the form twice.
+        form.addEventListener('submit', function () {
+            btn.classList.add('is-busy');
+            btn.disabled = true;
+        });
+        // Coming back with the Back button must not leave the button stuck.
+        window.addEventListener('pageshow', function () {
+            btn.classList.remove('is-busy');
+            btn.disabled = false;
+        });
+    } catch (e) { /* the form still works without these helpers */ }
+})();
+</script>
 </body>
 </html>

@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.timeutil import utcnow
 from app.database import db
 
 
@@ -13,4 +14,4 @@ class StudentRemark(db.Model):
     test_type = db.Column(db.String(50), nullable=False, default='')
     session = db.Column(db.String(50), nullable=False, default='')
     remarks = db.Column(db.Text, nullable=False, default='')
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)

@@ -17,6 +17,7 @@ the application transaction. Failures are logged and swallowed.
 import json
 import logging
 from datetime import date, datetime, timezone
+from app.timeutil import utcnow
 from decimal import Decimal
 
 from sqlalchemy import event, inspect as sa_inspect, update
@@ -177,7 +178,7 @@ def build_log(action, *, entity_type=None, entity_id=None, summary='', before=No
     ip_address, user_agent = _request_meta()
 
     return AuditLog(
-        created_at=datetime.utcnow(),
+        created_at=utcnow(),
         user_id=user_id,
         username=username or 'system',
         role=role or 'system',

@@ -1,127 +1,380 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+<style>
+    /* ------------------------------------------------------------------
+       Term Examinations - same family as Class Tests and Students: plain
+       header, one summary band, one tool bar, and the exams shown either
+       as cards or as a list. Colours come from the school's brand
+       (--bs-primary-rgb). Everything is scoped under .tl- so nothing leaks.
+       ------------------------------------------------------------------ */
+    .tl-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0.25rem 0 1.1rem; }
+    .tl-head h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; color: #0f172a; margin: 0; line-height: 1.1; }
+    .tl-head p { margin: 0.35rem 0 0; color: #64748b; font-size: 0.92rem; }
+    .tl-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .tl-tools .btn { box-shadow: none; }
+    .tl-switch { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; }
+    .tl-switch a { padding: 0.4rem 0.9rem; border-radius: 9px; font-size: 0.85rem; font-weight: 600; color: #475569; text-decoration: none; }
+    .tl-switch a:hover { color: #0f172a; }
+    .tl-switch a.on { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+
+    .tl-hint { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid rgb(var(--bs-primary-rgb)); border-radius: 14px; color: #475569; font-size: 0.88rem; }
+    .tl-hint b { color: #0f172a; }
+
+    .tl-tiles { display: grid; grid-template-columns: repeat(4, 1fr); background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; margin-bottom: 0.9rem; overflow: hidden; }
+    .tl-tile { padding: 0.85rem 1.2rem; display: flex; align-items: center; gap: 0.8rem; min-width: 0; }
+    .tl-tile + .tl-tile { border-left: 1px solid #eef2f7; }
+    .tl-ico { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-size: 1.05rem; }
+    .tl-ico.b { background: #dbeafe; color: #1d4ed8; } .tl-ico.v { background: #ede9fe; color: #6d28d9; }
+    .tl-ico.g { background: #dcfce7; color: #15803d; } .tl-ico.o { background: #fef3c7; color: #b45309; }
+    .tl-num { font-size: 1.65rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .tl-lab { font-size: 0.78rem; color: #64748b; margin-top: 0.15rem; }
+    .tl-tile.is-todo { background: #fffbf3; box-shadow: inset 4px 0 0 #f59e0b; }
+    .tl-tile.is-todo .tl-num { color: #92400e; }
+    .tl-tile.is-clear { background: #f3fbf6; }
+
+    .tl-toolbar { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 0.7rem; margin-bottom: 0.9rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
+    .tl-search { position: relative; flex: 1 1 14rem; min-width: 11rem; }
+    .tl-search i { position: absolute; left: 0.95rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+    .tl-search input { padding-left: 2.5rem; height: 2.7rem; border-radius: 12px; border-color: #e2e8f0; background: #f8fafc; }
+    .tl-search input:focus { background: #fff; }
+    .tl-toolbar .form-select { height: 2.7rem; width: auto; min-width: 9.5rem; max-width: 14rem; border-radius: 12px; border-color: #e2e8f0; background-color: #f8fafc; }
+    .tl-seg { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+    .tl-seg button { border: 0; background: transparent; padding: 0.45rem 0.85rem; border-radius: 9px; font-size: 0.85rem; font-weight: 600; color: #475569; white-space: nowrap; transition: background 0.15s ease, color 0.15s ease; }
+    .tl-seg button:hover { color: #0f172a; }
+    .tl-seg button:focus-visible { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 1px; }
+    .tl-seg button.active { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+    .tl-seg button .n { font-variant-numeric: tabular-nums; opacity: 0.7; margin-left: 0.2rem; }
+    .tl-seg button.todo.active { background: #fde9bd; color: #92400e; }
+    .tl-clear { font-weight: 700; text-decoration: none; padding: 0.3rem 0.5rem; white-space: nowrap; }
+    .tl-viewbox { margin-left: auto; display: inline-flex; align-items: center; gap: 0.5rem; }
+    .tl-viewbox .tl-viewlab { font-size: 0.8rem; color: #64748b; font-weight: 600; }
+    .tl-count { font-size: 0.86rem; color: #64748b; margin: 0 0.2rem 0.7rem; }
+    .tl-count strong { color: #0f172a; }
+    .tl-view[hidden] { display: none !important; }
+
+    .tl-type { display: inline-block; padding: 0.15rem 0.65rem; border-radius: 99px; background: color-mix(in srgb, var(--tone) 14%, #fff); color: var(--tone); font-size: 0.74rem; font-weight: 800; white-space: nowrap; }
+    .tl-status { display: inline-block; padding: 0.15rem 0.65rem; border-radius: 99px; font-size: 0.74rem; font-weight: 700; white-space: nowrap; }
+    .tl-status.scheduled { background: #f1f5f9; color: #475569; }
+    .tl-status.ongoing { background: #fef3c7; color: #92400e; }
+    .tl-status.published { background: #dcfce7; color: #166534; }
+    .tl-date { font-size: 0.82rem; font-weight: 600; color: #64748b; }
+    .tone-info { --tone: #0ea5e9; } .tone-primary { --tone: #3b82f6; } .tone-success { --tone: #16a34a; }
+    .tone-warning { --tone: #f59e0b; } .tone-danger { --tone: #dc2626; } .tone-secondary { --tone: #64748b; }
+    .tl-meter { height: 9px; border-radius: 99px; background: #eef2f7; overflow: hidden; }
+    .tl-meter i { display: block; height: 100%; border-radius: 99px; background: #f59e0b; }
+    .tl-meter i.done { background: #16a34a; }
+    .tl-pill { display: inline-block; padding: 0.15rem 0.65rem; border-radius: 99px; font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
+    .tl-pill.done { background: #dcfce7; color: #166534; } .tl-pill.partial { background: #fef3c7; color: #92400e; }
+    .tl-pill.none { background: #fee2e2; color: #991b1b; } .tl-pill.empty { background: #f1f5f9; color: #64748b; }
+
+    .tl-card { --tone: #64748b; height: 100%; background: #fff; border: 1px solid #e2e8f0; border-top: 5px solid var(--tone); border-radius: 18px; padding: 1rem 1.1rem 1.1rem; display: flex; flex-direction: column; gap: 0.75rem; transition: box-shadow 0.15s ease, transform 0.15s ease; }
+    .tl-card:hover { box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08); transform: translateY(-2px); }
+    .tl-card-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+    .tl-title { font-size: 1.12rem; font-weight: 800; color: #0f172a; margin: 0; line-height: 1.25; letter-spacing: -0.01em; }
+    .tl-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; }
+    .tl-fact { background: #f8fafc; border-radius: 12px; padding: 0.45rem 0.6rem; min-width: 0; }
+    .tl-fact b { display: block; font-size: 0.95rem; color: #0f172a; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tl-fact span { font-size: 0.7rem; color: #64748b; }
+    .tl-prog-row { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; font-size: 0.82rem; margin-bottom: 0.3rem; }
+    .tl-acts { display: flex; gap: 0.5rem; margin-top: auto; }
+    .tl-acts .btn-go { flex: 1; border-radius: 12px; font-weight: 700; padding: 0.55rem 0.6rem; white-space: nowrap; }
+    .tl-acts .btn-sheet { border-radius: 12px; }
+
+    .tl-reg { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; overflow: hidden; }
+    .tl-reg .table { margin: 0; }
+    .tl-reg .table thead th { background: #f8fafc; color: #64748b; font-size: 0.74rem; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding: 0.65rem 0.85rem; white-space: nowrap; }
+    .tl-reg .table > :not(caption) > * > * { padding: 0.7rem 0.85rem; border-bottom-color: #f1f5f9; }
+    .tl-reg .table tbody tr:last-child > * { border-bottom: 0; }
+    .tl-row { --tone: #64748b; cursor: pointer; }
+    .tl-row > td:first-child { box-shadow: inset 4px 0 0 var(--tone); }
+    .tl-row:hover > * { --bs-table-bg-state: rgba(var(--bs-primary-rgb), 0.045); }
+    .tl-row-title { color: #0f172a; font-weight: 800; text-decoration: none; display: block; line-height: 1.25; }
+    .tl-row:hover .tl-row-title { color: rgb(var(--bs-primary-rgb)); }
+    .tl-row-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.6rem; margin-top: 0.3rem; }
+    .tl-row-num { font-variant-numeric: tabular-nums; font-weight: 700; color: #0f172a; }
+    .tl-row-prog { min-width: 9rem; }
+    .tl-row-prog .tl-meter { height: 7px; margin-top: 0.35rem; }
+    .tl-row-acts { display: inline-flex; gap: 0.4rem; justify-content: flex-end; }
+    .tl-row-acts .btn { border-radius: 10px; font-weight: 700; white-space: nowrap; }
+
+    .tl-empty { text-align: center; padding: 3.5rem 1rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; }
+    .tl-empty .tl-empty-icon { width: 76px; height: 76px; border-radius: 24px; margin: 0 auto 1rem; display: flex; align-items: center; justify-content: center; font-size: 1.9rem; background: rgba(var(--bs-primary-rgb), 0.09); color: rgb(var(--bs-primary-rgb)); }
+    .tl-empty p { font-weight: 700; color: #334155; margin-bottom: 1rem; }
+
+    html[dir="rtl"] .tl-search i { left: auto; right: 0.95rem; }
+    html[dir="rtl"] .tl-search input { padding-left: 0.75rem; padding-right: 2.5rem; }
+    html[dir="rtl"] .tl-viewbox { margin-left: 0; margin-right: auto; }
+    html[dir="rtl"] .tl-tile + .tl-tile { border-left: 0; border-right: 1px solid #eef2f7; }
+    html[dir="rtl"] .tl-tile.is-todo { box-shadow: inset -4px 0 0 #f59e0b; }
+    html[dir="rtl"] .tl-hint { border-left-width: 1px; border-right: 4px solid rgb(var(--bs-primary-rgb)); }
+    html[dir="rtl"] .tl-row > td:first-child { box-shadow: inset -4px 0 0 var(--tone); }
+
+    @media (max-width: 991.98px) {
+        .tl-tiles { grid-template-columns: 1fr 1fr; }
+        .tl-tile:nth-child(odd) { border-left: 0; }
+        .tl-tile:nth-child(n+3) { border-top: 1px solid #eef2f7; }
+        html[dir="rtl"] .tl-tile:nth-child(odd) { border-right: 0; }
+    }
+    @media (max-width: 575.98px) {
+        .tl-tiles { grid-template-columns: 1fr; }
+        .tl-tile + .tl-tile { border-left: 0; border-top: 1px solid #eef2f7; }
+        html[dir="rtl"] .tl-tile + .tl-tile { border-right: 0; }
+        .tl-toolbar .form-select, .tl-toolbar .tl-seg { width: 100%; max-width: none; }
+        .tl-seg button { flex: 1; padding: 0.6rem 0.4rem; }
+        .tl-viewbox { margin: 0; width: 100%; }
+        .tl-viewbox .tl-seg { flex: 1; }
+        .tl-row-acts .btn-go-label { display: none; }
+        .tl-row-prog { min-width: 7rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .tl-card, .tl-seg button { transition: none; }
+        .tl-card:hover { transform: none; }
+    }
+</style>
+
+{% macro progress_pill(row) %}
+{% if row.progress_state == 'done' %}
+<span class="tl-pill done"><i class="fas fa-circle-check me-1"></i>{{ row.progress_label }}</span>
+{% elif row.progress_state == 'partial' %}
+<span class="tl-pill partial"><i class="fas fa-hourglass-half me-1"></i>{{ row.progress_label }}</span>
+{% elif row.progress_state == 'none' %}
+<span class="tl-pill none">{{ row.progress_label }}</span>
+{% else %}
+<span class="tl-pill empty">{{ row.progress_label }}</span>
+{% endif %}
+{% endmacro %}
+
+{# each date sits in its own <span> so the Urdu page can translate the month names #}
+{% macro exam_dates(exam) %}{% if exam.start_date %}{% if exam.end_date %}<span>{{ exam.start_date.strftime('%d %b') }}</span> – <span>{{ exam.end_date.strftime('%d %b %Y') }}</span>{% else %}<span>{{ exam.start_date.strftime('%d %b %Y') }}</span>{% endif %}{% else %}No dates{% endif %}{% endmacro %}
+
+{% set ns = namespace(done=0, todo=0, published=0) %}
+{% for row in exam_rows %}
+    {% if row.progress_state == 'done' %}{% set ns.done = ns.done + 1 %}{% endif %}
+    {% if row.progress_state in ['none', 'partial'] %}{% set ns.todo = ns.todo + 1 %}{% endif %}
+    {% if row.exam.status == 'Published' %}{% set ns.published = ns.published + 1 %}{% endif %}
+{% endfor %}
+{% set n_total = exam_rows | length %}
+{% set url_filtered = filters.class_id or filters.status or filters.session %}
+
+<div class="tl-head">
     <div>
-        <p class="eyebrow mb-2">Assessment center</p>
-        <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-file-signature text-primary me-2"></i>Term Examinations</h1>
-        <p class="text-muted small mb-0">Official term exams with schedules, marks and results.</p>
+        <h1>Term Examinations</h1>
+        <p>Official term exams with schedules, marks and results.</p>
     </div>
-    {% if current_user.is_admin %}
-    <div class="btn-toolbar gap-2">
-        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTermExamModal">
+    <div class="tl-tools btn-toolbar">
+        <nav class="tl-switch" aria-label="Evaluation module switch">
+            <a href="{{ url_for('main.tests_list') }}">Class Tests</a>
+            <a class="on" href="{{ url_for('main.examinations_page') }}">Term Examinations</a>
+        </nav>
+        {% if current_user.is_admin %}
+        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTermExamModal">
             <i class="fas fa-plus me-1"></i> Add Term Exam
         </button>
-    </div>
-    {% endif %}
-</div>
-
-{% set exam_active = 'examinations' %}
-{% include '_exam_module_switch.html' %}
-
-<!-- Filters -->
-<div class="card border-0 bg-light shadow-sm mb-4">
-    <div class="card-body py-2">
-        <form method="GET" action="{{ url_for('main.examinations_page') }}" class="row g-2 align-items-center">
-            <div class="col-auto"><label class="col-form-label small fw-bold text-muted">Class:</label></div>
-            <div class="col-md-3">
-                <select class="form-select form-select-sm" name="class_id" onchange="this.form.submit()">
-                    <option value="">— All Classes —</option>
-                    {% for c in classes %}
-                    <option value="{{ c.id }}" {% if filters.class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
-                    <option value="">— All Status —</option>
-                    {% for st in statuses %}
-                    <option value="{{ st }}" {% if filters.status == st %}selected{% endif %}>{{ st }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <select class="form-select form-select-sm" name="session" onchange="this.form.submit()">
-                    <option value="">— All Sessions —</option>
-                    {% for s in sessions %}
-                    <option value="{{ s }}" {% if filters.session == s %}selected{% endif %}>{{ s }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto ms-auto text-muted small">
-                <span>{{ exam_rows|length }}</span> term exam(s)
-            </div>
-        </form>
+        {% endif %}
     </div>
 </div>
 
-<!-- Exam cards -->
 {% if exam_rows %}
-<div class="row g-3">
+{% if ns.todo > 0 %}
+<div class="alert alert-info tl-hint py-2 px-3" role="status">
+    <b><i class="fas fa-circle-info me-1"></i>What to do now:</b> Press <b>Marks to enter</b> to see the exams that are waiting for marks, then press <b>Enter Marks</b> on an exam.
+</div>
+{% endif %}
+
+<!-- Summary -->
+<section class="tl-tiles" aria-label="Summary">
+    <div class="tl-tile">
+        <span class="tl-ico b"><i class="fas fa-file-signature"></i></span>
+        <div><div class="tl-num">{{ n_total }}</div><div class="tl-lab">Term exams in all</div></div>
+    </div>
+    <div class="tl-tile">
+        <span class="tl-ico v"><i class="fas fa-bullhorn"></i></span>
+        <div><div class="tl-num">{{ ns.published }}</div><div class="tl-lab">Results published</div></div>
+    </div>
+    <div class="tl-tile">
+        <span class="tl-ico g"><i class="fas fa-circle-check"></i></span>
+        <div><div class="tl-num">{{ ns.done }}</div><div class="tl-lab">Marks complete</div></div>
+    </div>
+    <div class="tl-tile {% if ns.todo > 0 %}is-todo{% else %}is-clear{% endif %}">
+        <span class="tl-ico {{ 'o' if ns.todo > 0 else 'g' }}"><i class="fas {{ 'fa-hourglass-half' if ns.todo > 0 else 'fa-check-double' }}"></i></span>
+        <div><div class="tl-num">{{ ns.todo }}</div><div class="tl-lab">{% if ns.todo > 0 %}Marks still to enter{% else %}Nothing waiting for marks{% endif %}</div></div>
+    </div>
+</section>
+
+<!-- Tools -->
+<div class="tl-toolbar">
+    <div class="tl-search">
+        <i class="fas fa-search"></i>
+        <input type="text" class="form-control" id="tlSearch" aria-label="Find an exam"
+               placeholder="Find an exam by name…" autocomplete="off">
+    </div>
+    <select class="form-select" id="classFilter" aria-label="Class" onchange="filterExams()">
+        <option value="">All Classes</option>
+        {% for c in classes %}
+        <option value="{{ c.id }}" {% if filters.class_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+    </select>
+    <select class="form-select" id="statusFilter" aria-label="Status" onchange="filterExams()">
+        <option value="">All Status</option>
+        {% for st in statuses %}
+        <option value="{{ st }}" {% if filters.status == st %}selected{% endif %}>{{ st }}</option>
+        {% endfor %}
+    </select>
+    {% if sessions|length > 1 or filters.session %}
+    <select class="form-select" id="sessionFilter" aria-label="Session" onchange="filterExams()">
+        <option value="">All Sessions</option>
+        {% for ses in sessions %}
+        <option value="{{ ses }}" {% if filters.session == ses %}selected{% endif %}>{{ ses }}</option>
+        {% endfor %}
+    </select>
+    {% endif %}
+    <div class="tl-seg tl-tabs" role="group" aria-label="Show">
+        <button type="button" class="active" data-mode="all" onclick="setExamMode('all')">All term exams <span class="n">{{ n_total }}</span></button>
+        <button type="button" class="todo" data-mode="todo" onclick="setExamMode('todo')">Marks to enter <span class="n">{{ ns.todo }}</span></button>
+        <button type="button" data-mode="done" onclick="setExamMode('done')">Marks complete <span class="n">{{ ns.done }}</span></button>
+    </div>
+    <button type="button" class="btn btn-link btn-sm tl-clear" id="tlClear" hidden onclick="clearExamFilters()">
+        <i class="fas fa-rotate-left me-1"></i>Clear filters
+    </button>
+    <div class="tl-viewbox">
+        <span class="tl-viewlab">Show exams as</span>
+        <div class="tl-seg tl-views" role="group" aria-label="Show exams as">
+            <button type="button" class="active" data-view="cards" aria-pressed="true" onclick="setExamView('cards')"><i class="fas fa-table-cells-large me-1"></i>Cards</button>
+            <button type="button" data-view="list" aria-pressed="false" onclick="setExamView('list')"><i class="fas fa-list me-1"></i>List</button>
+        </div>
+    </div>
+</div>
+
+<div class="tl-count">
+    Showing <strong id="examCount">{{ n_total }}</strong> of <strong>{{ n_total }}</strong> term exams
+    <span class="ms-2" id="noResults" hidden>No exam matches your search.</span>
+</div>
+
+<!-- View 1: one card per exam -->
+<div class="row g-3 tl-view" id="examGrid">
     {% for row in exam_rows %}
     {% set exam = row.exam %}
-    <div class="col-md-6 col-lg-4">
-        <div class="card h-100 border-0 shadow-sm">
-            <div class="card-header bg-{{ row.color }} bg-opacity-10 border-0 pb-0 pt-3 px-3">
-                <div class="d-flex justify-content-between align-items-start">
-                    <span class="badge bg-{{ row.color }} mb-2">{{ exam.exam_type }}</span>
-                    <span class="badge bg-{{ row.status_color }}">{{ exam.status }}</span>
-                </div>
-                <h6 class="fw-bold text-dark mb-2">{{ exam.name }}</h6>
+    {% set needs = row.progress_state in ['none', 'partial'] %}
+    {% set pct = ((row.filled * 100.0 / row.expected) | round | int) if row.expected else 0 %}
+    <div class="col-md-6 col-xl-4 exam-card exam-item"
+         data-class="{{ exam.class_id }}"
+         data-status="{{ exam.status }}"
+         data-session="{{ exam.session_label or '' }}"
+         data-todo="{{ 1 if needs else 0 }}"
+         data-done="{{ 1 if row.progress_state == 'done' else 0 }}"
+         data-search="{{ (exam.name ~ ' ' ~ (exam.class_info.name if exam.class_info else '')) | lower }}">
+        <div class="tl-card tone-{{ row.color }}">
+            <div class="tl-card-top">
+                <span class="tl-type">{{ exam.exam_type }}</span>
+                <span class="tl-status {{ exam.status | lower }}">{{ exam.status }}</span>
             </div>
-            <div class="card-body pt-2 pb-3">
-                <div class="row g-2 mb-2">
-                    <div class="col-6">
-                        <div class="small text-muted">Class</div>
-                        <div class="fw-bold text-dark"><i class="fas fa-chalkboard text-secondary me-1"></i>{{ exam.class_info.name if exam.class_info else 'N/A' }}</div>
-                    </div>
-                    <div class="col-6">
-                        <div class="small text-muted">Session</div>
-                        <div class="fw-bold text-dark"><i class="fas fa-calendar-week text-secondary me-1"></i>{{ exam.session_label or '—' }}</div>
-                    </div>
-                    <div class="col-6">
-                        <div class="small text-muted">Dates</div>
-                        <div class="fw-bold text-dark">
-                            {% if exam.start_date %}{{ exam.start_date.strftime('%d %b') }}{% else %}—{% endif %}
-                            {% if exam.end_date %} – {{ exam.end_date.strftime('%d %b %Y') }}{% endif %}
-                        </div>
-                    </div>
-                    <div class="col-6">
-                        <div class="small text-muted">Subjects · Total</div>
-                        <div class="fw-bold text-dark">{{ row.subject_count }} · {{ '{:,.0f}'.format(row.total_marks) }} marks</div>
-                    </div>
+            <h3 class="tl-title">{{ exam.name }}</h3>
+            <div class="tl-date"><i class="fas fa-calendar-alt me-1"></i>{{ exam_dates(exam) }}{% if exam.session_label %} · <span>{{ exam.session_label }}</span>{% endif %}</div>
+            <div class="tl-facts">
+                <div class="tl-fact"><b>{{ exam.class_info.name if exam.class_info else 'N/A' }}</b><span>Class</span></div>
+                <div class="tl-fact"><b>{{ row.subject_count }}</b><span>Subjects</span></div>
+                <div class="tl-fact"><b>{{ '{:,.0f}'.format(row.total_marks) }}</b><span>Total Marks</span></div>
+            </div>
+            <div>
+                <div class="tl-prog-row">
+                    <span class="text-muted">Marks entered</span>
+                    {{ progress_pill(row) }}
                 </div>
-                <div class="mb-3">
-                    {% if row.progress_state == 'done' %}
-                    <span class="badge bg-success-subtle text-success-emphasis border"><i class="fas fa-circle-check me-1"></i>{{ row.progress_label }}</span>
-                    {% elif row.progress_state == 'partial' %}
-                    <span class="badge bg-warning-subtle text-warning-emphasis border"><i class="fas fa-hourglass-half me-1"></i>{{ row.progress_label }}</span>
-                    {% elif row.progress_state == 'none' %}
-                    <span class="badge bg-secondary-subtle text-secondary-emphasis border">{{ row.progress_label }}</span>
-                    {% else %}
-                    <span class="badge bg-light text-muted border">{{ row.progress_label }}</span>
-                    {% endif %}
-                </div>
-                <div class="d-flex gap-2">
-                    <a href="{{ url_for('main.examinations_detail', id=exam.id) }}" class="btn btn-{{ row.color }} btn-sm flex-fill">
-                        <i class="fas fa-folder-open me-1"></i> Open
-                    </a>
-                    <a href="{{ url_for('main.enter_batch_marks', term_exam_id=exam.id) }}" class="btn btn-sm btn-outline-secondary" title="Enter marks">
-                        <i class="fas fa-edit"></i>
-                    </a>
-                    <a href="{{ url_for('main.examinations_date_sheet', id=exam.id) }}" class="btn btn-sm btn-outline-secondary" title="Date sheet">
-                        <i class="fas fa-print"></i>
-                    </a>
-                </div>
+                <div class="tl-meter" role="img" aria-label="{{ row.progress_label }}"><i class="{{ 'done' if row.progress_state == 'done' else '' }}" style="width: {{ pct }}%"></i></div>
+            </div>
+            <div class="tl-acts">
+                {% if needs or row.progress_state == 'empty' %}
+                <a href="{{ url_for('main.enter_batch_marks', term_exam_id=exam.id) }}" class="btn btn-go btn-primary"><i class="fas fa-edit me-1"></i> Enter Marks</a>
+                <a href="{{ url_for('main.examinations_detail', id=exam.id) }}" class="btn btn-go btn-outline-secondary"><i class="fas fa-folder-open me-1"></i> Open</a>
+                {% else %}
+                <a href="{{ url_for('main.examinations_detail', id=exam.id) }}" class="btn btn-go btn-primary"><i class="fas fa-folder-open me-1"></i> Open</a>
+                <a href="{{ url_for('main.enter_batch_marks', term_exam_id=exam.id) }}" class="btn btn-go btn-outline-secondary"><i class="fas fa-edit me-1"></i> Edit Marks</a>
+                {% endif %}
+                <a href="{{ url_for('main.examinations_date_sheet', id=exam.id) }}" class="btn btn-sheet btn-outline-secondary"
+                   title="Date sheet" aria-label="Date sheet of {{ exam.name }}"><i class="fas fa-print"></i></a>
             </div>
         </div>
     </div>
     {% endfor %}
 </div>
+
+<!-- View 2: one row per exam -->
+<div class="tl-reg tl-view" id="examList" hidden>
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th>Exam</th>
+                    <th>Class</th>
+                    <th class="d-none d-lg-table-cell text-center">Subjects</th>
+                    <th class="d-none d-lg-table-cell text-end">Total Marks</th>
+                    <th>Marks entered</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in exam_rows %}
+                {% set exam = row.exam %}
+                {% set needs = row.progress_state in ['none', 'partial'] %}
+                {% set pct = ((row.filled * 100.0 / row.expected) | round | int) if row.expected else 0 %}
+                {% set open_url = url_for('main.examinations_detail', id=exam.id) %}
+                {% set marks_url = url_for('main.enter_batch_marks', term_exam_id=exam.id) %}
+                <tr class="tl-row exam-item tone-{{ row.color }}" data-href="{{ open_url }}"
+                    data-class="{{ exam.class_id }}"
+                    data-status="{{ exam.status }}"
+                    data-session="{{ exam.session_label or '' }}"
+                    data-todo="{{ 1 if needs else 0 }}"
+                    data-done="{{ 1 if row.progress_state == 'done' else 0 }}"
+                    data-search="{{ (exam.name ~ ' ' ~ (exam.class_info.name if exam.class_info else '')) | lower }}">
+                    <td>
+                        <a class="tl-row-title" href="{{ open_url }}">{{ exam.name }}</a>
+                        <div class="tl-row-sub">
+                            <span class="tl-type">{{ exam.exam_type }}</span>
+                            <span class="tl-status {{ exam.status | lower }}">{{ exam.status }}</span>
+                            <span class="tl-date"><i class="fas fa-calendar-alt me-1"></i>{{ exam_dates(exam) }}</span>
+                        </div>
+                    </td>
+                    <td class="fw-semibold">{{ exam.class_info.name if exam.class_info else 'N/A' }}</td>
+                    <td class="d-none d-lg-table-cell text-center tl-row-num">{{ row.subject_count }}</td>
+                    <td class="d-none d-lg-table-cell text-end tl-row-num">{{ '{:,.0f}'.format(row.total_marks) }}</td>
+                    <td>
+                        <div class="tl-row-prog">
+                            {{ progress_pill(row) }}
+                            <div class="tl-meter" role="img" aria-label="{{ row.progress_label }}"><i class="{{ 'done' if row.progress_state == 'done' else '' }}" style="width: {{ pct }}%"></i></div>
+                        </div>
+                    </td>
+                    <td class="text-end">
+                        <div class="tl-row-acts">
+                            {% if needs or row.progress_state == 'empty' %}
+                            <a href="{{ marks_url }}" class="btn btn-sm btn-primary"><i class="fas fa-edit me-1"></i><span class="btn-go-label">Enter Marks</span></a>
+                            <a href="{{ open_url }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-folder-open me-1"></i><span class="btn-go-label">Open</span></a>
+                            {% else %}
+                            <a href="{{ open_url }}" class="btn btn-sm btn-primary"><i class="fas fa-folder-open me-1"></i><span class="btn-go-label">Open</span></a>
+                            <a href="{{ marks_url }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit me-1"></i><span class="btn-go-label">Edit Marks</span></a>
+                            {% endif %}
+                            <a href="{{ url_for('main.examinations_date_sheet', id=exam.id) }}" class="btn btn-sm btn-outline-secondary"
+                               title="Date sheet" aria-label="Date sheet of {{ exam.name }}"><i class="fas fa-print"></i></a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
 {% else %}
-<div class="text-center py-5">
-    <i class="fas fa-file-signature fa-3x text-muted mb-3"></i>
-    <p class="text-muted fs-5">No term exams yet.{% if current_user.is_admin %} Click <strong>Add Term Exam</strong> to schedule one.{% endif %}</p>
+<div class="tl-empty">
+    <div class="tl-empty-icon"><i class="fas fa-file-signature"></i></div>
+    {% if current_user.is_admin %}
+    <p>No term exams yet. Press <strong>Add Term Exam</strong> to schedule one.</p>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTermExamModal">
+        <i class="fas fa-plus me-1"></i> Add Term Exam
+    </button>
+    {% else %}
+    <p>No term exams yet.</p>
+    {% endif %}
 </div>
 {% endif %}
 
@@ -273,6 +526,120 @@ document.addEventListener('DOMContentLoaded', function () {
             }, 4000);
         });
     }
+});
+
+// ---- Search / filters / Cards-List switch (cards and list share them) ----
+var examMode = 'all';
+var URL_FILTERED = {{ 'true' if url_filtered else 'false' }};
+var FILTER_KEY = 'sm.examsFilters';
+var VIEW_KEY = 'sm.testsView';          // same choice as the Class Tests page
+var restoringFilters = false;
+
+function examSel(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+
+function filterExams() {
+    var cid = examSel('classFilter'), status = examSel('statusFilter'), session = examSel('sessionFilter');
+    var box = document.getElementById('tlSearch');
+    var needle = box ? box.value.trim().toLowerCase() : '';
+    var visible = 0, total = 0;
+    document.querySelectorAll('.exam-item').forEach(function (item) {
+        var show = (!cid || item.dataset.class === cid) &&
+                   (!status || item.dataset.status === status) &&
+                   (!session || item.dataset.session === session) &&
+                   (examMode !== 'todo' || item.dataset.todo === '1') &&
+                   (examMode !== 'done' || item.dataset.done === '1') &&
+                   (!needle || (item.dataset.search || '').indexOf(needle) !== -1);
+        item.style.display = show ? '' : 'none';
+        if (item.classList.contains('exam-card')) { total++; if (show) visible++; }
+    });
+    var count = document.getElementById('examCount');
+    if (count) count.textContent = visible;
+    var none = document.getElementById('noResults');
+    if (none) none.hidden = visible > 0 || total === 0;
+    var clear = document.getElementById('tlClear');
+    if (clear) clear.hidden = !(cid || status || session || needle || examMode !== 'all');
+    if (!restoringFilters) {
+        try {
+            window.sessionStorage.setItem(FILTER_KEY, JSON.stringify(
+                {q: needle, cls: cid, status: status, session: session, mode: examMode}));
+        } catch (e) {}
+    }
+}
+
+function setExamMode(mode) {
+    examMode = mode;
+    document.querySelectorAll('.tl-tabs button').forEach(function (btn) {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    filterExams();
+}
+
+function clearExamFilters() {
+    ['classFilter', 'statusFilter', 'sessionFilter', 'tlSearch'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    setExamMode('all');
+}
+
+// Filters are remembered for this browser tab, so after Enter Marks -> Save the
+// person comes back to the same list. A new visit (new tab) starts fresh.
+function restoreExamFilters() {
+    if (URL_FILTERED) return;
+    var saved = null;
+    try { saved = JSON.parse(window.sessionStorage.getItem(FILTER_KEY) || 'null'); } catch (e) {}
+    if (!saved) return;
+    function setSelect(id, value) {          // ignore a class / session that no longer exists
+        var el = document.getElementById(id);
+        if (!el || !value) return;
+        for (var i = 0; i < el.options.length; i++) {
+            if (el.options[i].value === value) { el.value = value; return; }
+        }
+    }
+    restoringFilters = true;
+    setSelect('classFilter', saved.cls);
+    setSelect('statusFilter', saved.status);
+    setSelect('sessionFilter', saved.session);
+    var box = document.getElementById('tlSearch');
+    if (box && saved.q) box.value = saved.q;
+    restoringFilters = false;
+    setExamMode(['todo', 'done'].indexOf(saved.mode) !== -1 ? saved.mode : 'all');
+}
+
+function setExamView(view, remember) {
+    if (view !== 'list') view = 'cards';
+    var grid = document.getElementById('examGrid');
+    var list = document.getElementById('examList');
+    if (!grid || !list) return;
+    grid.hidden = (view !== 'cards');
+    list.hidden = (view !== 'list');
+    document.querySelectorAll('.tl-views button').forEach(function (btn) {
+        var on = btn.dataset.view === view;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    if (remember !== false) {
+        try { window.localStorage.setItem(VIEW_KEY, view); } catch (e) {}
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    var box = document.getElementById('tlSearch');
+    if (box) box.addEventListener('input', filterExams);
+
+    var savedView = 'cards';
+    try { savedView = window.localStorage.getItem(VIEW_KEY) || 'cards'; } catch (e) {}
+    setExamView(savedView, false);
+    restoreExamFilters();
+    filterExams();
+
+    // A click anywhere on a list row opens the exam (buttons keep their own job).
+    document.querySelectorAll('.tl-row').forEach(function (row) {
+        row.addEventListener('click', function (event) {
+            if (event.target.closest('a, button')) return;
+            if (row.dataset.href) window.location.href = row.dataset.href;
+        });
+    });
 });
 
 function teSelectAll(checked) {

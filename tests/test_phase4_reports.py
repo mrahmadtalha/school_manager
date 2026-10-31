@@ -183,19 +183,19 @@ def test_insight_text_and_wording_rules(app, world):
         lines = report_insights.insight_lines(MONTH)['lines']
         text = '\n'.join(lines)
 
-        assert 'Fee collection rate dropped by 20.0 percentage points' in text
-        assert 'Rs 1,000.00 of older arrears was recovered this month.' in text
-        assert 'Cash In was 108.0% higher than last month (Rs 5,200.00 vs Rs 2,500.00).' in text
-        assert 'Net Position fell by Rs 10,800.00 (cash basis).' in text
-        assert 'Utilities expenses rose 300.0% vs last month (+Rs 1,500.00).' in text
-        assert 'Inventory sales were Rs 2,400.00 with cost of goods sold Rs 1,800.00 (gross profit Rs 600.00).' in text
+        assert 'Fee collection is weaker than last month: 51.4% paid now, 71.4% last month.' in text
+        assert 'Rs 1,000.00 of old unpaid fees was paid this month.' in text
+        assert 'You received 108.0% more money than last month (Rs 5,200.00 now, Rs 2,500.00 last month).' in text
+        assert 'Net Position is Rs 10,800.00 lower than last month.' in text
+        assert 'Utilities spending went up 300.0% since last month (Rs 1,500.00 more).' in text
+        assert 'Shop sales were Rs 2,400.00 and the items sold cost Rs 1,800.00 (profit on them: Rs 600.00).' in text
         # Owner requirement 1: a month WITH a purchase says purchases are
-        # Cash Out but not expenses.
-        assert ('Stock purchases of Rs 9,000.00 are part of Cash Out but not '
-                'expenses; their cost enters Cost of Goods Sold when the '
-                'items sell.') in text
+        # money paid out (Cash Out) but not expenses.
+        assert ('Rs 9,000.00 was spent on buying stock. It is money paid out, '
+                'but not an expense. The cost is counted when the items are '
+                'sold.') in text
         assert ('Estimated Net Operating Position was Rs -1,600.00') in text
-        assert 'Rs 1,200.00 (estimate)' in text          # students who left
+        assert 'Rs 1,200.00 less in monthly fees (estimate)' in text   # students who left
 
         # Owner requirement 2: wording rules on every generated line.
         for line in lines:
@@ -210,9 +210,11 @@ def test_insight_text_and_wording_rules(app, world):
 
         # Recommendations: actionable, rule-based.
         recs = '\n'.join(report_insights.recommendations(MONTH))
-        assert "collection is at 51.4%" in recs
-        assert 'Utilities expenses rose 300.0% vs last month' in recs
-        assert 'Net Position is negative this month. Stock purchases of Rs 9,000.00 are held as inventory, not lost.' in recs
+        assert "Only 51.4% of this month's fees are paid." in recs
+        assert 'Utilities spending went up 300.0% since last month' in recs
+        assert ('More money went out than came in this month (Net Position is '
+                'below zero). Rs 9,000.00 of it was spent on stock, which you '
+                'still have. It is not lost.') in recs
         for line in recs.split('\n'):
             if 'Net Position' in line:
                 assert 'profit' not in line.lower(), line
@@ -220,17 +222,17 @@ def test_insight_text_and_wording_rules(app, world):
 
 def test_insights_page_renders(admin_client, app, world):
     body = admin_client.get('/financials/insights?month=%s' % MONTH).get_data(as_text=True)
-    assert 'Collection rate' in body and '51.4%' in body
-    assert 'Salary burden' in body and '57.7%' in body
-    assert 'Rs 10,800.00' in body                       # Net Position change card
-    assert 'What changed' in body
-    assert 'Stock purchases of Rs 9,000.00 are part of Cash Out but not expenses' in body
+    assert 'Fees paid this month' in body and '51.4%' in body
+    assert 'Salaries vs money received' in body and '57.7%' in body
+    assert 'Rs 10,800.00' in body                       # Net Position vs last month
+    assert 'What changed since last month' in body
+    assert 'Rs 9,000.00 was spent on buying stock. It is money paid out, but not an expense.' in body
     assert 'Estimated Net Operating Position' in body
     assert 'Utilities' in body and 'Rs 2,000.00' in body
     assert 'SLC Issued' in body and 'Rs 1,200.00' in body
     assert 'Financial Insights' in body                 # nav link
-    assert 'Recommendations' in body
-    assert 'follow up' in body
+    assert 'What to do' in body
+    assert 'Call the parents who have not paid yet.' in body
 
 
 def test_insights_page_flag_off_hides_sales(app, admin_client, world):
@@ -239,9 +241,10 @@ def test_insights_page_flag_off_hides_sales(app, admin_client, world):
     try:
         body = admin_client.get('/financials/insights?month=%s' % MONTH).get_data(as_text=True)
         assert 'Estimated Net Operating Position' not in body
-        assert 'Stock purchases of Rs 9,000.00' not in body
-        assert 'gross profit' not in body
-        assert 'Collection rate' in body                # cash/fee metrics remain
+        assert 'was spent on buying stock' not in body
+        assert 'profit on them' not in body
+        assert 'Shop and stock' not in body
+        assert 'Fees paid this month' in body           # cash/fee metrics remain
     finally:
         with app.app_context():
             app.config['FEATURE_INVENTORY_SALES'] = True

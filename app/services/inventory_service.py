@@ -5,6 +5,7 @@ Cost of Goods Sold when the item is sold, using weighted-average cost
 recalculated on every purchase.  All money is integer paisa internally.
 """
 from datetime import date
+from app.timeutil import utcnow
 
 from flask import current_app
 
@@ -344,7 +345,7 @@ def void_supplier_payment(payment, reason, actor=None):
         raise ValueError('This payment is already voided.')
     payment.is_void = True
     payment.void_reason = reason[:255]
-    payment.voided_at = datetime.utcnow()
+    payment.voided_at = utcnow()
     payment.voided_by_name = _actor_name(actor)
     return payment
 
@@ -638,7 +639,7 @@ def void_sale(sale, reason, actor=None):
         product.stock_qty = new_stock
         row.is_void = True
         row.void_reason = reason
-        row.voided_at = datetime.utcnow()
+        row.voided_at = utcnow()
         row.voided_by_name = _actor_name(actor)
     return rows
 
@@ -688,7 +689,7 @@ def void_purchase(purchase, reason, actor=None):
         product.stock_qty = new_stock
         row.is_void = True
         row.void_reason = reason
-        row.voided_at = datetime.utcnow()
+        row.voided_at = utcnow()
         row.voided_by_name = _actor_name(actor)
     return rows
 

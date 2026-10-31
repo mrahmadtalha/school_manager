@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.timeutil import utcnow
 from app.database import db
 
 
@@ -8,7 +9,7 @@ class TestModel(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     test_title = db.Column(db.String(100), nullable=False)  # e.g., "Math Monthly Test"
-    test_date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    test_date = db.Column(db.Date, nullable=False, default=utcnow)
     test_type = db.Column(db.String(50), nullable=False)    # "Monthly", "Mid-Term", "Final", "Quiz"
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False)
     subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=False)

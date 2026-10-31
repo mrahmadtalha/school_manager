@@ -265,13 +265,28 @@ def build_teacher_attendance_summary(start_date, end_date):
             if row['daily_status'].get(d) == 'Late')
         attended = p_count + (l_count if counts_late else 0)
         row['percentage'] = round((attended / taken) * 100, 1) if taken > 0 else 0
+        row['lv_count'] = sum(1 for v in row['daily_status'].values() if v == 'Leave')
+        row['taken'] = taken
+        row['is_at_risk'] = bool(taken > 0 and row['percentage'] < 75.0)
         matrix_data.append(row)
+
+    percentages = [row['percentage'] for row in matrix_data if taken_dates]
+    kpi_stats = {
+        'total_teachers': len(teachers),
+        'avg_percentage': round(sum(percentages) / len(percentages), 1) if percentages else 0,
+        'perfect_count': sum(1 for row in matrix_data
+                             if taken_dates and row['taken'] > 0 and row['percentage'] == 100.0),
+        'at_risk_count': sum(1 for row in matrix_data if row['is_at_risk']),
+        'days_recorded': len(taken_dates),
+    }
 
     return {
         'teachers': teachers,
         'dates_list': active_dates,
+        'taken_dates': taken_dates,
         'late_minutes_lookup': late_minutes_lookup,
-        'matrix_data': matrix_data
+        'matrix_data': matrix_data,
+        'kpi_stats': kpi_stats,
     }
 
 def save_student_attendance(selected_class_id, attendance_date, form_dict, classes):
@@ -327,7 +342,7 @@ def save_student_attendance(selected_class_id, attendance_date, form_dict, class
                     )
                     db.session.add(record)
 
-                student = StudentModel.query.get(student_id)
+                student = db.session.get(StudentModel, student_id)
                 if student and status.strip().capitalize() == 'Absent' and (not record or previous_status != status):
                     absent_students.append(student)
                     queue_automation_message(
