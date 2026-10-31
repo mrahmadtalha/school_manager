@@ -48,6 +48,8 @@
     .qa-code-inner ol { margin: 0 0 0.7rem; padding-left: 1.2rem; color: #334155; }
     .qa-code-inner li { margin-bottom: 0.3rem; }
     .qa-qr { padding: 0.6rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; width: 264px; min-height: 264px; }
+    .qa-qr canvas, .qa-qr img { max-width: 100%; height: auto !important; }
+    #qaSearch { text-overflow: ellipsis; }
     .qa-more { font-size: 0.85rem; color: #475569; }
     .qa-more > summary { cursor: pointer; font-weight: 600; color: #64748b; padding: 0.4rem 0; }
     .qa-more code { font-size: 0.95rem; }
@@ -120,12 +122,16 @@
         .qa-live { margin-left: 0; flex: 1 1 100%; }
         .qa-live .btn { flex: 1 1 auto; justify-content: center; }
         .qa-head { display: none; }
-        .qa-row { grid-template-columns: auto 1fr; gap: 0.35rem 0.7rem; padding: 0.8rem 0.9rem; }
-        .qa-row .qa-c-who { grid-column: 2; grid-row: 1; }
+        .qa-row { grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.35rem 0.7rem; padding: 0.8rem 0.9rem; }
         .qa-row .qa-c-roll { grid-column: 1; grid-row: 1; align-self: center; }
-        .qa-row .qa-c-class { display: block; grid-column: 2; }
-        .qa-row .qa-c-status { grid-column: 1 / 2; }
-        .qa-row .qa-c-when { grid-column: 2; align-self: center; }
+        .qa-row .qa-c-who { grid-column: 2 / 4; grid-row: 1; }
+        .qa-row .qa-c-class { display: block; grid-column: 2 / 4; grid-row: 2; margin-top: -0.15rem; padding-inline-start: calc(40px + 0.7rem); }
+        .qa-row .qa-c-status { grid-column: 1 / 3; grid-row: 3; }
+        .qa-row .qa-c-when { grid-column: 3; grid-row: 3; align-self: center; text-align: right; white-space: nowrap; }
+        /* 16px text in boxes: stops iPhones zooming the page when a box is tapped */
+        .qa-field .form-control, .qa-field .form-select, #pairGuard { font-size: 16px; }
+        .qa-chip { min-height: 2.5rem; }
+        .qa-live .form-check-input { width: 2.4rem; height: 1.3rem; }
         .qa-chips { padding: 0.6rem 0.8rem; }
         .qa-card > summary { padding: 0.75rem 0.8rem; }
         .qa-body { padding: 0.3rem 0.8rem 0.9rem; }

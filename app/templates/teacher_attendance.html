@@ -70,7 +70,7 @@
     .ta-note { font-size: 0.82rem; font-weight: 700; color: rgb(var(--bs-primary-rgb)); }
 
     /* register table */
-    .ta-panel { border: 1px solid #e2e8f0 !important; box-shadow: none !important; border-radius: 18px; overflow: hidden; }
+    .ta-panel { border: 1px solid #e2e8f0 !important; box-shadow: none !important; border-radius: 18px; overflow: hidden; overflow: clip; } /* clip (not hidden) so the Save bar can stick to the screen */
     .ta-panel:hover { transform: none; }
     .ta-count { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.7rem 1.1rem; border-bottom: 1px solid #eef2f7; font-size: 0.86rem; color: #64748b; flex-wrap: wrap; }
     .ta-count strong { color: #0f172a; }
@@ -111,7 +111,7 @@
     .ta-dash { color: #94a3b8; }
 
     /* save bar stays on screen while the list scrolls */
-    .ta-save { position: sticky; bottom: 0; z-index: 5; background: rgba(255, 255, 255, 0.97); border-top: 1px solid #e2e8f0; padding: 0.75rem 1.1rem; display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.06); }
+    .ta-save { position: sticky; bottom: 0; z-index: 5; background: rgba(255, 255, 255, 0.97); border-top: 1px solid #e2e8f0; padding: 0.75rem 5rem 0.75rem 1.1rem; display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.06); }
     .ta-save-sum { font-size: 0.9rem; color: #475569; }
     .ta-save-sum b { color: #0f172a; font-variant-numeric: tabular-nums; }
     .ta-save-sub { font-size: 0.78rem; color: #94a3b8; display: block; }
@@ -128,16 +128,18 @@
     html[dir="rtl"] .ta-state { border-left-color: #eef2f7 !important; border-right: 4px solid #16a34a !important; }
     html[dir="rtl"] .ta-state.is-open { border-right-color: #f59e0b !important; }
     html[dir="rtl"] .ta-daybtn i { transform: scaleX(-1); }
+    html[dir="rtl"] .ta-save { padding: 0.75rem 1.1rem 0.75rem 5rem; }
 
     @media (max-width: 991.98px) {
         .ta-ribbon { grid-template-columns: 1fr 1fr; }
         .ta-ribbon .ta-stat:nth-child(3) { grid-column: 1 / -1; border-left: 4px solid #16a34a; border-top: 1px solid #eef2f7; }
         .ta-ribbon .ta-stat.is-open:nth-child(3) { border-left-color: #f59e0b; }
     }
-    /* phones: every teacher becomes one tappable card */
+    /* phones: page chrome (header, date bar, summary) stacks in one column */
     @media (max-width: 767.98px) {
         .ta-ribbon { grid-template-columns: 1fr; }
         .ta-stat + .ta-stat { border-left: 0; border-top: 1px solid #eef2f7; }
+        .ta-ribbon .ta-stat:first-child { flex-direction: row; align-items: baseline; justify-content: flex-start; gap: 0.6rem; padding-top: 0.7rem; padding-bottom: 0.7rem; }
         .ta-filters .form-control[type=date] { flex: 1; }
         .ta-daybox { flex: 1 1 100%; }
         .ta-timebox { flex: 1 1 100%; flex-wrap: wrap; padding: 0.5rem; }
@@ -145,6 +147,22 @@
         .ta-timebox .form-control { flex: 1 1 auto; width: auto; }
         .ta-timebox .btn { flex: 1 1 100%; justify-content: center; }
         .ta-toolbar .btn { flex: 1 1 auto; justify-content: center; }
+        /* header buttons: a tidy two-column grid instead of ragged wrapping */
+        .ta-tools { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+        .ta-tools > .dropdown > .btn, .ta-tools > .btn { width: 100%; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .ta-tools > .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+        /* 16px text in boxes: stops iPhones zooming the page when a box is tapped */
+        .ta-search input, .ta-filters .form-control, .ta-timebox .form-control, .ta-time .form-control { font-size: 16px; }
+        .ta-time .form-control { height: 2.75rem; }
+        .ta-time .btn { width: 2.75rem; height: 2.75rem; }
+        /* long list of names is skipped on a small screen; the count and the filter button remain */
+        .ta-warn .ta-names { display: none; }
+        .ta-warn .btn { width: 100%; }
+        .ta-save { padding: 0.65rem 4.9rem 0.65rem 0.8rem; }
+        html[dir="rtl"] .ta-save { padding: 0.65rem 0.8rem 0.65rem 4.9rem; }
+    }
+    /* phones AND tablets: the register table needs ~820px, so below 1024px every teacher is one tappable card */
+    @media (max-width: 1023.98px) {
         .ta-table thead { display: none; }
         .ta-table, .ta-table tbody { display: block; }
         .ta-table .ta-row { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 0.6rem; padding: 0.8rem 0.9rem; border-bottom: 1px solid #f1f5f9; }
@@ -159,8 +177,7 @@
         .ta-table .ta-c-status .ta-seg label i { display: none; }
         .ta-table .ta-c-time { text-align: left !important; }
         .ta-time .form-control { flex: 1; width: auto; }
-        .ta-save { padding: 0.65rem 0.8rem; }
-        .ta-save .btn-success { width: 100%; }
+        .ta-save .btn-success { width: 100%; padding-left: 1rem; padding-right: 1rem; font-size: 1rem; }
     }
     @media (prefers-reduced-motion: reduce) {
         .ta-bar i, .ta-row > td, .ta-seg label { transition: none; }
@@ -260,7 +277,7 @@
     <div>
         <i class="fas fa-exclamation-triangle me-1"></i>
         <strong>{{ ns.names|length }} of {{ teachers|length }}</strong> teachers: attendance not marked yet
-        <span class="ta-sub">{% for t in ns.names[:10] %}{{ t.teacher_name }}{% if not loop.last %}, {% endif %}{% endfor %}{% if ns.names|length > 10 %} &hellip; and {{ ns.names|length - 10 }} more{% endif %}</span>
+        <span class="ta-sub ta-names">{% for t in ns.names[:10] %}{{ t.teacher_name }}{% if not loop.last %}, {% endif %}{% endfor %}{% if ns.names|length > 10 %} &hellip; and {{ ns.names|length - 10 }} more{% endif %}</span>
         <span class="ta-sub">Teachers you do not touch are saved as <strong>Present</strong> when you press Save.</span>
     </div>
     <button type="button" class="btn btn-sm btn-warning" id="toggleUnmarkedBtn" onclick="toggleUnmarkedOnly()">
