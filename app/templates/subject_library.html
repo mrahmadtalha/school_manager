@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+<div class="dashboard-header m-head d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
     <div>
         <p class="eyebrow mb-2">Academic setup</p>
         <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-book-open text-primary me-2"></i>Subject Library</h1>
         <p class="text-muted small mb-0">The school-wide subject catalog. Each class selects which of these subjects it offers &mdash; renaming here updates every class that offers it.</p>
     </div>
-    <div class="d-flex flex-wrap gap-2">
+    <div class="d-flex flex-wrap gap-2 m-actions">
         <a href="{{ url_for('main.classes_list') }}" class="btn btn-secondary btn-sm">
             <i class="fas fa-arrow-left me-1"></i> Back to Classes &amp; Subjects
         </a>
@@ -28,7 +28,7 @@
 {% if library_subjects %}
 <div class="card shadow-sm border-0">
     <div class="card-body table-responsive p-0">
-        <table class="table table-striped table-hover align-middle mb-0">
+        <table class="table table-striped table-hover align-middle mb-0 m-cards">
             <thead class="table-dark">
                 <tr>
                     <th class="py-3 ps-3">Subject</th>
@@ -47,14 +47,14 @@
                         {{ entry.name }}
                         {% if not entry.is_active %}<span class="badge bg-secondary ms-1">Archived</span>{% endif %}
                     </td>
-                    <td class="text-muted">{{ entry.code or '&mdash;' }}</td>
-                    <td><span class="badge bg-primary rounded-pill">{{ class_counts.get(entry.id, 0) }}</span></td>
-                    <td class="text-muted">{{ archived_counts.get(entry.id, 0) }}</td>
-                    <td class="text-muted">{{ test_counts.get(entry.id, 0) }}</td>
-                    <td class="text-center">
+                    <td class="text-muted" data-label="Code">{{ entry.code or '&mdash;' }}</td>
+                    <td data-label="Classes offering it"><span class="badge bg-primary rounded-pill">{{ class_counts.get(entry.id, 0) }}</span></td>
+                    <td class="text-muted" data-label="Archived class rows">{{ archived_counts.get(entry.id, 0) }}</td>
+                    <td class="text-muted" data-label="Tests using it">{{ test_counts.get(entry.id, 0) }}</td>
+                    <td class="text-center" data-label="Default for new classes">
                         {% if entry.is_active %}
                         <form action="{{ url_for('main.library_toggle_default', id=entry.id) }}" method="POST" class="d-inline">
-                            <button type="submit" class="btn btn-sm p-0 {% if entry.is_default %}text-warning{% else %}text-secondary{% endif %}"
+                            <button type="submit" class="btn btn-sm p-0 m-tap {% if entry.is_default %}text-warning{% else %}text-secondary{% endif %}"
                                     title="{% if entry.is_default %}Pre-selected for new classes — click to remove{% else %}Mark as pre-selected for new classes{% endif %}"
                                     aria-label="Toggle default for new classes">
                                 <i class="fas {% if entry.is_default %}fa-star{% else %}fa-regular fa-star{% endif %}"></i>
@@ -62,19 +62,19 @@
                         </form>
                         {% else %}&mdash;{% endif %}
                     </td>
-                    <td class="text-end pe-3">
+                    <td class="text-end pe-3" data-label="Actions">
                         {% if entry.is_active %}
-                        <button class="btn btn-sm p-0 text-primary me-2" title="Rename"
+                        <button class="btn btn-sm p-0 m-tap text-primary me-2" title="Rename"
                                 data-bs-toggle="modal" data-bs-target="#renameLib{{ entry.id }}" aria-label="Rename">
                             <i class="fas fa-edit"></i>
                         </button>
                         <form action="{{ url_for('main.library_archive_subject', id=entry.id) }}" method="POST" class="d-inline">
-                            <button type="submit" class="btn btn-sm p-0 text-warning" title="Archive (hide from pickers)"
+                            <button type="submit" class="btn btn-sm p-0 m-tap text-warning" title="Archive (hide from pickers)"
                                     aria-label="Archive"><i class="fas fa-archive"></i></button>
                         </form>
                         {% else %}
                         <form action="{{ url_for('main.library_restore_subject', id=entry.id) }}" method="POST" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-success">
+                            <button type="submit" class="btn btn-sm btn-success m-tap">
                                 <i class="fas fa-undo me-1"></i> Restore
                             </button>
                         </form>

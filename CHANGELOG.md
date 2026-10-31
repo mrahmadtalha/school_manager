@@ -49,6 +49,9 @@ release, rename `[Unreleased]` to the new version and date.
 ## [X.Y.Z] - YYYY-MM-DD
 
 ### Added
+- Tests — new `tests/test_classes_pages_mobile.py` covers the phone layout of Classes & Subjects, Subject Library and Archived Subjects (shared phone styles, header buttons, one subject chip per line, a label on every card line) and that every view, button and dialog is still there.
+- Subject Library and Archived Subjects — on a phone every subject is shown as a **small card** (subject name as the heading, then *label — value* lines, with the star, rename, archive and restore buttons inside the card) instead of a wide table.
+- All pages — **shared phone helpers** in the style sheet (`m-head`, `m-actions`, `m-tap`, `m-cards`) so the remaining pages can get the same phone layout without repeating the styles.
 - Tests — new `tests/test_teacher_list_mobile.py` and `tests/test_teacher_profile_mobile.py` cover the phone layout of the Teachers page and the teacher profile (full-screen forms, phone styles, tables shown as cards with a label on every line, sliding tabs, and that every view, tab and button is still there).
 - Teacher profile — **phone layout**: the *Attendance* and *Payroll* tables are shown as **small cards** on a phone (date or month as the heading, then *label — value* lines, with the *Payslip PDF* button inside the card), so nothing has to be scrolled sideways. Computers and tablets keep the tables.
 - Tests — new `tests/test_student_report_mobile.py` covers the phone layout of the student report page (five tables shown as cards, a label on every card line, two stat boxes per line, sliding tabs, and that every tab and button is still there).
@@ -92,6 +95,8 @@ release, rename `[Unreleased]` to the new version and date.
 - Tests — new `tests/test_qr_tab_page.py` covers the redesigned QR Scans tab (list order, chip counts, set-up steps open / folded, teacher view, approval card, closed day).
 
 ### Changed
+- Classes & Subjects — phone screens: the **List / Grid** switch, *Subject Library*, *Timetable*, *Archived Subjects* and *Add Class* buttons sit in a tidy grid under the title; in each class header the **students / sections / subjects / fee badges move under the class name**; subjects are **one per line** so long names and teacher names are readable; and the small edit, delete, archive and show-students icons are bigger so a finger can hit them.
+- Subject Library and Archived Subjects — on a phone the page title is followed by full-width buttons, and the *Add Subject* / *Rename* boxes no longer make the page zoom in when tapped. Computers and tablets are unchanged.
 - Teachers — phone screens: **Add Teacher** is a full-width button with *Export / Columns / Manage* on one row (menus stay on the screen); the search, designation, gender and class filters sit two per line with bigger tap targets; on each teacher card the salary and the **Call / ID card / Edit / Archive** buttons wrap neatly and are easier to tap; the Table view's *entries* box and page buttons are bigger.
 - Teachers — **Add Teacher and Edit Teacher forms open full screen on a phone** with the Cancel / Save buttons always visible at the bottom, fields one under another, and no page zoom when a box is tapped. Computers and tablets are unchanged.
 - Teacher profile — on a phone the **Call / WhatsApp / Back** buttons sit in a tidy grid, the **five tabs stay on one line and slide sideways**, the Previous / Next month buttons share the width, and spacing is smaller so more fits on the screen.

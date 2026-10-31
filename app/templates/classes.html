@@ -27,17 +27,32 @@
     .class-grid-card .badge { font-weight: 600; }
     /* --- View switcher --- */
     #viewSwitch .btn { font-weight: 600; }
+    /* --- phones --- */
+    @media (max-width: 767.98px) {
+        /* class header: name first, the count badges on their own line underneath */
+        .accordion-button .ms-auto { margin-left: 0 !important; width: 100%; justify-content: flex-start !important; margin-top: 0.4rem; }
+        .accordion-button { padding: 0.8rem 0.9rem; }
+        .accordion-body { padding-left: 0.8rem; padding-right: 0.8rem; }
+        /* small icon buttons inside section / subject chips become finger sized */
+        .section-chip, .subject-chip { padding-top: 0.2rem !important; padding-bottom: 0.2rem !important; }
+        .section-chip .btn, .subject-chip .btn, .subject-chip form .btn { min-width: 2.4rem; min-height: 2.4rem; display: inline-flex; align-items: center; justify-content: center; }
+        .subject-chip > span { min-width: 0; overflow-wrap: anywhere; }
+        .accordion-body .btn-sm, .class-grid-card .btn-sm { min-height: 2.4rem; }
+        .accordion-body .btn.py-0, .accordion-body .btn.px-2 { padding-top: 0.35rem !important; padding-bottom: 0.35rem !important; }
+        .summary-card .summary-num { font-size: 1.5rem; }
+        .class-grid-card .card-body, .class-grid-card .px-3 { padding-left: 0.9rem; padding-right: 0.9rem; }
+    }
     .grid-manage-btn .fa-chevron-down { transition: transform .15s ease; }
     .grid-manage-btn[aria-expanded="true"] .fa-chevron-down { transform: rotate(180deg); }
 </style>
 
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+<div class="dashboard-header m-head d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
     <div>
         <p class="eyebrow mb-2">Academic setup</p>
         <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-book text-primary me-2"></i>Classes, Sections &amp; Subjects</h1>
         <p class="text-muted small mb-0">Manage academic structure, teacher groups, and class assignments.</p>
     </div>
-    <div class="d-flex flex-wrap align-items-center gap-2">
+    <div class="d-flex flex-wrap align-items-center gap-2 m-actions">
         <div class="btn-group btn-group-sm" role="group" aria-label="View switcher" id="viewSwitch">
             <button type="button" class="btn btn-outline-secondary active" id="viewListBtn" aria-pressed="true">
                 <i class="fas fa-list me-1"></i>List
@@ -275,7 +290,7 @@
                         {% if c.subjects %}
                         <div class="row g-1">
                             {% for sub in c.subjects if sub.is_active %}
-                            <div class="col-6">
+                            <div class="col-12 col-sm-6">
                                 <div class="subject-chip d-flex align-items-center justify-content-between bg-light border rounded px-3 py-1">
                                     <span class="small fw-bold text-dark">{{ sub.name }}{% if sub.teacher %}<span class="text-muted fw-normal"> &middot; {{ sub.teacher.teacher_name }}</span>{% endif %}</span>
                                     {% if current_user.is_admin %}
@@ -294,7 +309,7 @@
                             </div>
                             {% endfor %}
                             {% for sub in c.subjects if not sub.is_active %}
-                            <div class="col-6">
+                            <div class="col-12 col-sm-6">
                                 <div class="subject-chip d-flex align-items-center justify-content-between bg-white border rounded px-3 py-1">
                                     <span class="small fw-bold text-muted">{{ sub.name }}</span>
                                     <div class="d-flex gap-1 ms-2 align-items-center">

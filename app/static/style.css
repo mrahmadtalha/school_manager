@@ -1225,3 +1225,34 @@ html[dir="rtl"] .sidebar-find-input { padding: 0.5rem 2.1rem 0.5rem 3.2rem; }
         font-weight: 600;
     }
 }
+
+
+/* -- phone helpers ---------------------------------------------------------
+   Reusable on any page.  Add the class, the layout follows on phones only:
+     .m-head     page header: title on top, buttons underneath (full width)
+     .m-actions  header buttons in a two-column grid with big tap targets
+     .m-tap      small icon-only buttons get a finger-sized tap area
+     .m-cards    a table whose rows become cards; give every cell after the
+                 first a data-label="Column name" (the first cell is the heading) */
+@media (max-width: 767.98px) {
+    .m-head > div:first-child { flex: 1 1 100%; }
+    .m-head > a.btn { width: 100%; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+    .m-actions { width: 100%; display: grid !important; grid-template-columns: 1fr 1fr; gap: 0.5rem !important; }
+    .m-actions > .btn, .m-actions > .btn-group, .m-actions > a.btn { width: 100%; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+    .m-actions > .btn-group { grid-column: 1 / -1; }
+    .m-actions > .btn-group > .btn { flex: 1; min-height: 2.6rem; }
+    .m-actions > .btn-primary { grid-column: 1 / -1; min-height: 2.75rem; }
+    .m-tap { min-width: 2.5rem; min-height: 2.5rem; display: inline-flex !important; align-items: center; justify-content: center; }
+
+    .m-cards { display: block; width: 100%; }
+    .m-cards thead { display: none; }
+    .m-cards tbody { display: block; padding: 0.4rem 0.7rem 0.7rem; }
+    .m-cards tbody tr { display: block; margin-top: 0.6rem; padding: 0.65rem 0.85rem; background: #fff !important; border: 1px solid #e2e8f0; border-radius: 12px; }
+    .m-cards tbody td { display: block; padding: 0.15rem 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; text-align: left !important; white-space: normal; }
+    .m-cards tbody td:first-child { font-weight: 700; padding-bottom: 0.35rem !important; }
+    .m-cards tbody td[data-label] { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; text-align: right !important; border-top: 1px dashed #eef2f7 !important; padding: 0.35rem 0 !important; }
+    .m-cards tbody td[data-label]::before { content: attr(data-label); flex: none; max-width: 45%; text-align: left; font-size: 0.74rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; }
+    .m-cards tbody td[colspan] { text-align: center !important; }
+    .m-cards tbody tr:has(> td[colspan]) { border: 0; padding: 0; background: none !important; }
+    .modal .form-control, .modal .form-select { font-size: 16px; }
+}
