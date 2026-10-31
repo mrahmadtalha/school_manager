@@ -127,6 +127,9 @@
     .cr-empty .cr-empty-sub { font-weight: 500; color: #64748b; font-size: 0.9rem; margin-bottom: 1.1rem; }
     .cr-nomatch { text-align: center; padding: 2rem 1rem; color: #64748b; font-weight: 600; }
 
+    /* phone-only pieces: hidden on a computer, shown inside the student cards on a phone */
+    .cr-cell-test, .cr-card-text { display: none; }
+
     html[dir="rtl"] .cr-search i { left: auto; right: 0.95rem; }
     html[dir="rtl"] .cr-search input { padding-left: 0.75rem; padding-right: 2.5rem; }
     html[dir="rtl"] .cr-pick-info { margin-left: 0; margin-right: auto; }
@@ -148,16 +151,55 @@
         html[dir="rtl"] .cr-tile:nth-child(odd) { border-right: 0; }
         .cr-pick-info { margin: 0; flex: 1 1 100%; }
     }
+    /* phones: every student becomes one card (name + position, one box per subject, total / % / grade / result, remark, report button) */
+    @media (max-width: 767.98px) {
+        .cr-head { gap: 0.7rem; }
+        .cr-tools { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+        .cr-tools > .btn, .cr-tools .dropdown .btn { width: 100%; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .cr-reg .table-responsive { overflow: visible; max-height: none; }
+        .cr-reg .table, .cr-reg .table tbody { display: block; width: 100%; }
+        .cr-reg .table thead { display: none; }
+        .cr-reg .table > tbody > tr.cr-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr)); gap: 0.7rem 0.6rem; padding: 0.85rem 0.95rem; border-bottom: 1px solid #f1f5f9; }
+        .cr-reg .table > tbody > tr.cr-row[hidden] { display: none; }
+        .cr-reg .table > tbody > tr.cr-row.is-fail { box-shadow: inset 4px 0 0 #dc2626; }
+        .cr-reg .table > tbody > tr.cr-row.is-top { box-shadow: inset 4px 0 0 #f59e0b; }
+        html[dir="rtl"] .cr-reg .table > tbody > tr.cr-row.is-fail { box-shadow: inset -4px 0 0 #dc2626; }
+        html[dir="rtl"] .cr-reg .table > tbody > tr.cr-row.is-top { box-shadow: inset -4px 0 0 #f59e0b; }
+        .cr-reg .table > tbody > tr.cr-row > td { display: block; padding: 0; border: 0; background: transparent; box-shadow: none !important; min-width: 0; text-align: left !important; }
+        html[dir="rtl"] .cr-reg .table > tbody > tr.cr-row > td { text-align: right !important; }
+        .cr-reg .table > tbody > tr.cr-row > td.cr-stick { position: static; min-width: 0; max-width: none; grid-column: 1 / -1; }
+        .cr-reg .table > tbody > tr.cr-row > td.cr-c-wide { grid-column: 1 / -1; }
+        .cr-reg .cr-c-n::before { content: attr(data-label); display: block; font-size: 0.66rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cr-reg .cr-c-sub::after { content: "/ " attr(data-max); font-size: 0.72rem; font-weight: 600; color: #94a3b8; margin-inline-start: 0.25rem; }
+        .cr-reg .cr-c-sub[data-max=""]::after { content: none; }
+        .cr-reg .cr-c-sum { padding-top: 0.55rem !important; border-top: 1px dashed #e2e8f0 !important; }
+        .cr-reg .cr-cell-test { display: block; font-size: 0.7rem; color: #94a3b8; margin-top: 0.15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cr-reg .cr-remark { min-width: 0; width: 100%; min-height: 2.6rem; }
+        .cr-reg .cr-card-btn { width: 100%; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; }
+        .cr-reg .cr-card-text { display: inline; }
+        .cr-reg tbody tr.cr-row:hover > * { background: transparent; }
+        .cr-count details { margin-left: 0; width: 100%; }
+        html[dir="rtl"] .cr-count details { margin-right: 0; }
+        .cr-legend { position: static; margin-top: 0.5rem; min-width: 0; box-shadow: none; }
+    }
     @media (max-width: 575.98px) {
-        .cr-tiles { grid-template-columns: 1fr; }
-        .cr-tile + .cr-tile { border-left: 0; border-top: 1px solid #eef2f7; }
-        html[dir="rtl"] .cr-tile + .cr-tile { border-right: 0; }
+        /* summary: four small boxes in two lines (was four tall boxes in one stack) */
+        .cr-tile { padding: 0.7rem 0.8rem; gap: 0.6rem; }
+        .cr-ico { width: 36px; height: 36px; border-radius: 11px; font-size: 0.95rem; }
+        .cr-num { font-size: 1.4rem; }
+        .cr-num.is-name { font-size: 0.95rem; }
+        .cr-lab { font-size: 0.72rem; }
         .cr-field { flex: 1 1 100%; }
+        .cr-chip { white-space: normal; }
+        .cr-details-btn { min-height: 2.5rem; }
         .cr-toolbar .form-select, .cr-toolbar .cr-seg { width: 100%; max-width: none; }
-        .cr-seg button { flex: 1; padding: 0.6rem 0.4rem; }
-        .cr-reg .cr-stick { min-width: 10.5rem; max-width: 11rem; }
-        .cr-tools .btn, .cr-tools .dropdown { flex: 1 1 auto; }
+        /* 16px text in boxes: stops iPhones zooming the page when a box is tapped */
+        .cr-field .form-select, .cr-field .form-control, .cr-toolbar .form-select, .cr-search input, .cr-remark { font-size: 16px; }
+        .cr-seg button { flex: 1; padding: 0.55rem 0.3rem; white-space: normal; line-height: 1.15; font-size: 0.8rem; }
+        .cr-seg button .n { display: block; margin-left: 0; }
+        .cr-clear { width: 100%; min-height: 2.5rem; }
         .cr-savebar { bottom: 0.5rem; }
+        .cr-savebar .btn { min-height: 2.6rem; }
     }
     @media (prefers-reduced-motion: reduce) { .cr-seg button { transition: none; } }
 </style>
@@ -387,7 +429,7 @@
                         {% for test in class_tests %}
                         {% set score = row.scores.get(test.id) %}
                         {% set grade = row.grades.get(test.id) %}
-                        <td class="text-center">
+                        <td class="text-center cr-c-n cr-c-sub" data-label="{{ test.subject_info.name if test.subject_info else 'Unknown Subject' }}" data-max="{{ '%g'|format(test.total_marks) }}">
                             {% if row.absent.get(test.id) %}
                             <span class="cr-mark abs g-abs" title="Absent — not counted in total or grade">ABS</span>
                             {% elif score is not none %}
@@ -395,42 +437,43 @@
                             {% else %}
                             <span class="cr-none">—</span>
                             {% endif %}
+                            <span class="cr-cell-test">{{ test.test_title }}</span>
                         </td>
                         {% endfor %}
 
-                        <td class="text-center">
+                        <td class="text-center cr-c-n cr-c-sum" data-label="Total">
                             <div class="cr-total" dir="ltr">
                                 {% if row.all_absent %}—{% else %}{{ '%g'|format(row.total_obtained) }} / {{ '%g'|format(row.total_max) }}{% endif %}
                                 {% if row.absent_count and not row.all_absent %}<small>absent in {{ row.absent_count }}</small>{% endif %}
                             </div>
                         </td>
-                        <td class="text-center">
+                        <td class="text-center cr-c-n cr-c-sum" data-label="%">
                             {% if has_marks %}
                             <span dir="ltr" class="cr-pct {% if pct >= 70 %}ok{% elif pct >= 40 %}mid{% else %}low{% endif %}">{{ '%s%%'|format(pct) }}</span>
                             {% else %}<span class="cr-none">—</span>{% endif %}
                         </td>
-                        <td class="text-center">
+                        <td class="text-center cr-c-n cr-c-sum" data-label="Grade">
                             {% if row.overall_grade and row.overall_grade != 'N/A' %}
                             <span class="cr-grade {{ grade_tone.get(row.overall_grade, 'g-na') }}" dir="ltr">{{ row.overall_grade }}</span>
                             {% else %}<span class="cr-none">—</span>{% endif %}
                         </td>
-                        <td class="text-center">
+                        <td class="text-center cr-c-n cr-c-sum" data-label="Result">
                             {% if row.status == 'Pass' %}<span class="cr-pill pass">Pass</span>
                             {% elif row.status == 'Fail' %}<span class="cr-pill fail">Fail</span>
                             {% elif row.status == 'Absent' %}<span class="cr-pill absent">Absent</span>
                             {% else %}<span class="cr-none">—</span>{% endif %}
                         </td>
-                        <td>
+                        <td class="cr-c-n cr-c-wide" data-label="Teacher Remarks">
                             <input type="text" class="form-control form-control-sm cr-remark" name="remark_{{ row.student.id }}"
                                    value="{{ row.remarks or '' }}" data-orig="{{ row.remarks or '' }}"
                                    aria-label="Teacher Remarks" placeholder="Write a remark…">
                         </td>
-                        <td class="text-center">
+                        <td class="text-center cr-c-wide">
                             <a href="{{ url_for('main.student_report_card_pdf', student_id=row.student.id,
                                                 class_id=selected_class_id, test_type=selected_type,
                                                 session=session_value, announce_date=announce_value) }}"
                                class="btn btn-sm btn-outline-danger cr-card-btn" title="Individual Report Card PDF" aria-label="Individual Report Card PDF">
-                                <i class="fas fa-file-pdf"></i><span class="visually-hidden">PDF</span>
+                                <i class="fas fa-file-pdf"></i><span class="visually-hidden">PDF</span><span class="cr-card-text">Report Card PDF</span>
                             </a>
                         </td>
                     </tr>

@@ -22,6 +22,32 @@
     .hub-export-card:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(15, 23, 42, .10) !important; }
     .hub-export-icon { width: 38px; height: 38px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: #eef6ff; color: #1d4ed8; font-size: 1rem; }
     .hub-filter-card { border-radius: 16px; }
+
+    /* phones: smaller frame, a 2 x 2 tab grid, finger-sized buttons, smaller numbers so nothing is cut off */
+    @media (max-width: 767.98px) {
+        .hub-shell { padding: 0.8rem; border-radius: 16px; box-shadow: none; }
+        .hub-hero { padding: 1rem 1.1rem; border-radius: 16px; margin-bottom: 0.9rem; }
+        .hub-hero .badge { white-space: normal; text-align: left; }
+        .hub-filter-card .card-body { padding: 0.8rem; }
+        .hub-filter-card .form-select, .hub-filter-card .form-control { min-height: 2.7rem; }
+        .hub-filter-card .btn { min-height: 2.7rem; display: inline-flex; align-items: center; justify-content: center; }
+        .hub-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem !important; }
+        .hub-tabs .nav-item { min-width: 0; }
+        .hub-tabs .nav-link { height: 100%; min-height: 3rem; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0.5rem 0.5rem; font-size: 0.85rem; line-height: 1.2; border-radius: 14px; background: #fff; border: 1px solid #e2e8f0; }
+        .hub-tabs .nav-link.active { background: #0f172a; border-color: #0f172a; }
+        .hub-kpi { padding: 0.75rem 0.8rem; }
+        .hub-kpi .kpi-num { font-size: 1.25rem; overflow-wrap: anywhere; }
+        .hub-kpi .kpi-label { font-size: 0.66rem; letter-spacing: 0.04em; }
+        .hub-chart-wrap { height: 230px; }
+        .hub-sec-head { flex-wrap: wrap; gap: 0.3rem 0; }
+        .hub-export-card:hover { transform: none; }
+        .hub-export-card .card-footer .btn { flex: 1 1 auto; min-height: 2.5rem; display: inline-flex; align-items: center; justify-content: center; }
+        .hub-export-card .form-select { min-height: 2.6rem; }
+    }
+    @media (max-width: 575.98px) {
+        /* 16px text in boxes: stops iPhones zooming the page when a box is tapped */
+        .hub-filter-card .form-select, .hub-export-card .form-select { font-size: 16px; }
+    }
 </style>
 
 <div class="hub-shell">
@@ -176,7 +202,7 @@
     {% endif %}
 
     {% if tab == 'finance' and finance_access %}
-    <div class="d-flex align-items-center mb-3">
+    <div class="d-flex align-items-center mb-3 hub-sec-head">
         <h6 class="fw-bold text-dark mb-0"><i class="fas fa-wallet text-primary me-2"></i>Universal Financial &amp; Fee Exports</h6>
         <span class="text-muted small ms-2">current filters: {{ month_label }}{% if selected_class_id %} &middot; selected class{% endif %}</span>
     </div>
@@ -337,7 +363,7 @@
     {% endif %}
 
     {% if tab == 'academic' %}
-    <div class="d-flex align-items-center mb-3">
+    <div class="d-flex align-items-center mb-3 hub-sec-head">
         <h6 class="fw-bold text-dark mb-0"><i class="fas fa-award text-primary me-2"></i>Academic &amp; Examination Exports</h6>
         {% if not selected_class_id %}<span class="badge bg-warning text-dark ms-2">Select a class to enable class exports</span>{% endif %}
     </div>
@@ -503,7 +529,7 @@
 
     {% if tab == 'operations' %}
     {% set cls_q = ('?class_id=' ~ selected_class_id) if selected_class_id else '' %}
-    <div class="d-flex align-items-center mb-3">
+    <div class="d-flex align-items-center mb-3 hub-sec-head">
         <h6 class="fw-bold text-dark mb-0"><i class="fas fa-folder-open text-primary me-2"></i>Student, Staff &amp; Operational Exports</h6>
         {% if not selected_class_id %}<span class="badge bg-warning text-dark ms-2">Select a class to enable class-specific exports</span>{% endif %}
     </div>
