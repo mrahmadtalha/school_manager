@@ -1,23 +1,57 @@
 {% extends "base.html" %}
 {% block content %}
 {% include "_simple_ui.html" %}
+<style>
+    /* Other Income on phones. The computer layout is not touched: every rule sits inside a
+       small-screen media query. Uses the shared phone helpers (m-head, m-actions, m-cards). */
+    @media (max-width: 767.98px) {
+        .oi-tools > a:first-child { grid-column: 1 / -1; order: 0; }
+        .oi-tools > a:nth-of-type(2) { order: 1; }
+        .oi-tools > a:nth-of-type(3) { order: 2; }
+        .oi-tools > form { grid-column: 1 / -1; order: 3; width: 100%; }
+        .oi-tools > form .form-control { flex: 1 1 auto; width: auto !important; min-height: 2.7rem; }
+        .oi-tools > form .btn { min-height: 2.7rem; min-width: 5rem; }
+        .oi-tiles { grid-template-columns: 1fr 1fr; }
+        .oi-tiles .su-tile { padding: 0.7rem 0.8rem; min-width: 0; }
+        .oi-tiles .su-num { font-size: 1.25rem; overflow-wrap: anywhere; }
+        .oi-page .su-chip { margin-bottom: 0.3rem; }
+        .oi-page .form-control, .oi-page .form-select { min-height: 2.7rem; }
+        .oi-page .oi-add .btn-success { min-height: 2.8rem; }
+        .oi-page .oi-add summary { display: inline-block; padding: 0.4rem 0; }
+        .oi-page .oi-add .btn-outline-secondary { min-height: 2.6rem; }
+        .oi-page .table-responsive { overflow: visible; }
+        .oi-page .m-cards tbody td.oi-blank { display: none !important; }
+        .oi-page .m-cards tbody td.oi-act { padding-top: 0.45rem !important; }
+        .oi-page .oi-act .btn { width: 100%; min-height: 2.6rem; }
+        .oi-page .oi-act .badge { display: inline-block; }
+        .oi-page .m-cards tbody td .small, .oi-page .m-cards tbody td.small { font-size: 0.85rem; }
+        /* Void window */
+        .oi-page .modal .modal-header, .oi-page .modal .modal-body, .oi-page .modal .modal-footer { padding-left: 1rem; padding-right: 1rem; }
+        .oi-page .modal .modal-footer .btn { flex: 1 1 0; min-height: 2.7rem; }
+    }
+    @media (max-width: 575.98px) {
+        /* 16px text in boxes: stops iPhones zooming the page when a box is tapped */
+        .oi-page .form-control, .oi-page .form-select { font-size: 16px; }
+    }
+</style>
+<div class="oi-page">
 
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4 m-head">
     <div>
         <p class="eyebrow mb-2">Finance</p>
         <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-wallet text-primary me-2"></i>Other Income</h1>
         <p class="text-muted small mb-0">Money the school receives besides fees — canteen, events, trips, certificates.</p>
     </div>
-    <div class="btn-toolbar mb-2 mb-md-0 gap-2">
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2 m-actions oi-tools">
         <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.financials_summary') }}">
             <i class="fas fa-arrow-left me-1"></i>Financial Overview
         </a>
-        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.other_income_page', month=prev_month) }}"><i class="fas fa-chevron-left"></i></a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.other_income_page', month=prev_month) }}" aria-label="Previous month"><i class="fas fa-chevron-left"></i></a>
         <form method="get" action="{{ url_for('main.other_income_page') }}" class="d-flex gap-2">
             <input type="month" class="form-control form-control-sm" name="month" value="{{ month }}" style="width: 160px;">
             <button class="btn btn-primary btn-sm">Show</button>
         </form>
-        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.other_income_page', month=next_month) }}"><i class="fas fa-chevron-right"></i></a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.other_income_page', month=next_month) }}" aria-label="Next month"><i class="fas fa-chevron-right"></i></a>
     </div>
 </div>
 
@@ -30,7 +64,7 @@
 {% endif %}
 
 {% set live_rows = rows|rejectattr('is_void')|list %}
-<div class="su-tiles mb-3">
+<div class="su-tiles oi-tiles mb-3">
     <div class="su-tile">
         <div class="su-label">Received in {{ month_label }} <span class="badge bg-dark ms-1">CASH</span></div>
         <div class="su-num text-success">Rs. {{ '{:,.2f}'.format(total) }}</div>
@@ -51,7 +85,7 @@
 </div>
 {% endif %}
 
-<div class="card su-simple-card shadow-sm border-0 mb-3">
+<div class="card su-simple-card shadow-sm border-0 mb-3 oi-add">
     <div class="card-body">
         <h2 class="h6 fw-bold mb-3"><i class="fas fa-plus-circle text-success me-1"></i>Add money received</h2>
         <form method="post" action="{{ url_for('main.other_income_add') }}" class="row g-3 align-items-end">
@@ -104,7 +138,7 @@
 
 <div class="card su-simple-card border-0 shadow-sm">
     <div class="card-body p-0 table-responsive">
-        <table class="table table-sm table-striped align-middle mb-0">
+        <table class="table table-sm table-striped align-middle mb-0 m-cards">
             <thead class="table-light"><tr>
                 <th class="ps-3">Date</th><th>Category</th><th>Note</th><th>Receipt</th>
                 <th class="text-end">Amount (Rs.)</th><th>Recorded by</th>
@@ -114,13 +148,13 @@
                 {% for row in rows %}
                 <tr class="{% if row.is_void %}text-decoration-line-through text-muted{% endif %}">
                     <td class="ps-3">{{ row.income_date.strftime('%d %b %Y') }}</td>
-                    <td>{{ row.category.name if row.category else '—' }}</td>
-                    <td class="small text-muted">{{ row.description or '' }}
+                    <td data-label="Category">{{ row.category.name if row.category else '—' }}</td>
+                    <td class="small text-muted{% if not (row.description or sources.get(row.id)) %} oi-blank{% endif %}" data-label="Note">{{ row.description or '' }}
                         {% if sources.get(row.id) %}<div><a href="{{ sources[row.id][1] }}" class="text-decoration-none"><i class="fas fa-link me-1"></i>{{ sources[row.id][0] }}</a></div>{% endif %}</td>
-                    <td class="small font-monospace">{{ row.receipt_no or '' }}</td>
-                    <td class="text-end fw-bold">{{ '{:,.2f}'.format(row.amount) }}</td>
-                    <td class="small">{{ row.created_by_name or 'system' }}</td>
-                    <td class="text-end pe-3">
+                    <td class="small font-monospace{% if not row.receipt_no %} oi-blank{% endif %}" data-label="Receipt">{{ row.receipt_no or '' }}</td>
+                    <td class="text-end fw-bold" data-label="Amount (Rs.)">{{ '{:,.2f}'.format(row.amount) }}</td>
+                    <td class="small" data-label="Recorded by">{{ row.created_by_name or 'system' }}</td>
+                    <td class="text-end pe-3 oi-act">
                         {% if not row.is_void %}
                         <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal"
                                 data-bs-target="#voidIncome{{ row.id }}">Void</button>
@@ -174,4 +208,5 @@
 </div>
 {% endif %}
 {% endfor %}
+</div>
 {% endblock %}
