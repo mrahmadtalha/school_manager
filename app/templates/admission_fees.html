@@ -1,13 +1,35 @@
 {% extends "base.html" %}
 {% block content %}
 {% include "_simple_ui.html" %}
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+<style>
+    /* Admission Fees register on phones. The computer layout is not touched: every rule sits inside
+       a small-screen media query. Uses the shared phone helpers (m-head, m-actions, m-cards). */
+    @media (max-width: 767.98px) {
+        .adm-tiles { grid-template-columns: 1fr 1fr; }
+        .adm-tiles .su-tile { padding: 0.7rem 0.8rem; min-width: 0; }
+        .adm-tiles .su-num { font-size: 1.25rem; overflow-wrap: anywhere; }
+        .adm-page .su-filter a { min-height: 2.4rem; display: inline-flex; align-items: center; }
+        .adm-page .adm-form .form-control, .adm-page .adm-form .form-select { min-height: 2.7rem; }
+        .adm-page .adm-form .btn-primary { min-height: 2.7rem; }
+        .adm-page .table-responsive { overflow: visible; }
+        .adm-page .m-cards tbody td.adm-total { flex-wrap: wrap; }
+        .adm-page .m-cards tbody td.adm-total > div { flex: 1 1 100%; text-align: right; }
+        .adm-page .m-cards tbody td.adm-open { padding-top: 0.45rem !important; }
+        .adm-page .m-cards tbody td.adm-open .btn { width: 100%; min-height: 2.6rem; }
+    }
+    @media (max-width: 575.98px) {
+        /* 16px text in boxes: stops iPhones zooming the page when a box is tapped */
+        .adm-page .adm-form .form-control, .adm-page .adm-form .form-select { font-size: 16px; }
+    }
+</style>
+<div class="adm-page">
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4 m-head">
     <div>
         <p class="eyebrow mb-2">Finance overview</p>
         <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-door-open text-primary me-2"></i>Admission Fees</h1>
         <p class="text-muted small mb-0">The fee taken once when a student joins: what was agreed, what has been received and what is still to collect.</p>
     </div>
-    <div class="d-flex gap-2 flex-wrap align-items-center">
+    <div class="d-flex gap-2 flex-wrap align-items-center m-actions">
         <div class="btn-group btn-group-sm" role="group" aria-label="Export the register">
             <a class="btn btn-outline-danger" href="{{ url_for('main.admission_export', fmt='pdf', **request.args) }}">PDF</a>
             <a class="btn btn-outline-success" href="{{ url_for('main.admission_export', fmt='xlsx', **request.args) }}">Excel</a>
@@ -32,7 +54,7 @@
 </div>
 {% endif %}
 
-<div class="su-tiles mb-3">
+<div class="su-tiles adm-tiles mb-3">
     <div class="su-tile"><div class="su-label">Students listed</div><div class="su-num">{{ totals.count }}</div></div>
     <div class="su-tile"><div class="su-label">Agreed total</div><div class="su-num">{{ money(totals.net) }}</div>
         {% if totals.concession %}<div class="su-hint">after {{ money(totals.concession) }} concessions</div>{% endif %}</div>
@@ -50,7 +72,7 @@
 
 <div class="card shadow-sm mb-4 border-0">
     <div class="card-body">
-        <form method="GET" action="{{ url_for('main.admission_register') }}" class="row g-2 align-items-end">
+        <form method="GET" action="{{ url_for('main.admission_register') }}" class="row g-2 align-items-end adm-form">
             <div class="col-md-3">
                 <label class="form-label small fw-bold text-muted mb-1">Search</label>
                 <input type="text" name="search" value="{{ search }}" class="form-control form-control-sm" placeholder="Name, father or admission no">
@@ -86,7 +108,7 @@
 
 <div class="card shadow-sm border-0 su-simple-card">
     <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
+        <table class="table table-hover align-middle mb-0 m-cards">
             <thead class="table-light">
                 <tr>
                     <th>Student</th><th>Class</th><th>Joined</th>
@@ -101,19 +123,19 @@
                         <a href="{{ url_for('main.admission_student', student_id=r.student.id) }}" class="fw-semibold text-decoration-none">{{ r.student.student_name }}</a>
                         <div class="small text-muted">{{ r.student.father_name }}</div>
                     </td>
-                    <td>{{ r.student.class_info.name if r.student.class_info else '—' }}</td>
-                    <td>{{ r.student.admission_fee_date.strftime('%d %b %Y') if r.student.admission_fee_date else '—' }}</td>
-                    <td class="text-end fw-semibold">{{ money(r.net) }}
+                    <td data-label="Class">{{ r.student.class_info.name if r.student.class_info else '—' }}</td>
+                    <td data-label="Joined">{{ r.student.admission_fee_date.strftime('%d %b %Y') if r.student.admission_fee_date else '—' }}</td>
+                    <td class="text-end fw-semibold adm-total" data-label="Total fee">{{ money(r.net) }}
                         <div class="small text-muted fw-normal">
                             Admission {{ money(r.standard) }}{% if r.extras %} &middot; Books + uniform {{ money(r.extras) }}{% endif %}{% if r.concession %} &middot; Concession {{ money(r.concession) }}{% endif %}
                         </div>
                     </td>
-                    <td class="text-end text-success">{{ money(r.received) }}</td>
-                    <td class="text-end {{ 'text-danger fw-semibold' if r.balance }}">{{ money(r.balance) if r.balance else '—' }}</td>
-                    <td>
+                    <td class="text-end text-success" data-label="Received">{{ money(r.received) }}</td>
+                    <td class="text-end {{ 'text-danger fw-semibold' if r.balance }}" data-label="Still to collect">{{ money(r.balance) if r.balance else '—' }}</td>
+                    <td data-label="Status">
                         <span class="badge {{ {'pending': 'bg-warning text-dark', 'partial': 'bg-info text-dark', 'paid': 'bg-success', 'waived': 'bg-secondary'}.get(r.status, 'bg-light text-muted') }}">{{ status_labels[r.status] }}</span>
                     </td>
-                    <td class="text-end">
+                    <td class="text-end adm-open">
                         <a href="{{ url_for('main.admission_student', student_id=r.student.id) }}" class="btn btn-sm btn-outline-primary">Open</a>
                     </td>
                 </tr>
@@ -123,5 +145,6 @@
             </tbody>
         </table>
     </div>
+</div>
 </div>
 {% endblock %}

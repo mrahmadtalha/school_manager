@@ -1801,3 +1801,7 @@ UR.update({
     # Sidebar quick find
     'Find a page': 'صفحہ تلاش کریں', 'Find a page in the menu': 'مینو میں صفحہ تلاش کریں', 'No page found': 'کوئی صفحہ نہیں ملا',
 })
+UR.update({
+    # Admission Fees register: phone card labels
+    'Joined': 'شمولیت', 'Total fee': 'کل فیس', 'Still to collect': 'ابھی وصول کرنا باقی',
+})
