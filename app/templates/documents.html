@@ -396,7 +396,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (hash === 'doc-fees') { var d = document.getElementById('dcFees'); if (d) { d.open = true; d.scrollIntoView(); } }
 
     function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
-    function toast(msg) { if (window.SchoolUI && window.SchoolUI.toast) { window.SchoolUI.toast(msg, 'warning'); } else { alert(msg); } }
+    function toast(msg) { if (window.SchoolUI && window.SchoolUI.toast) { window.SchoolUI.toast(msg, 'warning'); } }
 
     document.querySelectorAll('[data-who-form]').forEach(function (form) {
         var classSel = form.querySelector('[data-role="class"]');

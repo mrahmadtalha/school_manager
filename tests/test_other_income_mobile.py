@@ -25,7 +25,7 @@ def _add_entries(admin_client, app, description='trip tickets', void_second=Fals
             'category_id': str(category_id), 'amount': '700',
             'income_date': '2026-10-21', 'description': ''}, follow_redirects=True)
         with app.app_context():
-            row_id = OtherIncome.query.filter_by(amount=700.0).one().id
+            row_id = OtherIncome.query.filter_by(amount_paisa=70000).one().id
         admin_client.post('/other-income/%d/void' % row_id, data={'reason': 'test'}, follow_redirects=True)
 
 

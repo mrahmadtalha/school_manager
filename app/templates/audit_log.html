@@ -91,6 +91,55 @@
         .al-seg { width: 100%; }
         .al-seg label { flex: 1; text-align: center; }
     }
+    /* phones: Export button, filters, list controls and the log as cards (the computer layout is not touched) */
+    @media (max-width: 767.98px) {
+        .al-tools { width: 100%; }
+        .al-tools .btn { flex: 1; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .al-stat { padding: 0.65rem 1rem; }
+        .al-num { font-size: 1.4rem; }
+        .al-watch .al-lab { overflow-wrap: anywhere; }
+        .al-filters .form-select, .al-filters .form-control.al-date { width: 100%; max-width: none; flex: 1 1 100%; }
+        .al-seg { width: 100%; }
+        .al-seg label { flex: 1; text-align: center; min-height: 2.4rem; display: inline-flex; align-items: center; justify-content: center; }
+        .al-datebox { flex: 1 1 100%; display: grid; grid-template-columns: auto 1fr; gap: 0.4rem 0.6rem; align-items: center; }
+        .al-filters .btn { flex: 1; justify-content: center; min-height: 2.7rem; }
+        .al-filters .btn[aria-label="Clear filters"] { flex: 0 0 auto; min-width: 3rem; }
+        .al-count { flex-wrap: wrap; }
+        .al-count .btn { min-height: 2.4rem; display: inline-flex; align-items: center; }
+        /* the list's own Show N entries / Quick Filter / paging controls */
+        .al-panel .dataTables_wrapper > .row { --bs-gutter-x: 0; row-gap: 0.4rem; padding: 0.4rem 0.7rem; margin: 0; }
+        .al-panel .dataTables_wrapper .dataTables_length { text-align: left !important; }
+        .al-panel .dataTables_wrapper .dataTables_length select, .al-panel .dataTables_wrapper .dataTables_filter input { min-height: 2.6rem; }
+        .al-panel .dataTables_wrapper .dataTables_filter { text-align: left !important; }
+        .al-panel .dataTables_wrapper .dataTables_filter input { width: 100%; margin-inline-start: 0; }
+        .al-panel .dataTables_wrapper .dataTables_filter label { display: block; width: 100%; }
+        .al-panel .dataTables_wrapper .dataTables_info { text-align: center; white-space: normal; padding-top: 0; }
+        .al-panel .dataTables_wrapper .pagination { justify-content: center; flex-wrap: wrap; gap: 0.2rem 0; }
+        .al-panel .dataTables_wrapper .page-link { min-width: 2.4rem; min-height: 2.4rem; display: inline-flex; align-items: center; justify-content: center; }
+        .al-panel .dataTables_scrollHead { display: none; }
+        /* every log entry is one card */
+        .al-stack, .al-stack > tbody { display: block; width: 100% !important; }
+        .al-stack > thead { display: none; }
+        .al-stack > tbody { padding: 0.4rem 0.7rem 0.8rem; }
+        .al-stack > tbody > tr { display: grid; grid-template-columns: 1fr auto; gap: 0.4rem 0.7rem; margin-top: 0.6rem; padding: 0.75rem 0.9rem; background: #fff !important; border: 1px solid #e2e8f0; border-radius: 14px; }
+        .al-stack > tbody > tr > td { display: block; padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; min-width: 0; white-space: normal; text-align: left !important; }
+        html[dir="rtl"] .al-stack > tbody > tr > td { text-align: right !important; }
+        .al-stack > tbody > tr > td[data-label]::before { content: attr(data-label); display: block; font-size: 0.66rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.1rem; }
+        .al-stack > tbody > tr > td.al-when { order: 1; align-self: center; }
+        .al-stack > tbody > tr > td.al-c-what { order: 2; text-align: right !important; }
+        html[dir="rtl"] .al-stack > tbody > tr > td.al-c-what { text-align: left !important; }
+        .al-stack > tbody > tr > td.al-c-who { order: 3; grid-column: 1 / -1; }
+        .al-stack > tbody > tr > td.al-on { order: 4; grid-column: 1 / -1; }
+        .al-stack > tbody > tr > td.al-c-detail { order: 5; grid-column: 1 / -1; padding-top: 0.2rem !important; border-top: 1px dashed #e2e8f0 !important; }
+        .al-stack > tbody > tr > td.dataTables_empty { grid-column: 1 / -1; text-align: center !important; }
+        .al-more > summary { display: inline-block; padding: 0.35rem 0; }
+        .al-diff td:first-child { white-space: normal; }
+    }
+    @media (max-width: 575.98px) {
+        /* 16px text in boxes: stops iPhones zooming the page when a box is tapped */
+        .al-search input, .al-filters .form-select, .al-filters .form-control.al-date,
+        .al-panel .dataTables_wrapper .dataTables_length select, .al-panel .dataTables_wrapper .dataTables_filter input { font-size: 16px; }
+    }
     @media (prefers-reduced-motion: reduce) {
         .al-seg label, .al-more > summary::before { transition: none; }
     }
@@ -214,7 +263,7 @@
         {% endif %}
     </div>
     <div class="card-body p-0">
-        <table id="auditTable" class="table table-hover align-middle mb-0 datatable" data-scroll-x="true" data-page-length="25" data-order='[[0, "desc"]]'>
+        <table id="auditTable" class="table table-hover align-middle mb-0 datatable al-stack" data-scroll-x="true" data-page-length="25" data-order='[[0, "desc"]]'>
             <thead>
                 <tr>
                     <th class="ps-3">When</th>
@@ -228,10 +277,10 @@
                 {% for item in view_rows %}{% set row = item.row %}
                 <tr>
                     <td class="ps-3 al-when" data-order="{{ row.created_at.isoformat() if row.created_at else '' }}">{% if row.created_at %}<span>{{ row.created_at | localtime('%d %b %Y') }}</span> <span dir="ltr" class="text-muted">{{ row.created_at | localtime('%H:%M') }}</span>{% else %}—{% endif %}</td>
-                    <td><span class="al-who">{{ row.username }}</span>{% if row.role %}<span class="al-role">{{ row.role }}</span>{% endif %}</td>
-                    <td><span class="al-chip {{ item.tone }}"><i class="fas {{ item.icon }}"></i>{{ item.label }}</span></td>
-                    <td class="al-on">{{ entity_labels.get(row.entity_type, row.entity_type or '—') }}{% if row.entity_id %} <small>#{{ row.entity_id }}</small>{% endif %}</td>
-                    <td>
+                    <td class="al-c-who" data-label="Who"><span class="al-who">{{ row.username }}</span>{% if row.role %}<span class="al-role">{{ row.role }}</span>{% endif %}</td>
+                    <td class="al-c-what"><span class="al-chip {{ item.tone }}"><i class="fas {{ item.icon }}"></i>{{ item.label }}</span></td>
+                    <td class="al-on" data-label="About">{{ entity_labels.get(row.entity_type, row.entity_type or '—') }}{% if row.entity_id %} <small>#{{ row.entity_id }}</small>{% endif %}</td>
+                    <td class="al-c-detail">
                         <div class="al-sum">{{ row.summary or '—' }}</div>
                         {% if item.detail and item.detail['items'] %}
                         <details class="al-more">
@@ -258,6 +307,15 @@
                 {% endfor %}
             </tbody>
         </table>
+        <script>
+        /* on a phone the log is a list of cards, so it must not use the sideways-scrolling table */
+        (function () {
+            var table = document.getElementById('auditTable');
+            if (table && window.matchMedia && window.matchMedia('(max-width: 767.98px)').matches) {
+                table.removeAttribute('data-scroll-x');
+            }
+        })();
+        </script>
     </div>
     {% else %}
     <div class="al-empty">

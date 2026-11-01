@@ -52,8 +52,10 @@ def test_audit_page_shows_local_times(admin_client, app, pkt_timezone):
     _add_log(app, datetime(2026, 9, 28, 8, 45, 38), summary='Timezone probe event')
     body = admin_client.get('/audit-log',
                             query_string={'search': 'Timezone probe event'}).get_data(as_text=True)
-    assert '2026-09-28 13:45:38' in body
-    assert '2026-09-28 08:45:38' not in body
+    # The audit table shows the date and the time in two separate cells.
+    assert '28 Sep 2026' in body
+    assert '>13:45<' in body                 # 08:45 UTC shown as 13:45 local
+    assert '>08:45<' not in body
 
 
 def test_student_history_shows_local_times(admin_client, app, seed, pkt_timezone):

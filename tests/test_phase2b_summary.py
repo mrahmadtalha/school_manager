@@ -16,6 +16,7 @@ September 2026):
 """
 
 import re
+from datetime import date
 
 import pytest
 
@@ -192,7 +193,15 @@ def test_category_chart_and_breakdown_exclude_salaries(admin_client, world):
     assert 'Total (salaries excluded)' in body
 
 
-def test_dashboard_net_equals_summary_net(app, world):
+def test_dashboard_net_equals_summary_net(app, world, monkeypatch):
+    # The dashboard reads 'today'; pin it inside the October 2026 data set so
+    # the test keeps working after the real calendar moves on.
+    class _Oct2026(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 10, 31)
+
+    monkeypatch.setattr(dashboard_service, 'date', _Oct2026)
     with app.app_context():
         snap = fs.month_snapshot(MONTH)
         book = dashboard_service.account_book()

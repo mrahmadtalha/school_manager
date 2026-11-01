@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """English / Urdu interface switch (Phase 1)."""
 import os
+from datetime import datetime
 
 import pytest
 
@@ -120,8 +121,10 @@ def test_month_names_and_counts_in_urdu(admin_client, seed):
     assert i18n.lookup('12 students') == '12 طلبہ' and i18n.lookup('1 student') == '1 طلبہ'
     _urdu(admin_client)
     html = admin_client.get('/fees').get_data(as_text=True)
-    assert 'value="October 2026"' in html            # what the form posts stays English
-    assert 'اکتوبر 2026' in html
+    # The fees page opens on the real current month, so don't hard-code one.
+    this_month = datetime.now().strftime('%B %Y')
+    assert f'value="{this_month}"' in html          # what the form posts stays English
+    assert i18n.lookup(this_month) in html
 
 
 def test_dashboard_and_finance_sentences_in_urdu():

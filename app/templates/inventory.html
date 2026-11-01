@@ -106,12 +106,45 @@
         .iv-stat:nth-child(3) { border-left: 0; border-top: 1px solid #eef2f7; }
         .iv-stat:nth-child(4) { border-top: 1px solid #eef2f7; }
     }
+    /* phones: tables become cards, big tap targets, windows that fit (the computer layout is not touched) */
+    @media (max-width: 767.98px) {
+        .iv-head > div { flex: 1 1 100%; }
+        .iv-head .btn { width: 100%; min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; }
+        .iv-stat { padding: 0.7rem 0.9rem; }
+        .iv-num { font-size: 1.3rem; overflow-wrap: anywhere; }
+        .iv-page .su-act { min-height: 2.8rem; }
+        .iv-page ul.su-tabs .nav-link { min-height: 2.5rem; display: inline-flex; align-items: center; justify-content: center; }
+        .iv-page .form-control-sm, .iv-page .form-select-sm { min-height: 2.6rem; }
+        .iv-page .btn-sm { min-height: 2.4rem; }
+        .iv-page .btn.py-0 { padding-top: 0.35rem !important; padding-bottom: 0.35rem !important; }
+        .iv-search { max-width: none; }
+        .iv-page .table-responsive { overflow: visible; }
+        /* every table is a list of cards (shared .m-cards helper); wide history cells may wrap */
+        .iv-page .m-cards tbody td { white-space: normal !important; }
+        .iv-page .m-cards tbody td[data-iv-act] { display: flex; flex-wrap: wrap; gap: 0.4rem; padding-top: 0.45rem !important; }
+        .iv-page .m-cards tbody td[data-iv-act]:not(:has(.btn, form, span)) { display: none; }
+        .iv-page .m-cards tbody td[data-iv-act] .btn { flex: 1 1 auto; min-height: 2.5rem; margin: 0 !important; }
+        .iv-page .m-cards tbody td[data-iv-act] > form { flex: 1 1 100%; display: flex; gap: 0.4rem; }
+        .iv-page .m-cards tbody td[data-iv-act] > form.d-inline { flex: 1 1 auto; }
+        .iv-page .m-cards tbody td[data-iv-act] > form.d-inline .btn { width: 100%; }
+        .iv-page .m-cards tbody td[data-iv-act] form .form-control { flex: 1; width: auto !important; max-width: none !important; }
+        .iv-page .iv-empty { padding: 1.5rem 0.5rem; }
+        /* windows */
+        .iv-page .modal .modal-header, .iv-page .modal .modal-body, .iv-page .modal .modal-footer { padding-left: 1rem; padding-right: 1rem; }
+        .iv-page .modal .modal-footer .btn { flex: 1 1 0; min-height: 2.7rem; }
+        .iv-page .modal .form-control, .iv-page .modal .form-select { min-height: 2.8rem; }
+        #setRows > div { flex-wrap: wrap; }
+        #setRows select { flex: 1 1 100%; }
+        #setRows input { flex: 1; max-width: none !important; }
+        #setRows .btn { min-width: 2.8rem; min-height: 2.6rem; }
+    }
     @media (max-width: 575.98px) {
-        .iv-band { grid-template-columns: 1fr; }
-        .iv-stat + .iv-stat { border-left: 0; border-top: 1px solid #eef2f7; }
         .iv-page ul.su-tabs { width: 100%; }
         .iv-page ul.su-tabs .nav-item { flex: 1 1 auto; }
         .iv-page .su-act { flex: 1 1 100%; justify-content: center; }
+        .iv-page .modal .row > .col-4, .iv-page .modal .row > .col-5, .iv-page .modal .row > .col-7 { flex: 0 0 100%; max-width: 100%; }
+        /* 16px text in boxes: stops iPhones zooming the page when a box is tapped */
+        .iv-page .form-control, .iv-page .form-select { font-size: 16px; }
     }
     @media (prefers-reduced-motion: reduce) { .iv-page .su-act { transition: none; } }
 </style>
@@ -234,16 +267,16 @@
                     {% else %}
                     <div class="small mb-1">{{ setup.classes_complete }} of {{ setup.class_count }} classes are ready.</div>
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0 small">
+                        <table class="table table-sm align-middle mb-0 small m-cards">
                             <thead class="table-light"><tr><th>Class</th><th>Books set</th><th>Uniform set</th></tr></thead>
                             <tbody>
                             {% for r in setup.class_rows %}
                                 <tr>
                                     <td class="fw-bold">{{ r.name }}</td>
-                                    <td>{% if r.books %}<i class="fas fa-check text-success me-1"></i>{{ r.books.name }}
+                                    <td data-label="Books set">{% if r.books %}<i class="fas fa-check text-success me-1"></i>{{ r.books.name }}
                                         {% else %}<button type="button" class="btn btn-sm btn-outline-primary py-0 set-new-btn" data-bs-toggle="modal" data-bs-target="#setModal"
                                                 data-kind="books" data-class="{{ r.id }}" data-name="{{ r.name }} Books">Choose items</button>{% endif %}</td>
-                                    <td>{% if r.uniform %}<i class="fas fa-check text-success me-1"></i>{{ r.uniform.name }}{% if r.uniform_common %} <span class="text-muted">(all classes)</span>{% endif %}
+                                    <td data-label="Uniform set">{% if r.uniform %}<i class="fas fa-check text-success me-1"></i>{{ r.uniform.name }}{% if r.uniform_common %} <span class="text-muted">(all classes)</span>{% endif %}
                                         {% else %}<button type="button" class="btn btn-sm btn-outline-primary py-0 set-new-btn" data-bs-toggle="modal" data-bs-target="#setModal"
                                                 data-kind="uniform" data-class="{{ r.id }}" data-name="{{ r.name }} Uniform">Choose items</button>
                                         <button type="button" class="btn btn-sm btn-link py-0 set-new-btn" data-bs-toggle="modal" data-bs-target="#setModal"
@@ -325,15 +358,15 @@
             <a href="#addProduct" class="ms-1">Add a canteen item</a>
         </div>
         <div class="table-responsive mb-2">
-            <table class="table table-sm table-striped align-middle mb-0">
+            <table class="table table-sm table-striped align-middle mb-0 m-cards">
                 <thead class="table-light"><tr><th class="ps-3">Canteen item</th><th class="text-end">Selling price</th><th class="text-end">Cost</th><th class="text-end pe-3">In stock</th></tr></thead>
                 <tbody>
                 {% for p in canteen_products %}
                     <tr class="{% if not p.is_active %}text-decoration-line-through text-muted{% endif %}">
                         <td class="ps-3">{{ p.name }}{% if p.stock_qty <= p.min_stock_qty and p.min_stock_qty > 0 %} <span class="badge bg-warning text-dark">low</span>{% endif %}</td>
-                        <td class="text-end">{{ '{:,.2f}'.format(p.sale_price_paisa / 100.0) }}</td>
-                        <td class="text-end">{{ '{:,.2f}'.format(p.cost_paisa / 100.0) }}</td>
-                        <td class="text-end fw-bold pe-3">{{ p.stock_qty }}</td>
+                        <td data-label="Selling price" class="text-end">{{ '{:,.2f}'.format(p.sale_price_paisa / 100.0) }}</td>
+                        <td data-label="Cost" class="text-end">{{ '{:,.2f}'.format(p.cost_paisa / 100.0) }}</td>
+                        <td data-label="In stock" class="text-end fw-bold pe-3">{{ p.stock_qty }}</td>
                     </tr>
                 {% else %}
                     <tr><td colspan="4" class="text-center text-muted py-3">No canteen items yet.</td></tr>
@@ -387,16 +420,16 @@
         })();
         </script>
         <div class="table-responsive">
-            <table class="table table-sm table-striped align-middle mb-0">
+            <table class="table table-sm table-striped align-middle mb-0 m-cards">
                 <thead class="table-light"><tr><th class="ps-3">Date</th><th>What</th><th class="text-end">Amount</th><th>Note</th><th class="text-end pe-3"></th></tr></thead>
                 <tbody>
                 {% for e in canteen_entries %}
                     <tr class="{% if e.is_void %}text-muted text-decoration-line-through{% endif %}">
                         <td class="ps-3">{{ e.entry_date.strftime('%d %b %Y') }}</td>
-                        <td>{{ 'Sales' if e.kind == 'sale' else 'Purchases' }}</td>
-                        <td class="text-end">{{ '{:,.2f}'.format(e.amount_paisa / 100.0) }}</td>
-                        <td class="small">{{ e.note or '' }}{% if e.is_credit and not e.is_void %}<br><span class="text-muted">{{ e.supplier or 'No supplier name' }} &middot; paid Rs. {{ '{:,.2f}'.format(e.paid_total_paisa / 100.0) }} &middot; </span>{% if e.balance_paisa > 0 %}<strong class="text-danger">owed Rs. {{ '{:,.2f}'.format(e.balance_paisa / 100.0) }}</strong>{% else %}<span class="text-success">paid in full</span>{% endif %}{% elif e.kind == 'purchase' and e.supplier and not e.is_void %}<br><span class="text-muted">{{ e.supplier }}</span>{% endif %}{% if e.is_void %} <span class="text-decoration-none">(voided{% if e.void_reason %}: {{ e.void_reason }}{% endif %})</span>{% endif %}</td>
-                        <td class="text-end pe-3">
+                        <td data-label="What">{{ 'Sales' if e.kind == 'sale' else 'Purchases' }}</td>
+                        <td data-label="Amount" class="text-end">{{ '{:,.2f}'.format(e.amount_paisa / 100.0) }}</td>
+                        <td data-label="Note" class="small">{{ e.note or '' }}{% if e.is_credit and not e.is_void %}<br><span class="text-muted">{{ e.supplier or 'No supplier name' }} &middot; paid Rs. {{ '{:,.2f}'.format(e.paid_total_paisa / 100.0) }} &middot; </span>{% if e.balance_paisa > 0 %}<strong class="text-danger">owed Rs. {{ '{:,.2f}'.format(e.balance_paisa / 100.0) }}</strong>{% else %}<span class="text-success">paid in full</span>{% endif %}{% elif e.kind == 'purchase' and e.supplier and not e.is_void %}<br><span class="text-muted">{{ e.supplier }}</span>{% endif %}{% if e.is_void %} <span class="text-decoration-none">(voided{% if e.void_reason %}: {{ e.void_reason }}{% endif %})</span>{% endif %}</td>
+                        <td data-iv-act class="text-end pe-3">
                             {% if e.is_credit and not e.is_void and e.balance_paisa > 0 %}
                             <button type="button" class="btn btn-sm btn-primary mb-1 pay-bill-btn"
                                     data-bs-toggle="modal" data-bs-target="#payBillModal"
@@ -421,16 +454,16 @@
         </div>
         {% if canteen_payments %}
         <div class="table-responsive mt-3">
-            <table class="table table-sm table-striped align-middle mb-0">
+            <table class="table table-sm table-striped align-middle mb-0 m-cards">
                 <thead class="table-light"><tr><th class="ps-3">Paid on</th><th>Canteen supplier</th><th class="text-end">Amount</th><th>Method</th><th class="text-end pe-3"></th></tr></thead>
                 <tbody>
                 {% for cp in canteen_payments %}
                     <tr class="{% if cp.is_void %}text-muted text-decoration-line-through{% endif %}">
                         <td class="ps-3">{{ cp.payment_date.strftime('%d %b %Y') }}</td>
-                        <td class="small">{{ cp.entry.supplier or 'No supplier name' }}<br><span class="text-muted">bill of {{ cp.entry.entry_date.strftime('%d %b %Y') }}</span></td>
-                        <td class="text-end fw-bold">{{ '{:,.2f}'.format(cp.amount_paisa / 100.0) }}</td>
-                        <td class="small">{{ (cp.method or '')|capitalize }}</td>
-                        <td class="text-end pe-3">
+                        <td data-label="Canteen supplier" class="small">{{ cp.entry.supplier or 'No supplier name' }}<br><span class="text-muted">bill of {{ cp.entry.entry_date.strftime('%d %b %Y') }}</span></td>
+                        <td data-label="Amount" class="text-end fw-bold">{{ '{:,.2f}'.format(cp.amount_paisa / 100.0) }}</td>
+                        <td data-label="Method" class="small">{{ (cp.method or '')|capitalize }}</td>
+                        <td data-iv-act class="text-end pe-3">
                             {% if not cp.is_void and current_user.role in ('admin', 'owner') %}
                             <form method="post" action="{{ url_for('main.inventory_canteen_payment_void', payment_id=cp.id) }}" class="d-flex gap-1 justify-content-end">
                                 <input type="text" name="reason" class="form-control form-control-sm" style="max-width:150px" placeholder="reason" required>
@@ -637,7 +670,7 @@
         </button>
     </div>
     <div class="card-body p-0 table-responsive">
-        <table class="table table-sm table-striped align-middle mb-0">
+        <table class="table table-sm table-striped align-middle mb-0 m-cards">
             <thead class="table-light"><tr>
                 <th class="ps-3">Set</th><th>What is inside</th>
                 <th class="text-end">Sells for</th><th class="text-end">Costs</th>
@@ -648,11 +681,11 @@
                 <tr class="{% if not st.is_active %}text-decoration-line-through text-muted{% endif %}">
                     <td class="ps-3 fw-bold">{{ st.name }}
                         <div class="small fw-normal text-muted text-capitalize">{{ st.kind }}{% if st.class_name %} &middot; {{ st.class_name }}{% endif %}</div></td>
-                    <td class="small">{% for it in st['items'] %}{{ it.qty }} &times; {{ it.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
-                    <td class="text-end">{{ '{:,.2f}'.format(st.price / 100.0) }}</td>
-                    <td class="text-end text-muted">{{ '{:,.2f}'.format(st.cost / 100.0) }}</td>
-                    <td class="text-end fw-bold">{{ st.available }}</td>
-                    <td class="text-end pe-3 text-nowrap">
+                    <td data-label="What is inside" class="small">{% for it in st['items'] %}{{ it.qty }} &times; {{ it.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+                    <td data-label="Sells for" class="text-end">{{ '{:,.2f}'.format(st.price / 100.0) }}</td>
+                    <td data-label="Costs" class="text-end text-muted">{{ '{:,.2f}'.format(st.cost / 100.0) }}</td>
+                    <td data-label="Complete sets" class="text-end fw-bold">{{ st.available }}</td>
+                    <td data-iv-act class="text-end pe-3 text-nowrap">
                         {% if st.is_active %}
                         <button type="button" class="btn btn-sm btn-outline-primary set-buy-btn" data-bs-toggle="modal" data-bs-target="#setBuyModal"
                                 data-action="{{ url_for('main.inventory_set_buy', set_id=st.id) }}" data-name="{{ st.name }}">Buy</button>
@@ -790,17 +823,17 @@
             Their stock was not taken out yet — either the class has no set, or there was not enough stock. Fix that (Setup tab, or Buy stock), then press <em>Issue now</em>.</div>
         </div>
         <div class="table-responsive mb-3">
-            <table class="table table-sm align-middle mb-0">
+            <table class="table table-sm align-middle mb-0 m-cards">
                 <thead class="table-light"><tr><th>Student</th><th>Class</th><th>What</th><th class="text-end">How many</th><th>Items to give</th><th></th></tr></thead>
                 <tbody>
                 {% for r in pending_issues %}
                     <tr>
                         <td>{{ r.student.student_name }}</td>
-                        <td class="small">{{ r.student.class_info.name if r.student.class_info else '' }}</td>
-                        <td class="text-capitalize">{{ r.kind }}</td>
-                        <td class="text-end">{{ r.missing }}</td>
-                        <td class="small">{% if r.set %}{{ r.set.name }}{% else %}<span class="text-danger">No {{ r.kind }} set for this class yet</span>{% endif %}</td>
-                        <td class="text-end">
+                        <td data-label="Class" class="small">{{ r.student.class_info.name if r.student.class_info else '' }}</td>
+                        <td data-label="What" class="text-capitalize">{{ r.kind }}</td>
+                        <td data-label="How many" class="text-end">{{ r.missing }}</td>
+                        <td data-label="Items to give" class="small">{% if r.set %}{{ r.set.name }}{% else %}<span class="text-danger">No {{ r.kind }} set for this class yet</span>{% endif %}</td>
+                        <td data-iv-act class="text-end">
                             {% if r.set %}<form method="post" action="{{ url_for('main.inventory_student_issue', student_id=r.student.id) }}" class="d-inline">
                                 <button class="btn btn-sm btn-primary">Issue now</button></form>{% endif %}
                         </td>
@@ -812,16 +845,16 @@
         {% endif %}
         <h3 class="h6 fw-bold mb-2">Given lately</h3>
         <div class="table-responsive">
-            <table class="table table-sm table-striped align-middle mb-0">
+            <table class="table table-sm table-striped align-middle mb-0 m-cards">
                 <thead class="table-light"><tr><th>Date</th><th>Student</th><th>Given</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                 {% for i in recent_issues %}
                     <tr class="{% if i.is_void %}text-muted{% endif %}">
                         <td>{{ i.issue_date.strftime('%d %b %Y') }}</td>
-                        <td>{{ i.student.student_name if i.student else '' }}</td>
-                        <td class="small">{{ i.label }} <span class="badge bg-light text-dark border text-capitalize">{{ i.kind }}</span></td>
-                        <td class="small">{% if i.is_void %}<span class="iv-pill out">Taken back</span> {{ i.void_reason }}{% else %}<span class="iv-pill ok">Given</span>{% endif %}</td>
-                        <td class="text-end">
+                        <td data-label="Student">{{ i.student.student_name if i.student else '' }}</td>
+                        <td data-label="Given" class="small">{{ i.label }} <span class="badge bg-light text-dark border text-capitalize">{{ i.kind }}</span></td>
+                        <td data-label="Status" class="small">{% if i.is_void %}<span class="iv-pill out">Taken back</span> {{ i.void_reason }}{% else %}<span class="iv-pill ok">Given</span>{% endif %}</td>
+                        <td data-iv-act class="text-end">
                             {% if not i.is_void and current_user.role in ('admin', 'owner') %}
                             <form method="post" action="{{ url_for('main.inventory_issue_void', issue_id=i.id) }}" class="d-flex gap-1 justify-content-end"
                                   data-confirm="Take this back? The stock returns to Inventory." data-confirm-ok="Void" data-confirm-variant="danger">
@@ -848,7 +881,7 @@
         <span class="iv-owed">Total owed: Rs. {{ '{:,.2f}'.format(dues_total / 100.0) }}</span>
     </div>
     <div class="card-body p-0 table-responsive">
-        <table class="table table-sm align-middle mb-0 iv-hist">
+        <table class="table table-sm align-middle mb-0 iv-hist m-cards">
             <thead class="table-light"><tr>
                 <th class="ps-3">Supplier</th><th class="text-end">Unpaid bills</th>
                 <th class="text-end">Total bought</th><th class="text-end">Paid so far</th>
@@ -858,11 +891,11 @@
                 {% for d in dues %}
                 <tr>
                     <td class="ps-3 fw-bold">{{ d.supplier }}{% if d.source == 'canteen' %} <span class="badge bg-info-subtle text-info-emphasis">canteen</span>{% endif %}</td>
-                    <td class="text-end">{{ d.bills }}</td>
-                    <td class="text-end">{{ '{:,.2f}'.format(d.total / 100.0) }}</td>
-                    <td class="text-end text-success">{{ '{:,.2f}'.format(d.paid / 100.0) }}</td>
-                    <td class="text-end fw-bold text-danger">{{ '{:,.2f}'.format(d.balance / 100.0) }}</td>
-                    <td class="text-end pe-3">
+                    <td data-label="Unpaid bills" class="text-end">{{ d.bills }}</td>
+                    <td data-label="Total bought" class="text-end">{{ '{:,.2f}'.format(d.total / 100.0) }}</td>
+                    <td data-label="Paid so far" class="text-end text-success">{{ '{:,.2f}'.format(d.paid / 100.0) }}</td>
+                    <td data-label="Still owed" class="text-end fw-bold text-danger">{{ '{:,.2f}'.format(d.balance / 100.0) }}</td>
+                    <td data-iv-act class="text-end pe-3">
                         <button type="button" class="btn btn-sm btn-primary pay-supplier-btn"
                                 data-bs-toggle="modal" data-bs-target="#paySupplierModal"
                                 data-supplier="{{ d.supplier }}" data-source="{{ d.source or 'inventory' }}" data-owed="{{ '%.2f'|format(d.balance / 100.0) }}">
@@ -963,7 +996,7 @@ document.addEventListener('click', function (e) {
                 </div>
             </div>
             <div class="card-body p-0 table-responsive">
-                <table class="table table-sm align-middle mb-0" id="ivProducts">
+                <table class="table table-sm align-middle mb-0 m-cards" id="ivProducts">
                     <thead class="table-light"><tr>
                         <th class="ps-3">Item</th><th>Type</th>
                         <th class="text-end">Selling price</th><th class="text-end">Cost</th>
@@ -974,11 +1007,11 @@ document.addEventListener('click', function (e) {
                         {% set _st = 'out' if p.stock_qty <= 0 else ('low' if (p.stock_qty <= p.min_stock_qty and p.min_stock_qty > 0) else 'ok') %}
                         <tr class="{% if not p.is_active %}text-decoration-line-through text-muted{% endif %}" data-iv-name="{{ p.name|lower }} {{ (p.category or '')|lower }}" data-iv-status="{{ _st if p.is_active else 'retired' }}">
                             <td class="ps-3 fw-bold">{{ p.name }}</td>
-                            <td class="small">{{ p.category }}</td>
-                            <td class="text-end">Rs. {{ '{:,.0f}'.format(p.sale_price_paisa / 100.0) }}</td>
-                            <td class="text-end text-muted">Rs. {{ '{:,.0f}'.format(p.cost_paisa / 100.0) }}</td>
-                            <td class="text-end"><span class="fw-bold me-1">{{ p.stock_qty }}</span>{% if p.is_active %}<span class="iv-pill {{ _st }}">{{ {'ok': 'In stock', 'low': 'Running low', 'out': 'Finished'}[_st] }}</span>{% endif %}</td>
-                            <td class="text-end pe-3">
+                            <td data-label="Type" class="small">{{ p.category }}</td>
+                            <td data-label="Selling price" class="text-end">Rs. {{ '{:,.0f}'.format(p.sale_price_paisa / 100.0) }}</td>
+                            <td data-label="Cost" class="text-end text-muted">Rs. {{ '{:,.0f}'.format(p.cost_paisa / 100.0) }}</td>
+                            <td data-label="In stock" class="text-end"><span class="fw-bold me-1">{{ p.stock_qty }}</span>{% if p.is_active %}<span class="iv-pill {{ _st }}">{{ {'ok': 'In stock', 'low': 'Running low', 'out': 'Finished'}[_st] }}</span>{% endif %}</td>
+                            <td data-iv-act class="text-end pe-3">
                                 {% if p.is_active %}
                                 <form method="post" action="{{ url_for('main.inventory_product_toggle', product_id=p.id) }}" class="d-inline">
                                     <button class="btn btn-sm btn-outline-secondary" title="Stop selling this item (history is kept)">Stop selling</button>
@@ -1014,7 +1047,7 @@ document.addEventListener('click', function (e) {
         <div class="tab-content">
             <div class="tab-pane fade show active iv-collapsed" id="hSales">
             <div class="card-body p-0 table-responsive">
-                <table class="table table-sm align-middle mb-0 iv-hist">
+                <table class="table table-sm align-middle mb-0 iv-hist m-cards">
                     <thead class="table-light"><tr>
                         <th class="ps-3">Date</th><th>Product</th><th class="text-end">Qty</th>
                         <th class="text-end">Sales</th><th class="text-end">Cost</th>
@@ -1024,13 +1057,13 @@ document.addEventListener('click', function (e) {
                         {% for s in sales %}
                         <tr class="{% if loop.index > 10 %}iv-extra{% endif %}">
                             <td class="ps-3">{{ s.sale_date.strftime('%d %b %Y') }}</td>
-                            <td class="small">{{ s.product.name }}
+                            <td data-label="Product" class="small">{{ s.product.name }}
                                 {% if s.student %}<div class="text-muted">{{ s.student.student_name }}{% if s.source == 'admission' %} <span class="badge bg-info text-dark">with admission</span>{% endif %}</div>{% endif %}</td>
-                            <td class="text-end">{{ s.quantity }}</td>
-                            <td class="text-end">{% if s.source == 'admission' %}<span class="text-muted" title="Already counted in the admission fee">—</span>{% else %}{{ '{:,.2f}'.format(s.total_price_paisa / 100.0) }}{% endif %}</td>
-                            <td class="text-end text-muted">{{ '{:,.2f}'.format(s.total_cost_paisa / 100.0) }}</td>
-                            <td class="text-end fw-bold {% if s.source == 'admission' %}text-muted{% else %}text-success{% endif %}">{% if s.source == 'admission' %}—{% else %}{{ '{:,.2f}'.format(s.gross_profit_paisa / 100.0) }}{% endif %}</td>
-                            <td class="text-end pe-3">
+                            <td data-label="Qty" class="text-end">{{ s.quantity }}</td>
+                            <td data-label="Sales" class="text-end">{% if s.source == 'admission' %}<span class="text-muted" title="Already counted in the admission fee">—</span>{% else %}{{ '{:,.2f}'.format(s.total_price_paisa / 100.0) }}{% endif %}</td>
+                            <td data-label="Cost" class="text-end text-muted">{{ '{:,.2f}'.format(s.total_cost_paisa / 100.0) }}</td>
+                            <td data-label="Profit" class="text-end fw-bold {% if s.source == 'admission' %}text-muted{% else %}text-success{% endif %}">{% if s.source == 'admission' %}—{% else %}{{ '{:,.2f}'.format(s.gross_profit_paisa / 100.0) }}{% endif %}</td>
+                            <td data-iv-act class="text-end pe-3">
                                 {% if s.source != 'admission' and current_user.role in ('admin', 'owner') %}
                                 <button type="button" class="btn btn-sm btn-outline-danger undo-btn" data-bs-toggle="modal" data-bs-target="#undoModal"
                                         data-action="{{ url_for('main.inventory_sale_void', sale_id=s.id) }}"
@@ -1049,7 +1082,7 @@ document.addEventListener('click', function (e) {
             </div>
             <div class="tab-pane fade iv-collapsed" id="hPurchases">
             <div class="card-body p-0 table-responsive">
-                <table class="table table-sm align-middle mb-0 iv-hist">
+                <table class="table table-sm align-middle mb-0 iv-hist m-cards">
                     <thead class="table-light"><tr>
                         <th class="ps-3">Date</th><th>Product / supplier</th><th class="text-end">Qty</th>
                         <th class="text-end">Bill</th><th class="text-end">Paid</th>
@@ -1059,12 +1092,12 @@ document.addEventListener('click', function (e) {
                         {% for pu in purchases %}
                         <tr class="{% if pu.is_void %}text-decoration-line-through text-muted{% endif %}{% if loop.index > 10 %} iv-extra{% endif %}">
                             <td class="ps-3">{{ pu.purchase_date.strftime('%d %b %Y') }}</td>
-                            <td class="small">{{ pu.product.name }}{% if pu.bill_label %}<br><span class="badge bg-primary-subtle text-primary-emphasis">{{ pu.bill_label }}</span>{% endif %}{% if pu.supplier %}<br><span class="text-muted">{{ pu.supplier }}</span>{% endif %}</td>
-                            <td class="text-end">{{ pu.quantity }}</td>
-                            <td class="text-end fw-bold">{{ '{:,.2f}'.format(pu.total_cost_paisa / 100.0) }}</td>
-                            <td class="text-end text-success">{{ '{:,.2f}'.format(pu.paid_total_paisa / 100.0) }}</td>
-                            <td class="text-end {% if pu.balance_paisa %}fw-bold text-danger{% else %}text-muted{% endif %}">{{ '{:,.2f}'.format(pu.balance_paisa / 100.0) }}</td>
-                            <td class="text-end pe-3">
+                            <td data-label="Product / supplier" class="small">{{ pu.product.name }}{% if pu.bill_label %}<br><span class="badge bg-primary-subtle text-primary-emphasis">{{ pu.bill_label }}</span>{% endif %}{% if pu.supplier %}<br><span class="text-muted">{{ pu.supplier }}</span>{% endif %}</td>
+                            <td data-label="Qty" class="text-end">{{ pu.quantity }}</td>
+                            <td data-label="Bill" class="text-end fw-bold">{{ '{:,.2f}'.format(pu.total_cost_paisa / 100.0) }}</td>
+                            <td data-label="Paid" class="text-end text-success">{{ '{:,.2f}'.format(pu.paid_total_paisa / 100.0) }}</td>
+                            <td data-label="Owed" class="text-end {% if pu.balance_paisa %}fw-bold text-danger{% else %}text-muted{% endif %}">{{ '{:,.2f}'.format(pu.balance_paisa / 100.0) }}</td>
+                            <td data-iv-act class="text-end pe-3">
                                 {% if pu.is_void %}<span class="badge bg-secondary" title="{{ pu.void_reason or '' }}">undone</span>
                                 {% else %}
                                 {% if current_user.role in ('admin', 'owner') %}
@@ -1094,7 +1127,7 @@ document.addEventListener('click', function (e) {
             {% if supplier_payments %}
             <div class="tab-pane fade iv-collapsed" id="hPayments">
             <div class="card-body p-0 table-responsive">
-                <table class="table table-sm align-middle mb-0 iv-hist">
+                <table class="table table-sm align-middle mb-0 iv-hist m-cards">
                     <thead class="table-light"><tr>
                         <th class="ps-3">Date</th><th>Supplier</th><th class="text-end">Amount</th><th>Method</th><th class="text-end pe-3"></th>
                     </tr></thead>
@@ -1102,10 +1135,10 @@ document.addEventListener('click', function (e) {
                         {% for sp in supplier_payments %}
                         <tr class="{% if sp.is_void %}text-decoration-line-through text-muted{% endif %}{% if loop.index > 10 %} iv-extra{% endif %}">
                             <td class="ps-3">{{ sp.payment_date.strftime('%d %b %Y') }}</td>
-                            <td class="small">{{ sp.purchase.supplier or '—' }}<br><span class="text-muted">{{ sp.purchase.product.name }}</span></td>
-                            <td class="text-end fw-bold">{{ '{:,.2f}'.format(sp.amount_paisa / 100.0) }}</td>
-                            <td class="small text-capitalize">{{ sp.method or 'cash' }}</td>
-                            <td class="text-end pe-3">
+                            <td data-label="Supplier" class="small">{{ sp.purchase.supplier or '—' }}<br><span class="text-muted">{{ sp.purchase.product.name }}</span></td>
+                            <td data-label="Amount" class="text-end fw-bold">{{ '{:,.2f}'.format(sp.amount_paisa / 100.0) }}</td>
+                            <td data-label="Method" class="small text-capitalize">{{ sp.method or 'cash' }}</td>
+                            <td data-iv-act class="text-end pe-3">
                                 {% if sp.is_void %}<span class="badge bg-secondary" title="{{ sp.void_reason or '' }}">voided</span>
                                 {% elif current_user.role in ('admin', 'owner') %}
                                 <form method="post" action="{{ url_for('main.inventory_supplier_payment_void', payment_id=sp.id) }}" class="d-flex gap-1 justify-content-end">

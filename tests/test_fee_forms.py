@@ -305,7 +305,12 @@ def test_bulk_update_confirmation_gate(app, maryam, admin_client):
 
 
 def test_bulk_update_never_touches_past_months_or_paid_charges(app, maryam,
-                                                               admin_client):
+                                                               admin_client,
+                                                               monkeypatch):
+    # The scenario treats October 2026 as the current calendar month; pin it
+    # so the test does not break when the real month changes.
+    monkeypatch.setattr('app.routes.fees.core.current_month',
+                        lambda: 'October 2026')
     student_id, class_id = maryam['student_id'], maryam['class_id']
     # A classmate whose current-month charge has NO payments gets updated.
     with app.app_context():
