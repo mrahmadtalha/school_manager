@@ -1,14 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="fo-page">
 
 <!-- Header -->
-<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4">
+<div class="dashboard-header d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4 m-head">
     <div>
         <p class="eyebrow mb-2">Finance</p>
         <h1 class="h2 fw-bold text-dark mb-1"><i class="fas fa-chart-line text-primary me-2"></i>Financial Overview</h1>
         <p class="text-muted small mb-0">How much money came in, how much went out, and what is left.</p>
     </div>
-    <div class="btn-toolbar mb-2 mb-md-0 gap-2 no-print">
+    <div class="btn-toolbar mb-2 mb-md-0 gap-2 no-print m-actions">
         <div class="btn-group">
             <button type="button" class="btn btn-outline-success btn-sm dropdown-toggle"
                     data-bs-toggle="dropdown" aria-expanded="false">
@@ -163,6 +164,53 @@
         .fo-monthbar .fo-now { justify-content: space-between; }
         .fo-monthbar form { width: 100%; }
         .fo-monthbar .form-control { flex: 1 1 auto; width: auto; }
+    }
+    /* phones: month bar, headline, panels, tables as cards (the computer layout is not touched) */
+    @media (max-width: 767.98px) {
+        .fo-monthbar { padding: 0.65rem 0.75rem; }
+        .fo-monthbar .fo-now { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+        .fo-monthbar .fo-month { grid-column: 1 / -1; order: -1; min-width: 0; font-size: 1.15rem; }
+        .fo-monthbar .fo-now .btn { width: 100%; min-height: 2.6rem; justify-content: center; }
+        .fo-monthbar form .form-control { flex: 1 1 100%; width: 100%; height: 2.7rem; }
+        .fo-monthbar form .btn { flex: 1; min-height: 2.6rem; justify-content: center; }
+        .fo-verdict { padding: 0.85rem 1rem; gap: 0.7rem; }
+        .fo-verdict-icon { width: 2.6rem; height: 2.6rem; font-size: 1.1rem; }
+        .fo-verdict-title { font-size: 1.02rem; }
+        .fo-tile { padding: 0.75rem 1rem; }
+        .fo-tile .fo-num { font-size: 1.5rem; overflow-wrap: anywhere; }
+        .fo-versus { padding: 0.7rem 1rem 0.85rem; }
+        .fo-vrow { grid-template-columns: 4.6rem 1fr; }
+        .fo-panel-head { padding: 0.7rem 0.9rem; }
+        .fo-panel-body { padding: 0.75rem 0.9rem 0.9rem; }
+        .fo-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem 1rem; }
+        .fo-owe { padding: 0.8rem 0.95rem; }
+        .fo-owe .fo-num, .fo-shop .fo-num { overflow-wrap: anywhere; }
+        .fo-owe .fo-num { font-size: 1.4rem; }
+        .fo-alert { padding: 0.7rem 0.9rem; }
+        .fo-alert .fo-alert-text { flex: 1 1 100%; }
+        .fo-alert .btn { width: 100%; min-height: 2.5rem; }
+        .fo-former .btn { width: 100%; min-height: 2.5rem; margin-left: 0 !important; }
+        .fo-pills .btn { min-height: 2.4rem; display: inline-flex; align-items: center; }
+        .fo-more > summary { padding: 0.75rem 0.9rem; }
+        .fo-chart { height: 240px; }
+        .fo-page .accordion-button { min-height: 2.6rem; }
+        .fo-page .table-responsive { -webkit-overflow-scrolling: touch; }
+        .fo-page .fo-panel-body .form-control { min-height: 2.7rem; }
+        .fo-page .fo-panel-body .btn-primary.btn-sm, .fo-page .fo-panel-body .btn-dark.btn-sm { min-height: 2.7rem; }
+        .fo-page .form-check-input { width: 1.2rem; height: 1.2rem; }
+        /* side-by-side table keeps its columns, but the metric name stays in view while you swipe */
+        #comparisonTable th:first-child, #comparisonTable td:first-child { position: sticky; inset-inline-start: 0; z-index: 1; background: #fff; }
+        #comparisonTable thead th:first-child { background: #f8fafc; }
+        #comparisonTable tr.table-light > td:first-child { background: #f8f9fa; }
+        .fo-mtbl th, .fo-mtbl td { padding: 0.3rem 0.35rem; font-size: 0.8rem; }
+        /* small tables become cards (shared .m-cards helper) */
+        .fo-page .m-cards tbody td:first-child .small { font-weight: 400; }
+        .fo-page .m-cards .btn.m-tap { min-width: 2.6rem; min-height: 2.6rem; }
+    }
+    @media (max-width: 575.98px) {
+        .fo-tile .fo-num { font-size: 1.35rem; }
+        /* 16px text in boxes: stops iPhones zooming the page when a box is tapped */
+        .fo-monthbar .form-control, .fo-page .fo-panel-body .form-control { font-size: 16px; }
     }
     @media (prefers-reduced-motion: reduce) { .fo-track i { animation: none; } }
 </style>
@@ -453,7 +501,7 @@
 <div class="fo-panel">
     <div class="fo-panel-head"><h2><i class="fas fa-code-compare"></i>{{ pack.title }}</h2></div>
     <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
+        <table class="table table-sm align-middle mb-0 m-cards">
             <thead>
                 <tr>
                     <th class="ps-3">Metric</th>
@@ -466,15 +514,15 @@
                 {% for row in pack.rows %}
                 <tr>
                     <td class="ps-3">{{ row.name }}</td>
-                    <td class="text-end fw-bold">
+                    <td class="text-end fw-bold" data-label="{{ pack.current.label }}">
                         {% if row.kind == 'money' %}Rs {{ '{:,.2f}'.format(row.current) }}{% else %}{{ row.current }}{% endif %}
                     </td>
-                    <td class="text-end">
+                    <td class="text-end" data-label="{{ pack.previous.label }}">
                         {% if pack.no_earlier_data %}&mdash;
                         {% elif row.kind == 'money' %}Rs {{ '{:,.2f}'.format(row.previous) }}
                         {% else %}{{ row.previous }}{% endif %}
                     </td>
-                    <td class="text-end pe-3">{{ row.change_text }}</td>
+                    <td class="text-end pe-3" data-label="Change">{{ row.change_text }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -648,7 +696,7 @@
                 <div id="monthly{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#comparisonMonthly">
                     <div class="accordion-body p-0">
                         <div class="table-responsive">
-                            <table class="table table-sm mb-0">
+                            <table class="table table-sm mb-0 fo-mtbl">
                                 <thead>
                                     <tr><th>Month</th><th class="text-end">Fee Collections</th>
                                         <th class="text-end">Staff Payroll</th>
@@ -792,7 +840,7 @@
             <div class="fo-panel-head"><h2><i class="fas fa-money-check-dollar"></i>Payroll — {{ snapshot.label }}</h2></div>
             <div class="fo-panel-body">
                 <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
+                    <table class="table table-sm align-middle mb-0 m-cards">
                         <thead>
                             <tr>
                                 <th>Teacher</th>
@@ -808,14 +856,14 @@
                                 <td class="fw-bold">{{ record.teacher.teacher_name if record.teacher else '—' }}
                                     <div class="text-muted small fw-normal">{{ record.teacher.teacher_id_str if record.teacher else '' }}</div>
                                 </td>
-                                <td class="text-end">{{ '{:,.2f}'.format(record.net_salary or 0) }}</td>
-                                <td>
+                                <td class="text-end" data-label="Net Salary (Rs.)">{{ '{:,.2f}'.format(record.net_salary or 0) }}</td>
+                                <td data-label="Status">
                                     {% if record.payment_status == 'Paid' %}<span class="badge bg-success">Paid</span>
                                     {% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
                                 </td>
-                                <td class="small">{{ record.payment_date.strftime('%d %b %Y') if record.payment_date else '—' }}</td>
-                                <td class="text-center">
-                                    <a class="btn btn-sm btn-outline-dark" href="{{ url_for('main.payroll_payslip_pdf', id=record.id) }}" title="Payslip PDF" aria-label="Payslip PDF">
+                                <td class="small" data-label="Payment Date">{{ record.payment_date.strftime('%d %b %Y') if record.payment_date else '—' }}</td>
+                                <td class="text-center" data-label="Payslip">
+                                    <a class="btn btn-sm btn-outline-dark m-tap" href="{{ url_for('main.payroll_payslip_pdf', id=record.id) }}" title="Payslip PDF" aria-label="Payslip PDF">
                                         <i class="fas fa-file-invoice"></i>
                                     </a>
                                 </td>
@@ -828,6 +876,8 @@
             </div>
         </div>
     </div>
+</div>
+
 </div>
 
 <script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>
