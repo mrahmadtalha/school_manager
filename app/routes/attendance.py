@@ -58,9 +58,11 @@ def teacher_attendance():
     attendance_map = {r.target_id: r.status for r in records}
     late_time_map = {r.target_id: r.late_time for r in records if r.late_time}
     late_minutes_map = {r.target_id: r.late_minutes for r in records if r.late_minutes is not None}
+    qr_time_map = {r.target_id: r.qr_time for r in records if r.qr_time}
 
     return render_template('teacher_attendance.html',
                            teachers=teachers, selected_date=selected_date_str,
+                           qr_time_map=qr_time_map,
                            prev_date=(attendance_date - timedelta(days=1)).strftime('%Y-%m-%d'),
                            next_date=(attendance_date + timedelta(days=1)).strftime('%Y-%m-%d'),
                            today_date=date.today().strftime('%Y-%m-%d'),

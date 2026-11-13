@@ -17,18 +17,31 @@ from app.routes import main
 from app.services.audit import log_action
 from app.services.features import FEATURE_CATALOG
 from app.services.licensing import INSPECTION_PREFIX, LicenseError
+from app.services.provider_info import PROVIDER, whatsapp_link
 
 MAX_LICENSE_FILE_BYTES = 16 * 1024
 
+#: Pre-filled text for the referral WhatsApp button, kept short and friendly.
+REFERRAL_WHATSAPP_MESSAGE = "Hi! I'd like to know more about the School Manager referral rewards."
+
 
 def _license_extras():
-    """Feature list and WhatsApp usage shown next to the license status."""
-    from app.services import whatsapp_quota
+    """Feature list, WhatsApp usage and provider/referral info shown next to
+    the license status. The provider card is independent of license state
+    (it shows on a fresh install too), so it is always included here."""
+    from app.services import usage_limits, whatsapp_quota
     try:
         usage = whatsapp_quota.summary()
     except Exception:       # a counter problem must never break the license page
         usage = None
-    return {'feature_catalog': FEATURE_CATALOG, 'wa_usage': usage}
+    try:
+        size = usage_limits.summary()
+    except Exception:       # same for the student / staff-login counts
+        size = None
+    return {'feature_catalog': FEATURE_CATALOG, 'wa_usage': usage, 'size_usage': size,
+            'provider': PROVIDER,
+            'provider_whatsapp_link': whatsapp_link(),
+            'referral_whatsapp_link': whatsapp_link(REFERRAL_WHATSAPP_MESSAGE)}
 
 
 def _render(manager, fresh_install, code=200):

@@ -9,6 +9,7 @@ from app.models import (ROLES, ROLE_ADMIN, ROLE_LABELS, AdminUser,
 from app.routes import main
 from app.security import password_problem, role_required
 from app.services import audit as audit_service
+from app.services import usage_limits
 from app.services.audit import log_action
 
 
@@ -48,7 +49,7 @@ def users_list():
         'guards': sum(1 for user in users if user.role == 'guard'),
     }
     recent_user_activity = audit_service.query_logs(entity_type='AdminUser', limit=6)
-    return render_template('users.html', users=users, roles=ROLES,
+    return render_template('users.html', users=users, roles=ROLES, staff_usage=usage_limits.staff_usage(),
                            disabled_roles=[r for r in ROLES if not _role_in_license(r)],
                            role_labels=ROLE_LABELS, students=_student_choices(),
                            teachers=_teacher_choices(), stats=stats,
@@ -80,6 +81,10 @@ def create_user():
         return redirect(url_for('main.users_list'))
     if not _role_in_license(role):
         flash('The "%s" role is not included in this school\'s license.' % ROLE_LABELS.get(role, role), 'danger')
+        return redirect(url_for('main.users_list'))
+    blocked = usage_limits.staff_block_message(role)     # the license's staff-login limit
+    if blocked:
+        flash(blocked, 'danger')
         return redirect(url_for('main.users_list'))
     problem = password_problem(password)
     if problem:
@@ -209,6 +214,11 @@ def edit_user(user_id):
     if role not in ROLES:
         flash('Unknown role.', 'danger')
         return redirect(url_for('main.users_list'))
+    if role != user.role and user.is_active and user.role not in usage_limits.STAFF_ROLES:
+        blocked = usage_limits.staff_block_message(role)    # a login moving INTO a counted role
+        if blocked:
+            flash(blocked, 'danger')
+            return redirect(url_for('main.users_list'))
     if role != user.role and not _role_in_license(role):
         flash('The "%s" role is not included in this school\'s license.' % ROLE_LABELS.get(role, role), 'danger')
         return redirect(url_for('main.users_list'))
@@ -280,6 +290,12 @@ def toggle_user_active(user_id):
         active_admins = AdminUser.query.filter_by(role=ROLE_ADMIN, is_active=True).count()
         if user.is_active and active_admins <= 1:
             flash('At least one active administrator must remain.', 'danger')
+            return redirect(url_for('main.users_list'))
+
+    if not user.is_active:                      # switching an account back on
+        blocked = usage_limits.staff_block_message(user.role)
+        if blocked:
+            flash(blocked, 'danger')
             return redirect(url_for('main.users_list'))
 
     before = {'is_active': user.is_active}

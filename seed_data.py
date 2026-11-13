@@ -1,10 +1,14 @@
 """Populate the School Manager database with realistic *synthetic* demo data.
 
 This script is a thin command-line wrapper around the advanced generator in
-``app/services/seed_generator.py`` — the same engine the first-run setup
+``app/services/seed_generator/`` — the same engine the first-run setup
 wizard uses.  It can produce months or years of history: students and
 teachers with realistic ages and a join/leave lifecycle, daily attendance,
-fees, expenses, tests, term exams with marks/results, and payroll.
+fees (payments, part payments, advance credit, refunds, voids, write-offs),
+expenses, tests, term exams with marks/results, payroll with salary payments,
+admission fees with receipts, inventory (sets, purchases, supplier dues,
+sales), canteen, other income, ID cards / certificates, timetable, QR
+attendance and the WhatsApp queue - so every optional feature has data.
 
 Examples
 --------
@@ -12,6 +16,7 @@ Examples
     python seed_data.py --reset                            # wipe the database first
     python seed_data.py --students 500 --teachers 50 --months 120
     python seed_data.py --months 3 --no-payroll --photos
+    python seed_data.py --reset --no-inventory --no-canteen    # leave some features empty
 
 All names, phone numbers and amounts are fabricated.  No real student data is
 used at any point.
@@ -41,6 +46,15 @@ def main(argv=None):
     parser.add_argument('--no-tests', action='store_true', help='skip class tests and marks')
     parser.add_argument('--no-term-exams', action='store_true', help='skip term exams and results')
     parser.add_argument('--no-payroll', action='store_true', help='skip staff payroll')
+    parser.add_argument('--no-admission', action='store_true',
+                        help='skip admission-fee terms, receipts and books/uniform issues')
+    parser.add_argument('--no-inventory', action='store_true',
+                        help='skip products, sets, purchases, supplier dues and sales')
+    parser.add_argument('--no-canteen', action='store_true', help='skip canteen totals and supplier credit')
+    parser.add_argument('--no-other-income', action='store_true', help='skip events/trips/misc income')
+    parser.add_argument('--no-documents', action='store_true', help='skip issued ID cards and certificates')
+    parser.add_argument('--no-school-life', action='store_true',
+                        help='skip timetable, teaching load, remarks, QR attendance and WhatsApp queue')
     parser.add_argument('--photos', action='store_true',
                         help='generate optional dummy profile pictures (avatars)')
 
@@ -56,6 +70,12 @@ def main(argv=None):
         include_class_tests=not args.no_tests,
         include_term_exams=not args.no_term_exams,
         include_payroll=not args.no_payroll,
+        include_admission=not args.no_admission,
+        include_inventory=not args.no_inventory,
+        include_canteen=not args.no_canteen,
+        include_other_income=not args.no_other_income,
+        include_documents=not args.no_documents,
+        include_school_life=not args.no_school_life,
         generate_photos=args.photos,
         random_seed=args.seed,
     )
@@ -73,11 +93,16 @@ def main(argv=None):
         for key in ('period_start', 'period_end', 'students', 'teachers',
                     'attendance_rows', 'fee_transactions', 'fee_records',
                     'expenses', 'class_tests', 'class_test_marks',
-                    'term_exams', 'term_exam_tests', 'term_exam_marks',
-                    'payroll_rows', 'photos'):
+                    'term_exams', 'term_exam_tests', 'term_exam_marks', 'remarks',
+                    'payroll_rows', 'admission_terms', 'admission_receipts', 'stock_issues',
+                    'products', 'product_sets', 'purchases', 'sales', 'supplier_payments',
+                    'other_income', 'canteen_entries', 'issued_documents',
+                    'teaching_assignments', 'timetable_rows', 'qr_absent_runs',
+                    'whatsapp_messages', 'photos'):
             if key in summary:
-                print(f'  {key:<17}: {summary[key]}')
-        print(f'  demo password    : {summary.get("demo_password")}')
+                print(f'  {key:<20}: {summary[key]}')
+        print(f'  demo password       : {summary.get("demo_password")}')
+        print('  logins (same password): admin, teacher1, accountant1, principal1, guard1, parent1, parent2')
     return 0
 
 

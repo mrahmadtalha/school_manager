@@ -127,6 +127,7 @@ def build_result_cards_pdf(exam, cards, root_path=None):
                                     Table, TableStyle)
 
     from app.services.id_documents import school_branding
+    from app.services.pdf_logo import logo_flowable
 
     school = school_branding(root_path)
     styles = getSampleStyleSheet()
@@ -155,6 +156,10 @@ def build_result_cards_pdf(exam, cards, root_path=None):
         if index:
             story.append(PageBreak())
         student = card['student']
+        logo = logo_flowable(school.get('logo_path'), 46, 46)
+        if logo is not None:
+            logo.hAlign = 'CENTER'
+            story.append(logo)
         story.append(Paragraph(escape(str(school['name'])), title_style))
         story.append(Paragraph('OFFICIAL RESULT CARD', sub_style))
         tail = ' | '.join([p for p in (school.get('address') or '',

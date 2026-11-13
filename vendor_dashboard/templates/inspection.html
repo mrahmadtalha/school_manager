@@ -1,19 +1,22 @@
 {% extends "base.html" %}{% block title %}Inspection key{% endblock %}
 {% block content %}
-<a href="{{ url_for('school_detail', school_id=school.id) }}" class="small">&larr; {{ school.name }}</a>
-<h1 class="h3 my-3">Inspection key for {{ school.name }}</h1>
-<div class="card border-0 shadow-sm mb-3"><div class="card-body small">
-<div class="row"><div class="col-md-3"><b>Inspection</b><br><code>{{ row.inspection_id }}</code></div>
-<div class="col-md-3"><b>Valid</b><br>{{ row.issued_at[:16].replace('T', ' ') }} → {{ row.expires_at[:16].replace('T', ' ') }}</div>
-<div class="col-md-3"><b>Machine</b><br><code>{{ row.machine_code }}</code></div>
-<div class="col-md-3"><b>License</b><br><code>{{ row.license_id or 'none' }}</code></div></div>
-<div class="mt-2 text-muted">View-only: everything can be seen (including the audit log), nothing can be changed. It ends by itself; the school can also end it on the License page.</div></div></div>
-<div class="card border-0 shadow-sm"><div class="card-body">
-<label class="form-label fw-bold">Inspection key</label>
-<textarea id="keyText" class="form-control font-monospace code-box" rows="5" readonly>{{ row.key_text }}</textarea>
-<div class="mt-2"><button class="btn btn-dark" onclick="copyFrom('keyText',this)"><i class="fas fa-copy me-1"></i>Copy key</button></div>
-<label class="form-label fw-bold mt-4">Ready-to-send message</label>
-<textarea id="msg" class="form-control code-box" rows="8" readonly>{{ message }}</textarea>
-<button class="btn btn-outline-secondary mt-2" onclick="copyFrom('msg',this)"><i class="fas fa-copy me-1"></i>Copy message</button>
-</div></div>
+<a class="vd-back" href="{{ url_for('school_detail', school_id=school.id) }}"><i class="fas fa-arrow-left"></i>{{ school.name }}</a>
+<div class="vd-head"><div><h1>Inspection key for {{ school.name }}</h1><p>View-only: everything can be seen, nothing can be changed. It ends by itself.</p></div></div>
+<div class="vd-tiles">
+  <div class="vd-tile"><span class="vd-ico v"><i class="fas fa-hourglass-half"></i></span><div><div class="vd-val">{{ row.expires_at[:16].replace('T', ' ') }}</div><div class="vd-lab">works until (started {{ row.issued_at[:16].replace('T', ' ') }})</div></div></div>
+  <div class="vd-tile"><span class="vd-ico b"><i class="fas fa-laptop"></i></span><div><div class="vd-val"><span class="vd-code">{{ row.machine_code }}</span></div><div class="vd-lab">this computer only</div></div></div>
+  <div class="vd-tile"><span class="vd-ico s"><i class="fas fa-id-card"></i></span><div><div class="vd-val"><span class="vd-code">{{ row.license_id or 'none' }}</span></div><div class="vd-lab">school’s license · <span class="vd-code">{{ row.inspection_id }}</span></div></div></div>
+</div>
+<div class="vd-card">
+  <div class="vd-step first"><span class="vd-n">1</span>Copy the message</div>
+  <label class="form-label" for="msg">Ready-to-send message</label>
+  <textarea id="msg" class="form-control vd-box" rows="8" readonly>{{ message }}</textarea>
+  <button type="button" class="btn btn-primary btn-xl mt-3" onclick="copyFrom('msg',this)"><i class="fas fa-copy me-2"></i>Copy message</button>
+  <div class="vd-step"><span class="vd-n">2</span>Send it to the school</div>
+  <p class="text-muted mb-0">They paste the key on the <b>License</b> page like a normal key. The school can also end it themselves on that page.</p>
+</div>
+<details class="vd-more"><summary><i class="fas fa-key text-muted"></i><span>Only the key <small>· without the message</small></span></summary>
+  <div class="vd-more-body"><label class="form-label mt-3" for="keyText">Inspection key</label>
+  <textarea id="keyText" class="form-control vd-box" rows="4" readonly>{{ row.key_text }}</textarea>
+  <button type="button" class="btn btn-outline-secondary mt-2" onclick="copyFrom('keyText',this)"><i class="fas fa-copy me-2"></i>Copy key only</button></div></details>
 {% endblock %}

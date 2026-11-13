@@ -214,11 +214,9 @@
     </div>
     {% if selected_class_id and matrix_data and class_tests %}
     <div class="cr-tools btn-toolbar">
-        <a href="{{ url_for('main.export_all_report_cards_pdf', class_id=selected_class_id,
-                            test_type=selected_type, session=session_value, announce_date=announce_value) }}"
-           class="btn btn-primary btn-sm">
+        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#pdfFilterModal">
             <i class="fas fa-file-pdf me-1"></i> All Report Cards PDF
-        </a>
+        </button>
         <div class="dropdown">
             <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="fas fa-download me-1"></i> More downloads
@@ -469,12 +467,16 @@
                                    aria-label="Teacher Remarks" placeholder="Write a remark…">
                         </td>
                         <td class="text-center cr-c-wide">
-                            <a href="{{ url_for('main.student_report_card_pdf', student_id=row.student.id,
+                            <button type="button"
+                               class="btn btn-sm btn-outline-danger cr-card-btn cr-pdf-single"
+                               data-student-id="{{ row.student.id }}"
+                               data-base-url="{{ url_for('main.student_report_card_pdf', student_id=row.student.id,
                                                 class_id=selected_class_id, test_type=selected_type,
                                                 session=session_value, announce_date=announce_value) }}"
-                               class="btn btn-sm btn-outline-danger cr-card-btn" title="Individual Report Card PDF" aria-label="Individual Report Card PDF">
+                               data-bs-toggle="modal" data-bs-target="#pdfFilterModal"
+                               title="Individual Report Card PDF" aria-label="Individual Report Card PDF">
                                 <i class="fas fa-file-pdf"></i><span class="visually-hidden">PDF</span><span class="cr-card-text">Report Card PDF</span>
-                            </a>
+                            </button>
                         </td>
                     </tr>
                     {% endfor %}
@@ -613,4 +615,243 @@
     });
 })();
 </script>
+
+
+{# ------------------------------------------------------------------ #}
+{# PDF Filter Modal                                                     #}
+{# ------------------------------------------------------------------ #}
+<div class="modal fade" id="pdfFilterModal" tabindex="-1" aria-labelledby="pdfFilterModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="pdfFilterModalLabel">
+          <i class="fas fa-filter me-2 text-danger"></i>
+          <span id="pdfModalTitle">Report Card PDF</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Leave all filters blank to include <strong>every test</strong> in the card.
+          Combine filters freely — e.g. Subject + Month.
+        </p>
+
+        {# Subject filter #}
+        <div class="mb-3">
+          <label class="form-label fw-semibold" for="pdfSubject">Subject</label>
+          <select class="form-select form-select-sm" id="pdfSubject">
+            <option value="">All subjects</option>
+            {% for subj in subjects %}
+            <option value="{{ subj.id }}">{{ subj.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {# Month quick-select #}
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Month</label>
+          <div class="d-flex flex-wrap gap-1" id="pdfMonthBtns">
+            {% set month_names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+            {% for m in range(1, 13) %}
+            <button type="button" class="btn btn-sm btn-outline-secondary pdf-month-btn" data-month="{{ m }}">
+              {{ month_names[m-1] }}
+            </button>
+            {% endfor %}
+            <button type="button" class="btn btn-sm btn-outline-danger ms-1" id="pdfMonthClear" title="Clear month" aria-label="Clear month" hidden>
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <input type="hidden" id="pdfMonthVal">
+        </div>
+
+        {# Year #}
+        <div class="mb-3">
+          <label class="form-label fw-semibold" for="pdfYear">Year</label>
+          <input type="number" class="form-control form-control-sm" id="pdfYear"
+                 placeholder="e.g. 2026" min="2000" max="2099" style="max-width:120px">
+        </div>
+
+        {# Custom date range (collapsed by default) #}
+        <div class="mb-2">
+          <button class="btn btn-sm btn-link p-0 text-secondary" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#pdfDateRange" aria-expanded="false">
+            <i class="fas fa-calendar-alt me-1"></i> Custom date range (optional)
+          </button>
+          <div class="collapse mt-2" id="pdfDateRange">
+            <div class="row g-2">
+              <div class="col">
+                <label class="form-label small" for="pdfDateFrom">From</label>
+                <input type="date" class="form-control form-control-sm" id="pdfDateFrom">
+              </div>
+              <div class="col">
+                <label class="form-label small" for="pdfDateTo">To</label>
+                <input type="date" class="form-control form-control-sm" id="pdfDateTo">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {# Active filter summary #}
+        <div id="pdfFilterSummary" class="alert alert-info py-2 small mt-3" hidden></div>
+      </div>
+      <div class="modal-footer justify-content-between">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="pdfFilterReset">
+          <i class="fas fa-rotate-left me-1"></i> Reset filters
+        </button>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <a href="#" class="btn btn-sm btn-danger" id="pdfGenerateBtn" target="_blank">
+            <i class="fas fa-file-pdf me-1"></i> <span id="pdfGenerateLabel">Generate PDF</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    // Base URLs passed from buttons
+    var bulkBaseUrl  = {{ url_for('main.export_all_report_cards_pdf',
+                                   class_id=selected_class_id,
+                                   test_type=selected_type,
+                                   session=session_value,
+                                   announce_date=announce_value) | tojson }};
+
+    var modal        = document.getElementById('pdfFilterModal');
+    var generateBtn  = document.getElementById('pdfGenerateBtn');
+    var generateLbl  = document.getElementById('pdfGenerateLabel');
+    var modalTitle   = document.getElementById('pdfModalTitle');
+    var filterSummary = document.getElementById('pdfFilterSummary');
+    var monthClear   = document.getElementById('pdfMonthClear');
+
+    // Current context — null = bulk, object = single student
+    var currentStudentUrl = null;
+
+    // ---- month pill buttons ----
+    var selectedMonth = null;
+    document.getElementById('pdfMonthBtns').addEventListener('click', function (e) {
+        var btn = e.target.closest('.pdf-month-btn');
+        if (!btn) return;
+        var m = parseInt(btn.dataset.month, 10);
+        if (selectedMonth === m) {
+            // deselect
+            selectedMonth = null;
+            document.getElementById('pdfMonthVal').value = '';
+            btn.classList.remove('btn-secondary');
+            btn.classList.add('btn-outline-secondary');
+            monthClear.hidden = true;
+        } else {
+            selectedMonth = m;
+            document.getElementById('pdfMonthVal').value = m;
+            document.querySelectorAll('.pdf-month-btn').forEach(function (b) {
+                b.classList.toggle('btn-secondary', parseInt(b.dataset.month, 10) === m);
+                b.classList.toggle('btn-outline-secondary', parseInt(b.dataset.month, 10) !== m);
+            });
+            monthClear.hidden = false;
+        }
+        updateSummary();
+    });
+    monthClear.addEventListener('click', function () {
+        selectedMonth = null;
+        document.getElementById('pdfMonthVal').value = '';
+        document.querySelectorAll('.pdf-month-btn').forEach(function (b) {
+            b.classList.remove('btn-secondary');
+            b.classList.add('btn-outline-secondary');
+        });
+        monthClear.hidden = true;
+        updateSummary();
+    });
+
+    // ---- open from "All Report Cards" button ----
+    modal.addEventListener('show.bs.modal', function (e) {
+        var trigger = e.relatedTarget;
+        if (trigger && trigger.classList.contains('cr-pdf-single')) {
+            currentStudentUrl = trigger.dataset.baseUrl;
+            modalTitle.textContent = 'Report Card PDF — ' + (trigger.closest('tr')
+                ? (trigger.closest('tr').querySelector('[data-label="Student"]') || {}).textContent || 'Student'
+                : 'Student');
+            generateLbl.textContent = 'Generate PDF';
+        } else {
+            currentStudentUrl = null;
+            modalTitle.textContent = 'All Report Cards PDF';
+            generateLbl.textContent = 'Generate All PDFs';
+        }
+        updateSummary();
+    });
+
+    // ---- live filter params → URL ----
+    ['pdfSubject', 'pdfYear', 'pdfDateFrom', 'pdfDateTo'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('change', updateSummary);
+    });
+
+    function buildParams() {
+        var p = {};
+        var subj = document.getElementById('pdfSubject').value;
+        var year = (document.getElementById('pdfYear').value || '').trim();
+        var from = (document.getElementById('pdfDateFrom').value || '').trim();
+        var to   = (document.getElementById('pdfDateTo').value || '').trim();
+        if (subj) p.pdf_subject   = subj;
+        if (selectedMonth) p.pdf_month = selectedMonth;
+        if (year) p.pdf_year      = year;
+        if (from) p.pdf_date_from = from;
+        if (to)   p.pdf_date_to   = to;
+        return p;
+    }
+
+    var monthNames = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    function updateSummary() {
+        var p = buildParams();
+        var parts = [];
+        if (p.pdf_subject) {
+            var sel = document.getElementById('pdfSubject');
+            parts.push('Subject: <strong>' + (sel.options[sel.selectedIndex].text) + '</strong>');
+        }
+        if (p.pdf_month)  parts.push('Month: <strong>' + monthNames[p.pdf_month] + '</strong>');
+        if (p.pdf_year)   parts.push('Year: <strong>' + p.pdf_year + '</strong>');
+        if (p.pdf_date_from) parts.push('From: <strong>' + p.pdf_date_from + '</strong>');
+        if (p.pdf_date_to)   parts.push('To: <strong>' + p.pdf_date_to + '</strong>');
+
+        if (parts.length) {
+            filterSummary.innerHTML = '<i class="fas fa-filter me-1"></i> Active filters: ' + parts.join(' &nbsp;·&nbsp; ');
+            filterSummary.hidden = false;
+        } else {
+            filterSummary.hidden = true;
+        }
+
+        // Build the generate URL
+        var base = currentStudentUrl || bulkBaseUrl;
+        var qs = Object.entries(p).map(function (kv) {
+            return encodeURIComponent(kv[0]) + '=' + encodeURIComponent(kv[1]);
+        }).join('&');
+        generateBtn.href = base + (qs ? (base.includes('?') ? '&' : '?') + qs : '');
+    }
+
+    // ---- reset ----
+    document.getElementById('pdfFilterReset').addEventListener('click', function () {
+        document.getElementById('pdfSubject').value  = '';
+        document.getElementById('pdfYear').value     = '';
+        document.getElementById('pdfDateFrom').value = '';
+        document.getElementById('pdfDateTo').value   = '';
+        // reset month
+        selectedMonth = null;
+        document.getElementById('pdfMonthVal').value = '';
+        document.querySelectorAll('.pdf-month-btn').forEach(function (b) {
+            b.classList.remove('btn-secondary');
+            b.classList.add('btn-outline-secondary');
+        });
+        monthClear.hidden = true;
+        filterSummary.hidden = true;
+        updateSummary();
+    });
+
+    // init
+    updateSummary();
+})();
+</script>
+
 {% endblock %}

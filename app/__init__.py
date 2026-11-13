@@ -40,6 +40,9 @@ from app.bootstrap import (
     register_blueprints,
     seed_teaching_assignments,
 )
+from app.migrations.result_card_style import run as migrate_result_card_style
+from app.migrations.id_card_style import run as migrate_id_card_style
+from app.migrations.calendar import run as migrate_calendar_schema
 from app.config import get_config
 from app.database import db
 from app.license_guard import install_license_guard
@@ -111,6 +114,9 @@ def create_app(config_override=None):
         migrate_qr_config_schema(app)
         migrate_teacher_schema(app)
         migrate_school_settings_schema(app)
+        migrate_result_card_style(app)
+        migrate_id_card_style(app)
+        migrate_calendar_schema(app)
         migrate_student_fee_schema(app)
         migrate_student_status_schema(app)
         migrate_student_enrollments(app)

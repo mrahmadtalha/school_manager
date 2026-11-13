@@ -386,12 +386,18 @@ def save_teacher_attendance(attendance_date, form_dict, teachers):
         checkin_time = form_dict.get(
             f'checkin_time_{teacher.id}', form_dict.get(f'late_time_{teacher.id}', '')
         ).strip()
-        status, checkin_time, late_minutes = evaluate_checkin_attendance(
-            status, checkin_time, settings)
         record = AttendanceModel.query.filter_by(
             date=attendance_date, target_type='teacher', target_id=teacher.id
         ).first()
-        
+        # The gate QR scan time is never lost: if the sheet comes back without a
+        # check-in time, fall back to the scan time (record.qr_time itself is
+        # never written here), exactly like the student sheet.
+        if (not checkin_time and record is not None and record.qr_time
+                and (status or '').strip().capitalize() in ('Present', 'Late')):
+            checkin_time = record.qr_time
+        status, checkin_time, late_minutes = evaluate_checkin_attendance(
+            status, checkin_time, settings)
+
         if record:
             record.status = status
             record.late_time = checkin_time

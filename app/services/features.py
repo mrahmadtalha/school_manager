@@ -1,8 +1,8 @@
 """Feature catalog: which parts of School Manager a license switches on or off.
 
 This module is deliberately plain Python (no Flask, no database) so that the
-vendor dashboard can load it by file path, exactly like ``licensing.py``.  The
-catalog is the single list the dashboard shows as checkboxes and the
+vendor dashboard can load it by file path, the way it loads the ``licensing``
+package.  The catalog is the single list the dashboard shows as checkboxes and the
 application enforces at run time.
 
 How a license uses it

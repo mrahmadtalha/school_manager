@@ -1,15 +1,49 @@
 {% extends "base.html" %}{% block title %}Plans{% endblock %}
 {% block content %}
-<h1 class="h3 mb-1">Plan presets</h1><p class="text-muted small">Starting points for the feature checkboxes when you issue a key. Editing a plan does not change keys already issued.</p>
-{% set all = plans + [{'name':'','label':'','features':[],'wa_daily':None,'wa_monthly':None}] %}
-<div class="row g-4">{% for p in all %}
-<div class="col-lg-6"><form method="post" class="card border-0 shadow-sm h-100"><div class="card-body"><input type="hidden" name="_csrf" value="{{ csrf_token }}">
-<h2 class="h6">{{ p.label or 'New plan' }}</h2>
-<div class="row g-2 mb-2"><div class="col-6"><input class="form-control" name="label" value="{{ p.label }}" placeholder="Label"></div>
-<div class="col-6"><input class="form-control" name="name" value="{{ p.name }}" placeholder="id (e.g. gold)" {{ 'readonly' if p.name }}></div>
-<div class="col-6"><input class="form-control" type="number" min="0" name="wa_daily" value="{{ p.wa_daily if p.wa_daily is not none }}" placeholder="WA/day (blank ∞)"></div>
-<div class="col-6"><input class="form-control" type="number" min="0" name="wa_monthly" value="{{ p.wa_monthly if p.wa_monthly is not none }}" placeholder="WA/month (blank ∞)"></div></div>
-<div class="row row-cols-2 g-1 small">{% for key, label, desc, group in catalog %}<div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" name="features" value="{{ key }}" id="{{ p.name }}_{{ key }}" {{ 'checked' if key in p.features }}><label class="form-check-label" for="{{ p.name }}_{{ key }}">{{ label }}</label></div></div>{% endfor %}</div>
-<button class="btn btn-outline-dark btn-sm mt-3">Save plan</button></div></form></div>
-{% endfor %}</div>
+<div class="vd-head"><div><h1>Plans</h1><p>Ready-made packages: which features, how big a school may be, and what it costs. Pick one when you send a key and everything is filled in for you.</p></div>
+  <div class="vd-tools"><a class="btn btn-outline-secondary" href="{{ url_for('matrix') }}"><i class="fas fa-table-cells me-2"></i>See who has what</a></div></div>
+<div class="vd-note">Changing a plan only affects keys you create <b>from now on</b>. Keys already sent stay as they are — below each plan you can see which schools no longer match it and update them in one click.</div>
+{% set all = plans + [{'name':'','label':'','features':[],'wa_daily':None,'wa_monthly':None,'max_students':None,'max_staff':None,'price_monthly':None,'price_yearly':None}] %}
+{% for p in all %}
+{% set members = on_plan.get(p.name, []) if p.name else [] %}
+{% set stale = members|rejectattr('diff.same')|list %}
+<form method="post" class="mb-3"><input type="hidden" name="_csrf" value="{{ csrf_token }}">
+<details class="vd-more bg-white">
+  <summary>{% if p.name %}<span class="vd-ico v"><i class="fas fa-layer-group"></i></span><span>{{ p.label }} <small>· {{ p.features|length }} of {{ catalog|length }} features · students {{ p.max_students|limit }} · staff logins {{ p.max_staff|limit }} · WhatsApp {{ p.wa_daily if p.wa_daily is not none else 'no limit' }}/day, {{ p.wa_monthly if p.wa_monthly is not none else 'no limit' }}/month{% if p.price_yearly is not none or p.price_monthly is not none %} · {% if p.price_yearly is not none %}{{ p.price_yearly|money }}/year{% endif %}{% if p.price_yearly is not none and p.price_monthly is not none %}, {% endif %}{% if p.price_monthly is not none %}{{ p.price_monthly|money }}/month{% endif %}{% endif %}</small>
+    <small class="d-block">{{ members|length }} school{{ '' if members|length == 1 else 's' }} on this plan{% if stale %} · <b class="text-warning-emphasis">{{ stale|length }} no longer match{{ 'es' if stale|length == 1 }} it</b>{% endif %}</small></span>
+    {% else %}<span class="vd-ico g"><i class="fas fa-plus"></i></span><span>Create a new plan</span>{% endif %}</summary>
+  <div class="vd-more-body">
+    {% if p.name %}<input type="hidden" name="name" value="{{ p.name }}">{% endif %}
+    <div class="row g-3 mt-1">
+      <div class="col-md-6"><label class="form-label" for="l_{{ loop.index }}">Plan name</label><input class="form-control" id="l_{{ loop.index }}" name="label" value="{{ p.label }}" placeholder="e.g. Gold" required></div>
+      <div class="col-md-3"><label class="form-label" for="pm_{{ loop.index }}">Price per month</label><input class="form-control" id="pm_{{ loop.index }}" type="number" min="0" step="any" name="price_monthly" value="{{ p.price_monthly if p.price_monthly is not none }}" placeholder="Not set"></div>
+      <div class="col-md-3"><label class="form-label" for="py_{{ loop.index }}">Price per year</label><input class="form-control" id="py_{{ loop.index }}" type="number" min="0" step="any" name="price_yearly" value="{{ p.price_yearly if p.price_yearly is not none }}" placeholder="Not set"></div>
+    </div>
+    <div class="vd-grp mt-3">How big the school may be</div>
+    <div class="row g-3">
+      <div class="col-md-3"><label class="form-label" for="ms_{{ loop.index }}">Active students</label><input class="form-control" id="ms_{{ loop.index }}" type="number" min="0" name="max_students" value="{{ p.max_students if p.max_students is not none }}" placeholder="No limit"></div>
+      <div class="col-md-3"><label class="form-label" for="mf_{{ loop.index }}">Staff logins</label><input class="form-control" id="mf_{{ loop.index }}" type="number" min="0" name="max_staff" value="{{ p.max_staff if p.max_staff is not none }}" placeholder="No limit"></div>
+      <div class="col-md-3"><label class="form-label" for="d_{{ loop.index }}">WhatsApp per day</label><input class="form-control" id="d_{{ loop.index }}" type="number" min="0" name="wa_daily" value="{{ p.wa_daily if p.wa_daily is not none }}" placeholder="No limit"></div>
+      <div class="col-md-3"><label class="form-label" for="m_{{ loop.index }}">WhatsApp per month</label><input class="form-control" id="m_{{ loop.index }}" type="number" min="0" name="wa_monthly" value="{{ p.wa_monthly if p.wa_monthly is not none }}" placeholder="No limit"></div>
+    </div>
+    <div class="vd-help mt-1">Leave a box empty for “no limit”. Staff logins are teacher, accountant, principal/owner and guard accounts (administrators and parents are not counted). A school over a limit keeps what it has but cannot add more.</div>
+    {% set ns = namespace(group='') %}
+    <div class="row row-cols-1 row-cols-md-2 gx-4">{% for key, label, desc, group in catalog %}
+      <div class="col">{% if group != ns.group %}{% set ns.group = group %}<div class="vd-grp">{{ group }}</div>{% endif %}
+        <div class="vd-switch"><input class="form-check-input" type="checkbox" role="switch" name="features" value="{{ key }}" id="{{ p.name or 'new' }}_{{ key }}" {{ 'checked' if key in p.features }}><label for="{{ p.name or 'new' }}_{{ key }}"><b>{{ label }}</b><small>{{ desc }}</small></label></div></div>{% endfor %}</div>
+    <button class="btn btn-primary mt-3"><i class="fas fa-check me-2"></i>{{ 'Save plan' if p.name else 'Create plan' }}</button>
+    {% if members %}
+    <div class="vd-grp mt-4">Schools on this plan</div>
+    <div class="vd-tablewrap"><table class="vd-mini"><tbody>
+    {% for m in members %}{% set s = m.school %}{% set d = m.diff %}
+      <tr><td><a href="{{ url_for('school_detail', school_id=s.id) }}">{{ s.name }}</a><div class="small text-muted">key ends {{ s.expires|nicedate }}</div></td>
+        <td>{% if d.same %}<span class="vd-pill ok"><i class="fas fa-circle-check" aria-hidden="true"></i>Matches the plan</span>
+          {% else %}<span class="vd-pill soon"><i class="fas fa-arrows-rotate" aria-hidden="true"></i>Differs from the plan</span>
+          <div class="small text-muted mt-1">{% if d.extras %}Extra: {{ d.extras|join(', ') }}. {% endif %}{% if d.missing %}Missing: {{ d.missing|join(', ') }}. {% endif %}{% for l in d.limits %}{{ l.label }}: key {{ l.key }}, plan {{ l.plan }}. {% endfor %}</div>{% endif %}</td>
+        <td class="text-end">{% if not d.same %}<a class="btn btn-outline-secondary btn-sm" href="{{ url_for('school_detail', school_id=s.id, do='update', match_plan=1) }}#send-key">Use the plan’s settings</a>{% endif %}</td></tr>
+    {% endfor %}</tbody></table></div>
+    {% endif %}
+  </div>
+</details></form>
+{% endfor %}
 {% endblock %}

@@ -132,6 +132,14 @@ def school_settings():
                 return redirect(url_for('main.school_settings', tab='academic'))
             settings.academic_session = request.form.get('academic_session', '').strip()
             settings.result_announcement_date = request.form.get('result_announcement_date', '').strip()
+            # Result card PDF style preference (persisted per school)
+            _new_style = request.form.get('result_card_style', '').strip().lower()
+            if _new_style in ('classic', 'professional'):
+                settings.result_card_style = _new_style
+            # ID card PDF style preference (persisted per school)
+            _new_id_card_style = request.form.get('id_card_style', '').strip().lower()
+            if _new_id_card_style in ('classic', 'professional'):
+                settings.id_card_style = _new_id_card_style
             settings.school_start_time = request.form.get('school_start_time', '08:30').strip() or '08:30'
             settings.school_end_time = request.form.get('school_end_time', '15:00').strip() or '15:00'
             settings.attendance_grace_minutes = grace_minutes

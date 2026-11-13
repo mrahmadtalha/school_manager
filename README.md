@@ -220,8 +220,10 @@ pip install -r requirements.txt
 # SECRET_KEY is required (or let development mode generate one into the data folder)
 setx SECRET_KEY "school-manager-local-secret-2026"
 
-# clean slate + demo data (optional)
+# clean slate + demo data (optional): every module gets example data
 python seed_data.py --reset
+# leave some features empty to test the first-time experience:
+# python seed_data.py --reset --no-inventory --no-canteen --no-documents
 
 # run
 python run.py               # Flask only, http://127.0.0.1:5000
@@ -240,6 +242,10 @@ configurable demo history.
 | `admin` | Administrator | `School@2026` |
 | `teacher1` | Teacher | `School@2026` |
 | `parent1` | Parent/Guardian (read-only `/portal`) | `School@2026` |
+| `parent2` | Parent/Guardian with two children | `School@2026` |
+| `accountant1` | Accountant | `School@2026` |
+| `principal1` | Principal / Owner | `School@2026` |
+| `guard1` | Gate guard (QR scanner) | `School@2026` |
 
 Override with the `DEFAULT_DEMO_PASSWORD` environment variable.
 

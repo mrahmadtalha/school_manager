@@ -39,6 +39,15 @@ class SchoolSettings(db.Model):
     custom_off_days = db.Column(db.String(200), default='')
     primary_color = db.Column(db.String(20), default='#0d6efd')
     secondary_color = db.Column(db.String(20), default='#6c757d')
+    # Result card PDF style.  Stored here so it persists across sessions.
+    # 'classic'      – the original single-page ReportLab layout (default)
+    # 'professional' – the new styled card matching the reference design
+    result_card_style = db.Column(db.String(40), default='classic')
+    # Student / staff ID card PDF style. Same convention as result_card_style:
+    # stored here so the chosen design persists across sessions and devices.
+    # 'classic'      – the original compact ID card layout (default)
+    # 'professional' – the new two-tone card with a round photo panel
+    id_card_style = db.Column(db.String(40), default='classic')
 
     @property
     def brand_palette(self):

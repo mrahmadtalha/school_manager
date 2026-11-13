@@ -255,7 +255,8 @@ class ScanActivity : AppCompatActivity() {
         netExecutor.execute {
             try {
                 val result = Api.scan(raw)
-                val photoPath = result.optJSONObject("student")?.str("photo_url") ?: ""
+                val photoPath = (result.optJSONObject("person") ?: result.optJSONObject("student"))
+                    ?.str("photo_url") ?: ""
                 val photo = Api.photo(photoPath)
                 runOnUiThread { showResult(result, photo) }
             } catch (e: ApiException) {
@@ -298,18 +299,26 @@ class ScanActivity : AppCompatActivity() {
             code == "school_closed" -> { color = "#455A64"; title = "SCHOOL CLOSED" }
             code == "old_card" -> { color = "#C62828"; title = "OLD ID CARD" }
             code == "unknown_student" -> { color = "#C62828"; title = "UNKNOWN STUDENT" }
+            code == "unknown_teacher" -> { color = "#C62828"; title = "UNKNOWN TEACHER" }
         }
         if (code == "marked" && r.str("previous_status") == "Absent") {
             sub = (sub + " (was marked Absent)").trim()
         }
 
-        val student = r.optJSONObject("student")
+        // A teacher's staff card gives the same answer; "person" is the new name of "student".
+        val isTeacher = r.str("person_type") == "teacher"
+        val student = r.optJSONObject("person") ?: r.optJSONObject("student")
         val classLine = student?.let {
             val section = it.str("section")
             val className = it.str("class_name") + if (section.isNotBlank()) " - $section" else ""
             val roll = it.str("roll_number")
-            listOf(className, if (roll.isNotBlank()) "Roll $roll" else "")
-                .filter { part -> part.isNotBlank() }.joinToString(" · ")
+            if (isTeacher) {
+                listOf("Teacher", className, if (roll.isNotBlank()) "ID $roll" else "")
+                    .filter { part -> part.isNotBlank() }.joinToString(" · ")
+            } else {
+                listOf(className, if (roll.isNotBlank()) "Roll $roll" else "")
+                    .filter { part -> part.isNotBlank() }.joinToString(" · ")
+            }
         } ?: ""
 
         r.optJSONObject("today")?.let { updateHeader(it) }
@@ -484,7 +493,13 @@ class ScanActivity : AppCompatActivity() {
     }
 
     private fun updateHeader(today: JSONObject) {
-        headerText.text = "Present ${today.optInt("present")} · Late ${today.optInt("late")} · " +
+        var text = "Present ${today.optInt("present")} · Late ${today.optInt("late")} · " +
             "Not arrived ${today.optInt("absent")}"
+        // Teachers are counted on their own (older computers do not send this).
+        val teachers = today.optJSONObject("teachers")
+        if (teachers != null && teachers.optInt("total") > 0) {
+            text += " · Teachers ${teachers.optInt("attended")}/${teachers.optInt("total")}"
+        }
+        headerText.text = text
     }
 }

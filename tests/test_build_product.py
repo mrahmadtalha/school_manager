@@ -28,7 +28,8 @@ def test_every_app_python_file_is_handed_to_pyarmor():
 def test_security_critical_modules_are_obfuscated():
     plan = plan_build()
     for critical in ('license_guard.py', 'auth.py', 'config.py',
-                     'services/licensing.py', 'services/license_public_key.py',
+                     'services/licensing/__init__.py', 'services/licensing/keys.py',
+                     'services/licensing/manager.py', 'services/license_public_key.py',
                      'security.py', 'graceful_exit.py', 'services/features.py',
                      'services/whatsapp_quota.py', 'services/password_recovery.py'):
         assert critical in plan.obfuscate
@@ -64,10 +65,17 @@ def test_trial_size_threshold_covers_known_big_modules():
            if (PROJECT_ROOT / 'app' / rel).stat().st_size > TRIAL_BIG_SCRIPT_BYTES]
     for rel in big:
         assert (PROJECT_ROOT / 'app' / rel).stat().st_size > TRIAL_BIG_SCRIPT_BYTES
-    # bootstrap / reports / students were split into sub-modules (all under the
-    # trial limit), so they now ship obfuscated and are no longer in this set.
-    assert {'services/seed_generator.py'} <= set(big)
-    split_modules = {'bootstrap.py'}
+    # bootstrap / reports / students, and all seven of the once-too-large
+    # services (licensing, fee_ledger, admission_fee, financial_summary,
+    # assistant, i18n_ur, seed_generator), were split into sub-modules (all
+    # under the trial limit), so they now ship obfuscated and are no longer
+    # in this set; the trial should now obfuscate every application module.
+    assert big == []
+    split_modules = {
+        'bootstrap.py', 'services/licensing.py', 'services/fee_ledger.py',
+        'services/admission_fee.py', 'services/financial_summary.py',
+        'services/assistant.py', 'services/i18n_ur.py', 'services/seed_generator.py',
+    }
     for pkg in ('reports', 'students', 'fees', 'teachers', 'settings',
                 'term_exams', 'inventory'):
         split_modules |= {f'routes/{pkg}/__init__.py'}

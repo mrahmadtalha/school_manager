@@ -158,21 +158,21 @@ def test_attendance_only_on_weekdays_and_valid_statuses(app):
 
 
 def test_fee_records_match_ledger(app):
+    """Every cached month equals what the ledger + allocations say (refunds, advance credit
+    and write-offs included), and nothing is left unallocated."""
+    from app.services.fee_ledger import ledger_totals, orphaned_settlements
+
     with app.app_context():
         run_seed(_small_config())
 
+        assert FeeRecordModel.query.count() > 0
         for record in FeeRecordModel.query.all():
-            charged = paid = 0.0
-            for txn in FeeTransaction.query.filter_by(
-                    student_id=record.student_id,
-                    month_year=record.month_year, is_void=False).all():
-                if txn.txn_type == 'payment':
-                    paid += txn.amount or 0.0
-                else:
-                    charged += txn.amount or 0.0
-            assert abs(record.amount_due - round(charged, 2)) < 0.01
-            assert abs(record.amount_paid - round(paid, 2)) < 0.01
+            charged, paid, written_off = ledger_totals(record.student_id, record.month_year)
+            assert abs(record.amount_due - charged) < 0.01
+            assert abs(record.amount_paid - paid) < 0.01
+            assert abs(record.amount_written_off - written_off) < 0.01
             assert record.status in ('Paid', 'Pending', 'Partial')
+        assert orphaned_settlements() == []
 
 
 def test_marks_are_graded_and_absents_excluded(app):
@@ -221,7 +221,7 @@ def test_payroll_rows_carry_attendance_snapshot(app):
         for row in rows:
             assert row.month_year.count('-') == 1
             assert row.net_salary >= 0
-            assert row.payment_status in ('Pending', 'Paid')
+            assert row.payment_status in ('Pending', 'Partial', 'Paid')
             assert row.working_days is not None
 
 

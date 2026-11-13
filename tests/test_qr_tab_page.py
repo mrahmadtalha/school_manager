@@ -60,7 +60,7 @@ def _make_guard():
 def test_page_has_the_live_parts_the_script_swaps(app, seed, admin_client):
     html = _page(admin_client)
     for marker in ('id="qaTop"', 'id="qaList"', 'id="qaSearch"', 'id="autoRefresh"',
-                   'data-qa-filter="all"', 'data-qa-filter="absent"', 'Update now'):
+                   'data-qa-filter="all"', 'data-qa-filter="absent"', 'Update now', "'qaTeachers'"):
         assert marker in html
 
 

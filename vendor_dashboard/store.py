@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS licenses (
     features TEXT NOT NULL,
     wa_daily INTEGER, wa_monthly INTEGER,
     key_text TEXT, note TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    max_students INTEGER, max_staff INTEGER
 );
 CREATE TABLE IF NOT EXISTS payments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +54,9 @@ CREATE TABLE IF NOT EXISTS plans (
     name TEXT PRIMARY KEY,
     label TEXT NOT NULL,
     features TEXT NOT NULL,
-    wa_daily INTEGER, wa_monthly INTEGER
+    wa_daily INTEGER, wa_monthly INTEGER,
+    max_students INTEGER, max_staff INTEGER,
+    price_monthly REAL, price_yearly REAL
 );
 CREATE TABLE IF NOT EXISTS inspections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,6 +86,14 @@ class Store:
                 c.execute('ALTER TABLE licenses ADD COLUMN roles TEXT')
             if 'notice' not in columns:      # older vendor.db: add the notice column
                 c.execute('ALTER TABLE licenses ADD COLUMN notice TEXT')
+            for column in ('max_students', 'max_staff'):      # older vendor.db: size limits
+                if column not in columns:
+                    c.execute(f'ALTER TABLE licenses ADD COLUMN {column} INTEGER')
+            plan_columns = {row[1] for row in c.execute('PRAGMA table_info(plans)')}
+            for column, kind in (('max_students', 'INTEGER'), ('max_staff', 'INTEGER'),
+                                 ('price_monthly', 'REAL'), ('price_yearly', 'REAL')):
+                if column not in plan_columns:
+                    c.execute(f'ALTER TABLE plans ADD COLUMN {column} {kind}')
 
     @contextmanager
     def conn(self):
@@ -104,9 +115,12 @@ class Store:
             if c.execute('SELECT COUNT(*) FROM plans').fetchone()[0]:
                 return
             for name, plan in defaults.items():
-                c.execute('INSERT INTO plans VALUES (?,?,?,?,?)',
+                c.execute('INSERT INTO plans (name, label, features, wa_daily, wa_monthly, '
+                          'max_students, max_staff, price_monthly, price_yearly) '
+                          'VALUES (?,?,?,?,?,?,?,?,?)',
                           (name, plan['label'], json.dumps(plan['features']),
-                           plan['wa_daily'], plan['wa_monthly']))
+                           plan['wa_daily'], plan['wa_monthly'], plan.get('max_students'),
+                           plan.get('max_staff'), plan.get('price_monthly'), plan.get('price_yearly')))
 
     def sync_premium_plan(self, all_features):
         """Keep the Premium plan = every feature, also those added after the plan was first saved.
@@ -124,14 +138,22 @@ class Store:
         with self.conn() as c:
             rows = c.execute('SELECT * FROM plans ORDER BY rowid').fetchall()
         return [{'name': r['name'], 'label': r['label'], 'features': json.loads(r['features']),
-                 'wa_daily': r['wa_daily'], 'wa_monthly': r['wa_monthly']} for r in rows]
+                 'wa_daily': r['wa_daily'], 'wa_monthly': r['wa_monthly'],
+                 'max_students': r['max_students'], 'max_staff': r['max_staff'],
+                 'price_monthly': r['price_monthly'], 'price_yearly': r['price_yearly']} for r in rows]
 
-    def save_plan(self, name, label, features, wa_daily, wa_monthly):
+    def save_plan(self, name, label, features, wa_daily, wa_monthly, max_students=None,
+                  max_staff=None, price_monthly=None, price_yearly=None):
         with self.conn() as c:
-            c.execute('INSERT INTO plans VALUES (?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET '
+            c.execute('INSERT INTO plans (name, label, features, wa_daily, wa_monthly, max_students, '
+                      'max_staff, price_monthly, price_yearly) VALUES (?,?,?,?,?,?,?,?,?) '
+                      'ON CONFLICT(name) DO UPDATE SET '
                       'label=excluded.label, features=excluded.features, '
-                      'wa_daily=excluded.wa_daily, wa_monthly=excluded.wa_monthly',
-                      (name, label, json.dumps(features), wa_daily, wa_monthly))
+                      'wa_daily=excluded.wa_daily, wa_monthly=excluded.wa_monthly, '
+                      'max_students=excluded.max_students, max_staff=excluded.max_staff, '
+                      'price_monthly=excluded.price_monthly, price_yearly=excluded.price_yearly',
+                      (name, label, json.dumps(features), wa_daily, wa_monthly, max_students,
+                       max_staff, price_monthly, price_yearly))
 
     # -- schools --------------------------------------------------------------
     def create_school(self, **fields):
@@ -162,7 +184,8 @@ class Store:
         """Every school with its newest license revision (or None values)."""
         query = ('SELECT s.*, l.rev AS rev, l.plan AS plan, l.expires AS expires, '
                  'l.grace_days AS grace_days, l.wa_daily AS wa_daily, l.wa_monthly AS wa_monthly, '
-                 'l.features AS features FROM schools s LEFT JOIN licenses l ON l.id = ('
+                 'l.features AS features, l.max_students AS max_students, l.max_staff AS max_staff '
+                 'FROM schools s LEFT JOIN licenses l ON l.id = ('
                  'SELECT id FROM licenses WHERE school_id = s.id AND license_id = s.license_id '
                  'ORDER BY rev DESC, id DESC LIMIT 1)')
         params = ()
@@ -205,13 +228,14 @@ class Store:
             cursor = c.execute(
                 'INSERT INTO licenses (school_id, license_id, rev, reason, plan, machine_code, '
                 'issued, expires, grace_days, features, wa_daily, wa_monthly, key_text, note, '
-                'created_at, roles, notice) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                'created_at, roles, notice, max_students, max_staff) '
+                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 (f['school_id'], f['license_id'], f['rev'], f.get('reason'), f.get('plan'),
                  f['machine_code'], f['issued'], f['expires'], f['grace_days'],
                  json.dumps(f['features']), f.get('wa_daily'), f.get('wa_monthly'),
                  f.get('key_text'), f.get('note'), _now(),
                  None if f.get('roles') is None else json.dumps(f['roles']),
-                 f.get('notice') or None))
+                 f.get('notice') or None, f.get('max_students'), f.get('max_staff')))
             c.execute('UPDATE schools SET license_id=?, machine_code=? WHERE id=?',
                       (f['license_id'], f['machine_code'], f['school_id']))
             return cursor.lastrowid

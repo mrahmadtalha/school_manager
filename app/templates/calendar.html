@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    /* ----------------------------------------------------------------
+       Academic Calendar  —  "notice board" look.
+       Scoped under .ac- so nothing leaks.
+       ---------------------------------------------------------------- */
+    .ac-head { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:1rem; margin:0.25rem 0 1.1rem; }
+    .ac-head h1 { font-size:clamp(1.55rem,2.4vw,2rem); font-weight:800; letter-spacing:-0.025em; color:#0f172a; margin:0; line-height:1.1; }
+    .ac-head p  { margin:0.35rem 0 0; color:#64748b; font-size:0.92rem; }
+    .ac-tools   { display:flex; flex-wrap:wrap; align-items:center; gap:0.5rem; }
+    .ac-tools .btn          { box-shadow:none; }
+    .ac-tools .dropdown-menu{ border-radius:14px; border-color:#e2e8f0; box-shadow:0 18px 40px rgba(15,23,42,.12); padding:.4rem; }
+    .ac-tools .dropdown-item{ border-radius:9px; font-size:.9rem; padding:.45rem .7rem; }
+
+    /* pinned strip */
+    .ac-pins { display:flex; flex-wrap:wrap; gap:.55rem; margin-bottom:.9rem; }
+    .ac-pin  { display:inline-flex; align-items:center; gap:.45rem; padding:.4rem .9rem .4rem .6rem;
+               border-radius:99px; font-size:.82rem; font-weight:700; border:1px solid;
+               background:#fffbf3; border-color:#fcd34d; color:#92400e;
+               text-decoration:none; transition:background .15s ease; }
+    .ac-pin:hover { background:#fde9bd; color:#78350f; }
+    .ac-pin i.fa-thumbtack { color:#f59e0b; font-size:.75rem; }
+
+    /* month nav */
+    .ac-month-nav { display:flex; align-items:center; gap:.6rem; }
+    .ac-month-nav .ac-mn-title { font-size:1.1rem; font-weight:800; color:#0f172a; min-width:9rem; text-align:center; }
+    .ac-month-nav .btn { width:2.3rem; height:2.3rem; padding:0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; }
+
+    /* view toggle (Month / List) */
+    .ac-seg { display:inline-flex; background:#f1f5f9; border-radius:12px; padding:3px; gap:2px; }
+    .ac-seg a { padding:.4rem .85rem; border-radius:9px; font-size:.85rem; font-weight:600; color:#475569;
+                text-decoration:none; transition:background .15s ease,color .15s ease; }
+    .ac-seg a.active { background:#fff; color:#0f172a; box-shadow:0 1px 3px rgba(15,23,42,.14); }
+
+    /* category filter chips */
+    .ac-cats { display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:.9rem; }
+    .ac-cat  { padding:.3rem .8rem; border-radius:99px; font-size:.8rem; font-weight:600;
+               border:1px solid #e2e8f0; background:#f8fafc; color:#475569;
+               text-decoration:none; transition:all .15s ease; white-space:nowrap; }
+    .ac-cat:hover, .ac-cat.active { background:rgb(var(--bs-primary-rgb)); border-color:rgb(var(--bs-primary-rgb)); color:#fff; }
+
+    /* ---- MONTH GRID ---- */
+    .ac-grid { background:#fff; border:1px solid #e2e8f0; border-radius:18px; overflow:hidden; margin-bottom:.9rem; }
+    .ac-grid-head { display:grid; grid-template-columns:repeat(7,1fr);
+                    background:#f8fafc; border-bottom:1px solid #e2e8f0; }
+    .ac-dname { padding:.5rem 0; text-align:center; font-size:.72rem; font-weight:700;
+                color:#94a3b8; letter-spacing:.04em; text-transform:uppercase; }
+    .ac-weeks { display:flex; flex-direction:column; }
+    .ac-week  { display:grid; grid-template-columns:repeat(7,1fr); border-bottom:1px solid #f1f5f9; }
+    .ac-week:last-child { border-bottom:none; }
+    .ac-day   { min-height:5.5rem; padding:.45rem .5rem .3rem; border-right:1px solid #f1f5f9;
+                position:relative; cursor:default; }
+    .ac-day:last-child { border-right:none; }
+    .ac-day.other-month { background:#fafafa; }
+    .ac-day.today .ac-daynum { background:rgb(var(--bs-primary-rgb)); color:#fff; border-radius:50%; }
+    .ac-daynum { display:inline-flex; align-items:center; justify-content:center;
+                 width:1.75rem; height:1.75rem; font-size:.82rem; font-weight:700; color:#334155;
+                 border-radius:50%; line-height:1; }
+    .ac-day.other-month .ac-daynum { color:#cbd5e1; }
+    .ac-event-pill { display:block; padding:.12rem .5rem; border-radius:6px; font-size:.72rem;
+                     font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                     margin-top:.18rem; cursor:pointer; text-decoration:none;
+                     transition:opacity .15s ease; }
+    .ac-event-pill:hover { opacity:.82; }
+    .ac-event-pill.c-holiday { background:#dcfce7; color:#15803d; }
+    .ac-event-pill.c-exam    { background:#fee2e2; color:#b91c1c; }
+    .ac-event-pill.c-meeting { background:#fef9c3; color:#854d0e; }
+    .ac-event-pill.c-general { background:rgba(var(--bs-primary-rgb),.12); color:rgb(var(--bs-primary-rgb)); }
+    .ac-event-pill.c-trip    { background:#e0f2fe; color:#0369a1; }
+    .ac-event-pill.c-sport   { background:#f3f4f6; color:#374151; }
+    .ac-event-pill.c-other   { background:#f1f5f9; color:#334155; }
+    .ac-event-pill.pinned-pill::before { content:"\f08d"; font-family:"Font Awesome 6 Free"; font-weight:900;
+                                          margin-right:.3rem; font-size:.65rem; color:#f59e0b; }
+    /* +N more */
+    .ac-more { font-size:.7rem; color:#94a3b8; font-weight:600; padding:.1rem .4rem; cursor:pointer; }
+    .ac-more:hover { color:rgb(var(--bs-primary-rgb)); }
+
+    /* ---- LIST VIEW ---- */
+    .ac-list { background:#fff; border:1px solid #e2e8f0; border-radius:18px; overflow:hidden; }
+    .ac-list-item { display:flex; align-items:flex-start; gap:1rem; padding:.85rem 1.1rem;
+                    border-bottom:1px solid #f1f5f9; transition:background .12s ease; }
+    .ac-list-item:last-child { border-bottom:none; }
+    .ac-list-item:hover { background:#f8fafc; }
+    .ac-date-col { flex:0 0 3.5rem; text-align:center; }
+    .ac-date-day  { font-size:1.6rem; font-weight:800; line-height:1; color:#0f172a; font-variant-numeric:tabular-nums; }
+    .ac-date-mon  { font-size:.7rem; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:.06em; }
+    .ac-dot  { width:10px; height:10px; border-radius:50%; flex-shrink:0; margin-top:.35rem; }
+    .ac-dot.c-holiday { background:#16a34a; }
+    .ac-dot.c-exam    { background:#dc2626; }
+    .ac-dot.c-meeting { background:#ca8a04; }
+    .ac-dot.c-general { background:rgb(var(--bs-primary-rgb)); }
+    .ac-dot.c-trip    { background:#0284c7; }
+    .ac-dot.c-sport   { background:#6b7280; }
+    .ac-dot.c-other   { background:#94a3b8; }
+    .ac-ev-info { flex:1; min-width:0; }
+    .ac-ev-title { font-weight:700; color:#0f172a; font-size:.93rem; display:flex; align-items:center; gap:.45rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .ac-ev-desc  { font-size:.82rem; color:#64748b; margin-top:.18rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ac-ev-meta  { font-size:.78rem; color:#94a3b8; margin-top:.2rem; }
+    .ac-ev-actions { display:flex; gap:.35rem; align-items:center; flex-shrink:0; }
+    .ac-ev-actions .btn { box-shadow:none; height:2rem; padding:0 .7rem; font-size:.8rem; display:inline-flex; align-items:center; }
+
+    /* category badge */
+    .ac-badge { display:inline-block; padding:.12rem .55rem; border-radius:99px; font-size:.72rem; font-weight:700; border:1px solid transparent; }
+    .ac-badge.c-holiday { background:#dcfce7; border-color:#bbf7d0; color:#15803d; }
+    .ac-badge.c-exam    { background:#fee2e2; border-color:#fecaca; color:#b91c1c; }
+    .ac-badge.c-meeting { background:#fef9c3; border-color:#fef08a; color:#854d0e; }
+    .ac-badge.c-general { background:rgba(var(--bs-primary-rgb),.1); border-color:rgba(var(--bs-primary-rgb),.25); color:rgb(var(--bs-primary-rgb)); }
+    .ac-badge.c-trip    { background:#e0f2fe; border-color:#bae6fd; color:#0369a1; }
+    .ac-badge.c-sport   { background:#f3f4f6; border-color:#e5e7eb; color:#374151; }
+    .ac-badge.c-other   { background:#f1f5f9; border-color:#e2e8f0; color:#334155; }
+
+    /* empty state */
+    .ac-empty { padding:3rem 1rem; text-align:center; color:#94a3b8; }
+    .ac-empty i { font-size:2.5rem; display:block; margin-bottom:.6rem; }
+
+    /* mobile */
+    @media (max-width:640px) {
+        .ac-day { min-height:3.2rem; padding:.3rem .25rem .2rem; }
+        .ac-daynum { width:1.5rem; height:1.5rem; font-size:.75rem; }
+        .ac-event-pill { font-size:.64rem; padding:.08rem .3rem; }
+        .ac-list-item { flex-wrap:wrap; }
+        .ac-ev-actions { width:100%; justify-content:flex-end; margin-top:.4rem; }
+    }
+</style>
+
+{# ── Header ── #}
+<div class="ac-head">
+    <div>
+        <h1><i class="fas fa-calendar-star me-2" style="color:rgb(var(--bs-primary-rgb))"></i>Academic Calendar</h1>
+        <p>School events, holidays, exams and announcements</p>
+    </div>
+    <div class="ac-tools">
+        {# Month nav (only for month view) #}
+        {% if view == 'month' %}
+        <div class="ac-month-nav">
+            {% set prev_month = month - 1 if month > 1 else 12 %}
+            {% set prev_year  = year if month > 1 else year - 1 %}
+            {% set next_month = month + 1 if month < 12 else 1 %}
+            {% set next_year  = year if month < 12 else year + 1 %}
+            <a class="btn btn-outline-secondary btn-sm"
+               href="{{ url_for('main.calendar_page', year=prev_year, month=prev_month, view=view, category=cat_filter) }}">
+               <i class="fas fa-chevron-left"></i>
+            </a>
+            <span class="ac-mn-title">{{ month_name }} {{ year }}</span>
+            <a class="btn btn-outline-secondary btn-sm"
+               href="{{ url_for('main.calendar_page', year=next_year, month=next_month, view=view, category=cat_filter) }}">
+               <i class="fas fa-chevron-right"></i>
+            </a>
+        </div>
+        {% endif %}
+
+        {# View toggle #}
+        <div class="ac-seg">
+            <a href="{{ url_for('main.calendar_page', year=year, month=month, view='month', category=cat_filter) }}"
+               class="{{ 'active' if view == 'month' else '' }}"><i class="fas fa-th me-1"></i>Month</a>
+            <a href="{{ url_for('main.calendar_page', view='list', category=cat_filter) }}"
+               class="{{ 'active' if view == 'list' else '' }}"><i class="fas fa-list me-1"></i>List</a>
+        </div>
+
+        {% if current_user.role in ('admin', 'principal') %}
+        <a class="btn btn-primary btn-sm" href="{{ url_for('main.calendar_add') }}">
+            <i class="fas fa-plus me-1"></i> Add Event
+        </a>
+        {% endif %}
+
+        {# Archived toggle #}
+        <a class="btn btn-outline-secondary btn-sm {{ 'active' if show_archived else '' }}"
+           href="{{ url_for('main.calendar_page', view=view, year=year, month=month,
+                             category=cat_filter, archived=0 if show_archived else 1) }}"
+           title="{{ 'Hide archived' if show_archived else 'Show archived events' }}">
+            <i class="fas fa-archive me-1"></i>{{ 'Archived' if show_archived else 'Archive' }}
+        </a>
+    </div>
+</div>
+
+{# ── Pinned events strip ── #}
+{% if pinned %}
+<div class="ac-pins">
+    <span class="text-muted" style="font-size:.8rem;font-weight:700;align-self:center;"><i class="fas fa-thumbtack me-1" style="color:#f59e0b"></i> Pinned</span>
+    {% for ev in pinned %}
+    <span class="ac-pin" title="{{ ev.description or '' }}">
+        <i class="fas fa-circle ac-dot c-{{ ev.category }}" style="width:8px;height:8px;"></i>
+        {{ ev.title }}
+        <span class="text-muted fw-normal" style="font-size:.75rem;">· {{ ev.event_date.strftime('%d %b') }}</span>
+    </span>
+    {% endfor %}
+</div>
+{% endif %}
+
+{# ── Category chips ── #}
+<div class="ac-cats">
+    <a href="{{ url_for('main.calendar_page', view=view, year=year, month=month, archived=1 if show_archived else 0) }}"
+       class="ac-cat {{ 'active' if not cat_filter else '' }}">All</a>
+    {% for cat in categories %}
+    <a href="{{ url_for('main.calendar_page', view=view, year=year, month=month,
+                         category=cat, archived=1 if show_archived else 0) }}"
+       class="ac-cat {{ 'active' if cat_filter == cat else '' }}">
+        {{ {'holiday':'🌙 Holiday','exam':'📝 Exam / Test','meeting':'👥 Meeting',
+             'general':'📌 General','trip':'🚌 School Trip','sport':'🏅 Sports','other':'📋 Other'}[cat] }}
+    </a>
+    {% endfor %}
+</div>
+
+{# ════════════════════ MONTH GRID ════════════════════ #}
+{% if view == 'month' %}
+<div class="ac-grid">
+    <div class="ac-grid-head">
+        {% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+        <div class="ac-dname">{{ d }}</div>
+        {% endfor %}
+    </div>
+    <div class="ac-weeks">
+        {% for week in cal_weeks %}
+        <div class="ac-week">
+            {% for day in week %}
+            {% set is_today = (day == today.day and month == today.month and year == today.year) %}
+            {% set day_events = month_events.get(day, []) if day else [] %}
+            <div class="ac-day {{ 'other-month' if not day else '' }} {{ 'today' if is_today else '' }}"
+                 {% if day and current_user.role in ('admin','principal') %}
+                 data-add-url="{{ url_for('main.calendar_add', date='%04d-%02d-%02d'|format(year,month,day)) }}"
+                 style="cursor:pointer"
+                 onclick="if(event.target===this||event.target.classList.contains('ac-daynum')){window.location=this.dataset.addUrl}"
+                 {% endif %}>
+                {% if day %}
+                <span class="ac-daynum">{{ day }}</span>
+                {% set shown = day_events[:3] %}
+                {% set extra = day_events|length - 3 %}
+                {% for ev in shown %}
+                <a class="ac-event-pill c-{{ ev.category }} {{ 'pinned-pill' if ev.is_pinned else '' }}"
+                   href="{{ url_for('main.calendar_edit', event_id=ev.id) }}"
+                   title="{{ ev.title }}{% if ev.description %} — {{ ev.description }}{% endif %}">{{ ev.title }}</a>
+                {% endfor %}
+                {% if extra > 0 %}
+                <span class="ac-more">+{{ extra }} more</span>
+                {% endif %}
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{# ════════════════════ LIST VIEW ════════════════════ #}
+{% else %}
+{% if events %}
+<div class="ac-list">
+    {% for ev in events %}
+    <div class="ac-list-item">
+        <div class="ac-date-col">
+            <div class="ac-date-day">{{ ev.event_date.strftime('%d') }}</div>
+            <div class="ac-date-mon">{{ ev.event_date.strftime('%b %Y') }}</div>
+        </div>
+        <div class="ac-dot c-{{ ev.category }}"></div>
+        <div class="ac-ev-info">
+            <div class="ac-ev-title">
+                {{ ev.title }}
+                {% if ev.is_pinned %}<i class="fas fa-thumbtack" style="color:#f59e0b;font-size:.75rem;" title="Pinned"></i>{% endif %}
+                <span class="ac-badge c-{{ ev.category }}">{{ ev.category_label }}</span>
+                {% if ev.is_multi_day %}
+                <span class="text-muted" style="font-size:.78rem;font-weight:400;">→ {{ ev.end_date.strftime('%d %b') }}</span>
+                {% endif %}
+            </div>
+            {% if ev.description %}
+            <div class="ac-ev-desc">{{ ev.description }}</div>
+            {% endif %}
+            <div class="ac-ev-meta">
+                Added by {{ ev.creator.full_name if ev.creator else 'Admin' }}
+                · {{ ev.created_at.strftime('%d %b %Y') if ev.created_at else '' }}
+            </div>
+        </div>
+        {% if current_user.role in ('admin', 'principal') %}
+        <div class="ac-ev-actions">
+            {# Pin / unpin #}
+            <form method="post" action="{{ url_for('main.calendar_pin', event_id=ev.id) }}" class="d-inline">
+                <button type="submit" class="btn btn-sm {{ 'btn-warning' if ev.is_pinned else 'btn-outline-secondary' }}"
+                        title="{{ 'Unpin' if ev.is_pinned else 'Pin to top' }}">
+                    <i class="fas fa-thumbtack"></i>
+                </button>
+            </form>
+            {# Archive #}
+            <form method="post" action="{{ url_for('main.calendar_archive', event_id=ev.id) }}" class="d-inline"
+                  data-confirm="{{ 'Restore this event?' if ev.is_archived else 'Archive this event?' }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary"
+                        title="{{ 'Restore' if ev.is_archived else 'Archive' }}">
+                    <i class="fas {{ 'fa-box-open' if ev.is_archived else 'fa-archive' }}"></i>
+                </button>
+            </form>
+            {# Edit #}
+            <a href="{{ url_for('main.calendar_edit', event_id=ev.id) }}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-pen"></i>
+            </a>
+            {# Delete #}
+            <form method="post" action="{{ url_for('main.calendar_delete', event_id=ev.id) }}" class="d-inline"
+                  data-confirm="Delete event "{{ ev.title }}"? This cannot be undone.">
+                <button type="submit" class="btn btn-sm btn-outline-danger">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="ac-empty">
+    <i class="far fa-calendar-xmark"></i>
+    {% if show_archived %}
+        No archived events found.
+    {% else %}
+        No upcoming events.
+        {% if current_user.role in ('admin','principal') %}
+        <a href="{{ url_for('main.calendar_add') }}">Add the first one.</a>
+        {% endif %}
+    {% endif %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

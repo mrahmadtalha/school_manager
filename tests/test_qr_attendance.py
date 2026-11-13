@@ -158,6 +158,8 @@ def test_bad_codes_give_clear_codes_and_save_nothing(app, seed):
     assert qr.process_scan('', now=_at(MONDAY, 8, 0))['code'] == 'invalid_qr'
     assert qr.process_scan(None, now=_at(MONDAY, 8, 0))['code'] == 'invalid_qr'
     assert qr.process_scan('STUDENT|1001|Ali Khan', now=_at(MONDAY, 8, 0))['code'] == 'old_card'
+    assert qr.process_scan('TEACHER|T001|Sara Ahmed', now=_at(MONDAY, 8, 0))['code'] == 'old_card'
+    assert qr.process_scan('SMQT1.1.badsignature', now=_at(MONDAY, 8, 0))['code'] == 'invalid_qr'
     assert qr.process_scan(_token(999999), now=_at(MONDAY, 8, 0))['code'] == 'unknown_student'
     assert AttendanceModel.query.count() == 0
 
@@ -288,3 +290,20 @@ def test_guard_role_is_in_the_license_catalog():
     assert 'qr_attendance' in features.ALL_FEATURES
     assert 'guard' in features.ALL_ROLES
     assert features.normalize_roles(['guard'])[-1] == 'guard'
+
+
+def test_student_result_carries_person_fields_next_to_the_old_ones(app, seed):
+    """Teachers can be scanned now: the answer says who was scanned (``person``) and still
+    fills ``student`` so a guard app installed before that keeps working."""
+    _settings()
+    result = qr.process_scan(_token(seed['student_id']), now=_at(MONDAY, 8, 20))
+    assert result['person_type'] == 'student'
+    assert result['person']['name'] == 'Ali Khan'
+    assert result['student'] == result['person']
+
+
+def test_student_card_is_not_accepted_as_a_teacher_card(app, seed):
+    _settings()
+    forged = _token(seed['student_id']).replace('SMQR1', 'SMQT1', 1)
+    assert qr.process_scan(forged, now=_at(MONDAY, 8, 0))['code'] == 'invalid_qr'
+    assert AttendanceModel.query.count() == 0

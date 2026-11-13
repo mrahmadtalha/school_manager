@@ -92,6 +92,7 @@
     .ta-tag { display: inline-block; padding: 0.08rem 0.5rem; border-radius: 99px; font-size: 0.7rem; font-weight: 600; margin-left: 0.35rem; vertical-align: middle; white-space: nowrap; }
     .ta-tag-new { background: #e0f2fe; color: #075985; }
     .ta-tag-late { background: #fef3c7; color: #92400e; }
+    .ta-tag-qr { background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; }
 
     /* the four big status buttons */
     .ta-seg { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; }
@@ -352,7 +353,7 @@
                             <div class="ta-who">
                                 {{ avatar('teacher', teacher, 38) }}
                                 <div class="ta-who-text">
-                                    <div class="ta-who-name">{{ teacher.teacher_name }}{% if not is_marked and ns.n_marked > 0 %} <span class="ta-tag ta-tag-new" id="unmarked_{{ teacher.id }}">Not marked yet</span>{% endif %}{% if current_status == 'Late' and late_min %} <span class="ta-tag ta-tag-late" id="latetag_{{ teacher.id }}">Late · {{ late_min }} min</span>{% endif %}</div>
+                                    <div class="ta-who-name">{{ teacher.teacher_name }}{% if not is_marked and ns.n_marked > 0 %} <span class="ta-tag ta-tag-new" id="unmarked_{{ teacher.id }}">Not marked yet</span>{% endif %}{% if current_status == 'Late' and late_min %} <span class="ta-tag ta-tag-late" id="latetag_{{ teacher.id }}">Late · {{ late_min }} min</span>{% endif %}{% if qr_time_map.get(teacher.id) %} <span class="ta-tag ta-tag-qr" title="Gate QR scan time"><i class="fas fa-qrcode me-1"></i>QR {{ qr_time_map.get(teacher.id) }}</span>{% endif %}</div>
                                     {% if teacher.designation or teacher.qualification %}<div class="ta-who-sub">{{ teacher.designation or teacher.qualification }}</div>{% endif %}
                                 </div>
                             </div>

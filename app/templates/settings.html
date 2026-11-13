@@ -303,6 +303,22 @@
                                value="{{ settings.result_announcement_date or '' }}">
                     </div>
                     <div class="col-sm-6">
+                        <label class="form-label" for="stCardStyle">Result Card PDF Style</label>
+                        <select class="form-select" id="stCardStyle" name="result_card_style">
+                            <option value="classic"      {% if (settings.result_card_style or 'classic') == 'classic' %}selected{% endif %}>Classic — simple single-page layout</option>
+                            <option value="professional" {% if (settings.result_card_style or '') == 'professional' %}selected{% endif %}>Professional — styled card with header &amp; progress bars</option>
+                        </select>
+                        <div class="form-text">Your chosen style is used whenever a result card PDF is generated. You can change this at any time.</div>
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="stIdCardStyle">ID Card PDF Style</label>
+                        <select class="form-select" id="stIdCardStyle" name="id_card_style">
+                            <option value="classic"      {% if (settings.id_card_style or 'classic') == 'classic' %}selected{% endif %}>Classic — compact header-and-footer layout</option>
+                            <option value="professional" {% if (settings.id_card_style or '') == 'professional' %}selected{% endif %}>Professional — photo panel, round avatar &amp; bigger QR</option>
+                        </select>
+                        <div class="form-text">The default used for student/staff ID cards. Can also be changed on the Documents page.</div>
+                    </div>
+                    <div class="col-sm-6">
                         <label class="form-label" for="stStart">School Start Time</label>
                         <input type="time" class="form-control" id="stStart" name="school_start_time" value="{{ settings.school_start_time or '08:30' }}">
                     </div>

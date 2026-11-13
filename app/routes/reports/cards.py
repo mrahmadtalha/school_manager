@@ -5,9 +5,97 @@ from datetime import date
 from flask import request, redirect, url_for, flash, send_file
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, PageBreak
+from datetime import datetime
 from app.models import ClassModel, StudentModel, StudentMarkModel, SchoolSettings
 from app.routes import main
 from app.services.marks import ABSENT_LABEL
+
+
+# ---------------------------------------------------------------------------
+# PDF filter helper
+# ---------------------------------------------------------------------------
+
+def _parse_pdf_filters(args):
+    """Extract and validate filter params from a request.args-like dict.
+
+    Returns a plain dict with keys:
+        month        int|None   e.g. 10  (October)
+        year         int|None   e.g. 2026
+        date_from    date|None
+        date_to      date|None
+        subject_id   int|None
+    """
+    def _int(key):
+        try:
+            v = int(args.get(key) or 0)
+            return v or None
+        except (TypeError, ValueError):
+            return None
+
+    def _date(key):
+        raw = (args.get(key) or '').strip()
+        if not raw:
+            return None
+        for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y'):
+            try:
+                return datetime.strptime(raw, fmt).date()
+            except ValueError:
+                pass
+        return None
+
+    return {
+        'month':      _int('pdf_month'),
+        'year':       _int('pdf_year'),
+        'date_from':  _date('pdf_date_from'),
+        'date_to':    _date('pdf_date_to'),
+        'subject_id': _int('pdf_subject'),
+    }
+
+
+def _apply_pdf_filters(marks, filters):
+    """Return the subset of *marks* that pass all active filters.
+
+    ``marks`` is a list of ``StudentMarkModel`` objects whose ``test_info``
+    relationship is already loaded.  An empty / all-None filters dict returns
+    the original list unchanged.
+    """
+    if not any(filters.values()):
+        return marks
+
+    result = []
+    for m in marks:
+        t = m.test_info
+        td = t.test_date  # may be None on very old rows
+
+        if filters['subject_id'] and t.subject_id != filters['subject_id']:
+            continue
+        if td:
+            if filters['month'] and td.month != filters['month']:
+                continue
+            if filters['year'] and td.year != filters['year']:
+                continue
+            if filters['date_from'] and td < filters['date_from']:
+                continue
+            if filters['date_to'] and td > filters['date_to']:
+                continue
+        result.append(m)
+    return result
+
+
+def _filter_label(filters):
+    """Short human-readable string of active filters, used in PDF filename."""
+    parts = []
+    if filters.get('subject_id'):
+        parts.append('subj%d' % filters['subject_id'])
+    if filters.get('month'):
+        parts.append('m%02d' % filters['month'])
+    if filters.get('year'):
+        parts.append(str(filters['year']))
+    if filters.get('date_from'):
+        parts.append('from%s' % filters['date_from'].strftime('%d%b%Y'))
+    if filters.get('date_to'):
+        parts.append('to%s' % filters['date_to'].strftime('%d%b%Y'))
+    return ('_' + '_'.join(parts)) if parts else ''
 
 from app.routes.reports.core import (
     _class_results_evaluation,
@@ -24,13 +112,14 @@ def student_report_card_pdf(student_id):
     test_type = (request.args.get('test_type') or '').strip()
     session_value = (request.args.get('session') or '').strip()
     announce_value = (request.args.get('announce_date') or '').strip()
-    if not session_value or not announce_value:
-        school = SchoolSettings.query.first()
-        if not session_value:
-            session_value = (school.academic_session or '').strip() if school else ''
-        if not announce_value:
-            announce_value = (school.result_announcement_date or '').strip() if school else ''
+    school = SchoolSettings.query.first()
+    if not session_value:
+        session_value = (school.academic_session or '').strip() if school else ''
+    if not announce_value:
+        announce_value = (school.result_announcement_date or '').strip() if school else ''
     announce_value = announce_value or date.today().isoformat()
+
+    pdf_filters = _parse_pdf_filters(request.args)
 
     marks = StudentMarkModel.query.filter_by(student_id=student.id).all()
     evaluation = None
@@ -54,23 +143,27 @@ def student_report_card_pdf(student_id):
             }
             test_ids = {t.id for t in class_tests}
             marks = [m for m in marks if m.test_id in test_ids]
-    
+
+    # Apply extra PDF filters (month / date range / subject) AFTER class filter
+    marks = _apply_pdf_filters(marks, pdf_filters)
+
     from flask import current_app
-    import os
-    
+
+    card_style = (request.args.get('card_style') or '').strip()
+    if not card_style:
+        card_style = (school.result_card_style or 'classic') if school else 'classic'
+
     output = io.BytesIO()
     doc = SimpleDocTemplate(output, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     story = [_fit_report_on_one_page(
-        doc, _build_student_report_story(student, marks, current_app.root_path, evaluation=evaluation))]
+        doc, _build_story(card_style, student, marks, current_app.root_path, evaluation=evaluation))]
     doc.build(story)
     output.seek(0)
-    
-    return send_file(
-        output,
-        mimetype='application/pdf',
-        as_attachment=True,
-        download_name=f'report_card_{student.roll_number}_{student.student_name}.pdf'
-    )
+
+    fname = 'report_card_%s_%s%s.pdf' % (
+        student.roll_number, student.student_name, _filter_label(pdf_filters))
+    return send_file(output, mimetype='application/pdf', as_attachment=True,
+                     download_name=fname)
 
 
 @main.route('/reports/class-results/pdf-all')
@@ -79,12 +172,11 @@ def export_all_report_cards_pdf():
     test_type = (request.args.get('test_type') or '').strip()
     session_value = (request.args.get('session') or '').strip()
     announce_value = (request.args.get('announce_date') or '').strip()
-    if not session_value or not announce_value:
-        school = SchoolSettings.query.first()
-        if not session_value:
-            session_value = (school.academic_session or '').strip() if school else ''
-        if not announce_value:
-            announce_value = (school.result_announcement_date or '').strip() if school else ''
+    school = SchoolSettings.query.first()
+    if not session_value:
+        session_value = (school.academic_session or '').strip() if school else ''
+    if not announce_value:
+        announce_value = (school.result_announcement_date or '').strip() if school else ''
     announce_value = announce_value or date.today().isoformat()
     if not selected_class_id:
         flash('Please select a class first.', 'warning')
@@ -102,10 +194,16 @@ def export_all_report_cards_pdf():
     from flask import current_app
     import os
 
+    pdf_filters = _parse_pdf_filters(request.args)
+
+    card_style = (request.args.get('card_style') or '').strip()
+    if not card_style:
+        card_style = (school.result_card_style or 'classic') if school else 'classic'
+
     output = io.BytesIO()
     doc = SimpleDocTemplate(output, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     story = []
-    
+
     for si, student in enumerate(students):
         row = rows_by_student.get(student.id)
         evaluation = None
@@ -125,19 +223,23 @@ def export_all_report_cards_pdf():
             }
         marks = [marks_map[(student.id, t.id)] for t in class_tests
                  if (student.id, t.id) in marks_map]
-        
+
+        # Apply extra PDF filters (month / date range / subject)
+        marks = _apply_pdf_filters(marks, pdf_filters)
+
         # Each student's card is fitted onto exactly one page (see helper above).
         story.append(_fit_report_on_one_page(
-            doc, _build_student_report_story(student, marks, current_app.root_path,
-                                             evaluation=evaluation)))
+            doc, _build_story(card_style, student, marks, current_app.root_path,
+                              evaluation=evaluation)))
 
         if si < len(students) - 1:
             story.append(PageBreak())
 
     doc.build(story)
     output.seek(0)
+    fname = 'all_report_cards_%s%s.pdf' % (class_obj.name, _filter_label(pdf_filters))
     return send_file(output, mimetype='application/pdf', as_attachment=True,
-                     download_name=f'all_report_cards_{class_obj.name}.pdf')
+                     download_name=fname)
 
 
 def _build_student_report_story(student, marks, root_path, evaluation=None):
@@ -157,7 +259,8 @@ def _build_student_report_story(student, marks, root_path, evaluation=None):
     school_tagline = school.tagline if school and school.tagline else ''
     
     # 1. Header Table (Logo + School Info)
-    logo_path = os.path.join(root_path, 'static', 'logo.png')
+    from app.services.pdf_logo import logo_flowable, school_logo_path
+    logo_path = school_logo_path(root_path)
     
     title_style = ParagraphStyle('T', parent=styles['Heading1'], fontSize=20, textColor=colors.HexColor('#2b6cb0'), spaceAfter=2, alignment=1)
     tag_style = ParagraphStyle('S', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#718096'), alignment=1)
@@ -169,8 +272,8 @@ def _build_student_report_story(student, marks, root_path, evaluation=None):
         Paragraph("OFFICIAL STUDENT REPORT CARD", report_title_style)
     ]
     
-    if os.path.exists(logo_path):
-        img = Image(logo_path, width=70, height=70)
+    img = logo_flowable(logo_path, 70, 70)
+    if img is not None:
         header_table = Table([[img, school_info]], colWidths=[80, 400])
         header_table.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -359,3 +462,27 @@ def _build_student_report_story(student, marks, root_path, evaluation=None):
     story.append(sig_table)
     
     return story
+
+
+# ---------------------------------------------------------------------------
+# Style dispatcher
+# ---------------------------------------------------------------------------
+
+_KNOWN_STYLES = {
+    'classic': _build_student_report_story,
+    'professional': None,   # resolved lazily to avoid circular imports
+}
+
+
+def _build_story(style: str, student, marks, root_path, evaluation=None):
+    """Route to the correct card builder based on *style*.
+
+    Unknown styles fall back to 'classic' so the PDF is never broken by a
+    stale database value.
+    """
+    style = (style or 'classic').strip().lower()
+    if style == 'professional':
+        from app.services.result_card_professional import build_story as _pro
+        return _pro(student, marks, root_path, evaluation=evaluation)
+    # 'classic' or any unknown value
+    return _build_student_report_story(student, marks, root_path, evaluation=evaluation)

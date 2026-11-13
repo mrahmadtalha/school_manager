@@ -15,14 +15,14 @@ from flask_login import current_user, login_user, logout_user
 
 from app.database import db
 from app.models import (ROLE_ADMIN, ROLE_GUARD, AdminUser, ClassModel,
-                        SchoolSettings, StudentModel)
+                        SchoolSettings, StudentModel, TeacherModel)
 from app.models.qr_config import QrAbsentRun, QrConfig
 from app.routes import main
 from app.security import (clear_failed_logins, is_login_locked,
                           register_failed_login, role_required)
 from app.services import qr_absent
 from app.services import qr_attendance as qr
-from app.services import qr_pairing
+from app.services import qr_pairing, usage_limits
 from app.services.audit import log_action
 from app.services.photos import photo_path
 
@@ -57,8 +57,13 @@ def _user_payload(user):
 
 def _today_counts():
     report = qr.build_daily_report(date.today())
+    teachers = qr.build_teacher_daily_report(date.today())['counts']
     return {**report['counts'], 'percentage': report['percentage'],
-            'is_school_day': report['is_school_day']}
+            'is_school_day': report['is_school_day'],
+            # teachers are counted separately so the student numbers stay as they were
+            'teachers': {'total': teachers['total'], 'present': teachers['present'],
+                         'late': teachers['late'], 'absent': teachers['absent'],
+                         'leave': teachers['leave'], 'attended': teachers['attended']}}
 
 
 # -- guard API -------------------------------------------------------------
@@ -220,6 +225,17 @@ def qr_student_photo(student_id):
     return send_file(path, mimetype='image/jpeg')
 
 
+@main.route('/api/qr/teacher-photo/<int:teacher_id>')
+def qr_teacher_photo(teacher_id):
+    teacher = db.session.get(TeacherModel, teacher_id)
+    if teacher is None or not getattr(teacher, 'photo_filename', None):
+        abort(404)
+    path = photo_path('teacher', teacher.photo_filename)
+    if not path:
+        abort(404)
+    return send_file(path, mimetype='image/jpeg')
+
+
 @main.route('/guard')
 def qr_guard_home():
     """Landing page when a guard account signs in on the computer's browser."""
@@ -276,6 +292,10 @@ def qr_create_guard():
     status = g.get('license_status')
     if status is not None and not status.role_enabled(ROLE_GUARD):
         flash('The guard role is not included in this school\'s license.', 'danger')
+        return redirect(url_for('main.student_attendance', tab='qr'))
+    blocked = usage_limits.staff_block_message(ROLE_GUARD)       # the license's staff-login limit
+    if blocked:
+        flash(blocked, 'danger')
         return redirect(url_for('main.student_attendance', tab='qr'))
     wanted = (request.form.get('username') or '').strip() or 'guard'
     username, number = wanted, 2

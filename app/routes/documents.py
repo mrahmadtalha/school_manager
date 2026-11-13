@@ -21,6 +21,7 @@ from app.security import role_required
 from app.services import document_fees
 from app.services.payroll_service import amount_in_words
 from app.services.id_documents import (
+    CARD_STYLES,
     build_certificates_pdf,
     default_academic_session,
     build_id_cards_pdf,
@@ -28,6 +29,11 @@ from app.services.id_documents import (
     student_card_payload,
     teacher_card_payload,
 )
+
+CARD_STYLE_LABELS = {
+    'classic': 'Classic — compact header-and-footer layout',
+    'professional': 'Professional — photo panel, round avatar & bigger QR',
+}
 
 CERTIFICATE_TYPES = {
     'bonafide': 'Bonafide / Studentship',
@@ -61,6 +67,20 @@ def _active_students(class_id=None, student_id=None):
 
 def _is_admin():
     return (getattr(current_user, 'role', None) or ROLE_ADMIN) == ROLE_ADMIN
+
+
+def _resolve_card_style(settings):
+    """Read the chosen ID card style from the request, or the school's saved
+    default. A style picked here is also saved as the new default, so the
+    choice is remembered the next time cards are generated (and more styles
+    can be added later without touching this logic)."""
+    requested = (request.args.get('card_style') or '').strip().lower()
+    if requested in CARD_STYLES:
+        if settings is not None and settings.id_card_style != requested:
+            settings.id_card_style = requested
+            db.session.commit()
+        return requested
+    return (settings.id_card_style or 'classic') if settings else 'classic'
 
 
 def _issue_redirect(kind, student_id, cert_type=None):
@@ -108,6 +128,8 @@ def documents_hub():
                    for key in CERTIFICATE_TYPES},
         recent_issues=document_fees.recent_issues() if _is_admin() else [],
         title_for=document_fees.title_for,
+        card_styles=CARD_STYLE_LABELS,
+        id_card_style=(school.id_card_style or 'classic') if school else 'classic',
     )
 
 
@@ -123,8 +145,9 @@ def export_student_id_cards():
         flash('No active students match those filters.', 'warning')
         return redirect(url_for('main.documents_hub'))
 
+    card_style = _resolve_card_style(SchoolSettings.query.first())
     people = [student_card_payload(student) for student in students]
-    output = build_id_cards_pdf(people, _school(), session)
+    output = build_id_cards_pdf(people, _school(), session, style=card_style)
     if student_id and len(students) == 1:
         name = f'id_card_{students[0].roll_number}.pdf'
     elif class_id:
@@ -147,8 +170,9 @@ def export_teacher_id_cards():
         flash('No active teachers match those filters.', 'warning')
         return redirect(url_for('main.documents_hub'))
 
+    card_style = _resolve_card_style(SchoolSettings.query.first())
     people = [teacher_card_payload(teacher) for teacher in teachers]
-    output = build_id_cards_pdf(people, _school(), session)
+    output = build_id_cards_pdf(people, _school(), session, style=card_style)
     if teacher_id and len(teachers) == 1:
         name = f'id_card_{teachers[0].teacher_id_str}.pdf'
     else:

@@ -189,6 +189,17 @@ _SCRIPT_TEXT.update({
         "'Enter a valid WhatsApp phone number.': 'درست واٹس ایپ فون نمبر لکھیں۔'})"
         "[data.message] || data.message || (",
 })
+# Class Results: the PDF dialog title and button text are set in JavaScript.
+_SCRIPT_TEXT.update({
+    "modalTitle.textContent = 'Report Card PDF — '":
+        "modalTitle.textContent = 'رپورٹ کارڈ (پی ڈی ایف) — '",
+    "modalTitle.textContent = 'All Report Cards PDF';":
+        "modalTitle.textContent = 'تمام رپورٹ کارڈ (پی ڈی ایف)';",
+    "generateLbl.textContent = 'Generate PDF';":
+        "generateLbl.textContent = 'پی ڈی ایف بنائیں';",
+    "generateLbl.textContent = 'Generate All PDFs';":
+        "generateLbl.textContent = 'تمام پی ڈی ایف بنائیں';",
+})
 
 
 def switch_allowed():

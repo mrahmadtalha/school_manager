@@ -4,6 +4,8 @@ Books and uniform (price per set x sets) are set once per class in the Admission
 Fee settings, fill the Add Student form, are paid together with the admission fee
 and a partial payment leaves the rest pending.
 """
+from datetime import date
+
 import pytest
 
 from app.database import db
@@ -119,7 +121,7 @@ def test_remaining_money_is_received_later_on_a_new_receipt(admin_client, seed):
     student = _student(2005)
     resp = admin_client.post('/admission-fees/student/%d/receive' % student.id,
                              data={'amount': '2000', 'method': 'cash',
-                                   'payment_date': adm.date.today().isoformat()})
+                                   'payment_date': date.today().isoformat()})
     assert resp.status_code == 302
     db.session.expire_all()
     info = adm.summary(_student(2005))

@@ -10,6 +10,7 @@ answer "forgot username/password" requests.  NEVER ship this folder to schools
 (the product build excludes it).
 """
 
+import csv
 import io
 import json
 import os
@@ -30,6 +31,15 @@ from vendor_dashboard.core import ROOT, features as features_mod, lic, project_p
 from vendor_dashboard.keystore import KeyStore, KeyStoreError
 from vendor_dashboard.store import Store
 
+# How each license status is shown: plain words, a colour tone and an icon (never colour alone).
+STATUS_UI = {
+    'active': {'label': 'Active', 'tone': 'ok', 'icon': 'fa-circle-check'},
+    'soon': {'label': 'Ending soon', 'tone': 'soon', 'icon': 'fa-hourglass-half'},
+    'grace': {'label': 'Extra time', 'tone': 'grace', 'icon': 'fa-clock'},
+    'expired': {'label': 'Ended', 'tone': 'bad', 'icon': 'fa-circle-xmark'},
+    'none': {'label': 'No key yet', 'tone': 'none', 'icon': 'fa-circle-minus'},
+}
+SCHOOL_FILTERS = ('all', 'active', 'soon', 'grace', 'expired', 'none', 'inactive')
 OPEN_ENDPOINTS = {'unlock', 'static', 'healthz'}
 ALLOWED_HOSTS = {'127.0.0.1', 'localhost'}
 MAX_UNLOCK_FAILURES = 5
@@ -45,6 +55,17 @@ def _int_or_none(value):
     if not value:
         return None
     number = int(value)
+    if number < 0:
+        raise ValueError('negative')
+    return number
+
+
+def _money_or_none(value):
+    """A price typed in a form: blank = not set, otherwise a number that is not negative."""
+    value = (value or '').strip().replace(',', '')
+    if not value:
+        return None
+    number = float(value)
     if number < 0:
         raise ValueError('negative')
     return number
@@ -96,18 +117,28 @@ def create_app(config=None):
 
     @app.context_processor
     def _inject():
+        attention = 0
+        if session.get('unlocked'):
+            attention = sum(1 for row in store.schools_with_license() if row['active'] and issuer.license_status(
+                row['expires'], row['grace_days'], vendor.today())[0] in ('soon', 'grace', 'expired'))
         return {'csrf_token': session.get('csrf', ''), 'catalog': features_mod.FEATURE_CATALOG, 'role_catalog': features_mod.ROLE_CATALOG,
-                'today': vendor.today(), 'reasons': issuer.REASONS}
+                'today': vendor.today(), 'reasons': issuer.REASONS, 'status_ui': STATUS_UI,
+                'feature_labels': {row[0]: row[1] for row in features_mod.FEATURE_CATALOG},
+                'role_labels': {row[0]: row[1] for row in features_mod.ROLE_CATALOG},
+                'nav_attention': attention}
 
     app.jinja_env.filters['fromjson'] = lambda text: json.loads(text) if text else []
     app.jinja_env.filters['nicedate'] = lambda iso: (date.fromisoformat(iso[:10]).strftime('%d %b %Y')
                                                      if iso else '-')
     app.jinja_env.filters['niceplan'] = lambda name: (name or '-').replace('_', ' ').title()
+    app.jinja_env.filters['money'] = issuer.money_text
+    app.jinja_env.filters['limit'] = issuer.limit_text
 
     def decorated(school_row):
         """Attach status/reminder info to a school row (from schools_with_license)."""
         status = issuer.license_status(school_row['expires'], school_row['grace_days'], vendor.today())
         item = {'school': school_row, 'code': status[0], 'label': status[1], 'days_left': status[2],
+                'when': issuer.status_sentence(status[0], status[2], school_row['grace_days']),
                 'reminder': ''}
         if school_row['expires']:
             item['reminder'] = issuer.reminder_text(school_row['name'], school_row['expires'], status[2])
@@ -163,15 +194,29 @@ def create_app(config=None):
                   for code in ('active', 'soon', 'grace', 'expired', 'none')}
         attention = sorted((i for i in active_items if i['code'] in ('soon', 'grace', 'expired')),
                            key=lambda i: i['days_left'])
-        return render_template('index.html', counts=counts, attention=attention,
+        waiting = [i for i in active_items if i['code'] == 'none']
+        return render_template('index.html', counts=counts, attention=attention, waiting=waiting,
                                total=len(active_items))
 
     # -- schools ------------------------------------------------------------------
     @app.route('/schools')
     def schools():
         search = (request.args.get('q') or '').strip()
-        items = [decorated(row) for row in store.schools_with_license(search or None)]
-        return render_template('schools.html', items=items, search=search)
+        status = request.args.get('status') or 'all'
+        if status not in SCHOOL_FILTERS:
+            status = 'all'
+        everything = [decorated(row) for row in store.schools_with_license(search or None)]
+        counts = {code: sum(1 for i in everything if i['school']['active'] and i['code'] == code)
+                  for code in ('active', 'soon', 'grace', 'expired', 'none')}
+        counts['inactive'] = sum(1 for i in everything if not i['school']['active'])
+        counts['all'] = len(everything)
+        if status == 'all':
+            items = everything
+        elif status == 'inactive':
+            items = [i for i in everything if not i['school']['active']]
+        else:
+            items = [i for i in everything if i['school']['active'] and i['code'] == status]
+        return render_template('schools.html', items=items, search=search, status=status, counts=counts)
 
     @app.route('/schools/new', methods=['GET', 'POST'])
     def school_new():
@@ -191,7 +236,7 @@ def create_app(config=None):
                     billing='monthly' if request.form.get('billing') == 'monthly' else 'yearly',
                     machine_code=lic.format_machine_code(machine) if machine.strip() else None,
                     notes=request.form.get('notes'))
-                flash('School added. Now issue its first key below.', 'success')
+                flash('School added. Now send it its first key below.', 'success')
                 return redirect(url_for('school_detail', school_id=school_id))
         return render_template('school_form.html', school={})
 
@@ -214,6 +259,7 @@ def create_app(config=None):
                 'plan': latest['plan'] or '', 'features': json.loads(latest['features']),
                 'wa_daily': latest['wa_daily'], 'wa_monthly': latest['wa_monthly'],
                 'grace_days': latest['grace_days'],
+                'max_students': latest['max_students'], 'max_staff': latest['max_staff'],
                 'roles': (json.loads(latest['roles']) if latest['roles'] else list(features_mod.ALL_ROLES)),
             }
         else:
@@ -223,14 +269,48 @@ def create_app(config=None):
                 'features': base_plan['features'] if base_plan else [],
                 'wa_daily': base_plan['wa_daily'] if base_plan else None,
                 'wa_monthly': base_plan['wa_monthly'] if base_plan else None,
+                'max_students': base_plan['max_students'] if base_plan else None,
+                'max_staff': base_plan['max_staff'] if base_plan else None,
                 'grace_days': lic.DEFAULT_GRACE_DAYS,
                 'roles': list(features_mod.ALL_ROLES),
             }
         form['period'] = '1m' if school['billing'] == 'monthly' else '1y'
+        today = vendor.today()
+        current_expires = date.fromisoformat(latest['expires']) if latest else None
+        # What each validity choice would give, worked out with the same rule the key uses.
+        period_preview = {}
+        for period_key in issuer.PERIODS:
+            try:
+                ends = issuer.compute_expiry(period_key, None, current_expires, today)
+            except issuer.IssueError:
+                ends = None
+            period_preview[period_key] = ends.isoformat() if ends and ends >= today else ''
+        wanted = request.args.get('do')
+        if latest and wanted in ('renew', 'update', 'move'):      # e.g. the Renew button on Home
+            form['reason'] = wanted
+            if wanted != 'renew' and period_preview['keep']:
+                form['period'] = 'keep'
+        # What the school pays for, compared with what its key gives (the plan as it is now).
+        current_plan = plan_map.get(latest['plan']) if latest and latest['plan'] else None
+        drift = issuer.plan_differences(current_plan, issuer.key_as_dict(latest)) if current_plan else None
+        matched = False
+        if current_plan and request.args.get('match_plan'):     # "Use the plan's settings" button
+            form.update(plan=current_plan['name'], features=list(current_plan['features']),
+                        wa_daily=current_plan['wa_daily'], wa_monthly=current_plan['wa_monthly'],
+                        max_students=current_plan['max_students'], max_staff=current_plan['max_staff'],
+                        reason='update')
+            if period_preview['keep']:
+                form['period'] = 'keep'
+            matched = True
+        price_plan = current_plan or (base_plan if not latest else None)
+        price = issuer.plan_price(price_plan, school['billing'])
         status = issuer.license_status(latest['expires'] if latest else None,
-                                       latest['grace_days'] if latest else 0, vendor.today())
+                                       latest['grace_days'] if latest else 0, today)
         return render_template(
             'school.html', school=school, latest=latest, status=status, form=form, plans=plans,
+            current_plan=current_plan, drift=drift, matched=matched, price=price, price_plan=price_plan,
+            when=issuer.status_sentence(status[0], status[2], latest['grace_days'] if latest else 0),
+            period_preview=period_preview,
             periods=issuer.PERIOD_LABELS, licenses=store.licenses_for(school_id),
             payments=store.payments_for(school_id), recoveries=store.recoveries(school_id),
             inspections=store.inspections_for(school_id), inspection_hours=issuer.INSPECTION_HOURS,
@@ -265,7 +345,8 @@ def create_app(config=None):
                 period=form.get('period') or 'keep', custom_expires=form.get('custom_expires'),
                 grace_days=form.get('grace_days'), note=form.get('note'), today=vendor.today(),
                 roles=form.getlist('roles') if form.get('roles_present') else None,
-                notice=form.get('notice'))
+                notice=form.get('notice'),
+                max_students=form.get('max_students'), max_staff=form.get('max_staff'))
         except issuer.IssueError as err:
             flash(err.args[0], 'danger')
             return redirect(url_for('school_detail', school_id=school_id))
@@ -369,19 +450,85 @@ def create_app(config=None):
     @app.route('/plans', methods=['GET', 'POST'])
     def plans():
         if request.method == 'POST':
-            name = _slug(request.form.get('name') or '').replace('-', '_')
-            label = (request.form.get('label') or '').strip() or name.title()
+            typed_label = (request.form.get('label') or '').strip()
+            if not (request.form.get('name') or '').strip() and not typed_label:
+                flash('Give the plan a name.', 'danger')
+                return redirect(url_for('plans'))
+            # A new plan only needs a name: its short id is made from it.
+            name = _slug(request.form.get('name') or typed_label).replace('-', '_')
+            label = typed_label or name.replace('_', ' ').title()
             try:
                 wa_daily = _int_or_none(request.form.get('wa_daily'))
                 wa_monthly = _int_or_none(request.form.get('wa_monthly'))
             except ValueError:
                 flash('WhatsApp limits must be whole numbers (blank = unlimited).', 'danger')
                 return redirect(url_for('plans'))
+            try:
+                max_students = _int_or_none(request.form.get('max_students'))
+                max_staff = _int_or_none(request.form.get('max_staff'))
+            except ValueError:
+                flash('The student and staff-login limits must be whole numbers (blank = unlimited).', 'danger')
+                return redirect(url_for('plans'))
+            try:
+                price_monthly = _money_or_none(request.form.get('price_monthly'))
+                price_yearly = _money_or_none(request.form.get('price_yearly'))
+            except ValueError:
+                flash('Prices must be numbers that are not negative (blank = not set).', 'danger')
+                return redirect(url_for('plans'))
             store.save_plan(name, label, features_mod.normalize_features(request.form.getlist('features')) or [],
-                            wa_daily, wa_monthly)
+                            wa_daily, wa_monthly, max_students, max_staff, price_monthly, price_yearly)
             flash(f'Plan "{label}" saved. It applies to keys you issue from now on.', 'success')
             return redirect(url_for('plans'))
-        return render_template('plans.html', plans=store.plans())
+        plan_list = store.plans()
+        rows = [row for row in store.schools_with_license() if row['active'] and row['expires']]
+        on_plan = {}
+        for plan in plan_list:
+            members = []
+            for row in rows:
+                if (row['plan'] or '') == plan['name']:
+                    diff = issuer.plan_differences(plan, issuer.key_as_dict(row))
+                    members.append({'school': row, 'diff': diff})
+            on_plan[plan['name']] = members
+        return render_template('plans.html', plans=plan_list, on_plan=on_plan)
+
+    # -- who has what ---------------------------------------------------------------
+    def _matrix_context():
+        plan = (request.args.get('plan') or '').strip()
+        feature = (request.args.get('feature') or '').strip()
+        has = request.args.get('has') or ''
+        if has not in ('yes', 'no') or feature not in features_mod.ALL_FEATURES:
+            feature, has = '', ''
+        rows = store.schools_with_license()
+        entries = issuer.matrix_rows(rows, vendor.today(), plan=plan, feature=feature, has=has)
+        return {'entries': entries, 'plan': plan, 'feature': feature, 'has': has,
+                'everyone': len(issuer.matrix_rows(rows, vendor.today())),
+                'waiting': sum(1 for row in rows if row['active'] and not row['expires'])}
+
+    @app.route('/matrix')
+    def matrix():
+        context = _matrix_context()
+        return render_template('matrix.html', totals=issuer.feature_totals(context['entries']),
+                               plans=store.plans(), **context)
+
+    @app.route('/matrix.csv')
+    def matrix_csv():
+        entries = _matrix_context()['entries']
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(['School', 'City', 'Plan', 'Key status', 'Key ends', 'Students limit',
+                         'Staff logins limit', 'WhatsApp per day', 'WhatsApp per month']
+                        + [label for _key, label, _desc, _group in features_mod.FEATURE_CATALOG])
+        for entry in entries:
+            school = entry['school']
+            writer.writerow([school['name'], school['city'] or '', issuer.plan_label(entry['plan']),
+                             entry['status'], school['expires'], issuer.limit_text(entry['max_students']),
+                             issuer.limit_text(entry['max_staff']), issuer.limit_text(entry['wa_daily']),
+                             issuer.limit_text(entry['wa_monthly'])]
+                            + ['Yes' if key in entry['features'] else 'No'
+                               for key, *_rest in features_mod.FEATURE_CATALOG])
+        return Response('\ufeff' + buffer.getvalue(), mimetype='text/csv',
+                        headers={'Content-Disposition':
+                                 f'attachment; filename="feature-matrix-{vendor.today():%Y%m%d}.csv"'})
 
     # -- settings ---------------------------------------------------------------------
     @app.route('/settings')

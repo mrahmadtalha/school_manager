@@ -194,6 +194,14 @@ def fees_list():
                           else 'Partial' if paid > 0 else 'Pending')
                 record = SimpleNamespace(amount_due=charged, amount_paid=paid,
                                          status=status, balance=round(charged - paid, 2))
+        elif (record.amount_due or 0) == 0 and (student.monthly_fee or 0) > 0:
+            # An empty (Rs 0) summary row does not mean the month was billed: older bulk
+            # fee updates left such rows behind, which used to hide the "Generate charges"
+            # button for the whole class.  Only a month with no charge at all counts; a
+            # charge that was deliberately voided means "do not bill this month".
+            if FeeTransaction.query.filter_by(student_id=student.id, month_year=month_year,
+                                              txn_type=TXN_CHARGE).first() is None:
+                pending_charges += 1
 
         latest_payment = None
         if record is not None:
@@ -460,7 +468,8 @@ def bulk_update_class_fees():
                              txn_type=TXN_CHARGE, is_void=False)
                   .order_by(FeeTransaction.id.asc()).first())
         if charge is None:
-            recompute_fee_record(student.id, target_month)
+            # Nothing is billed for this month yet: leave it that way.  (Creating an empty
+            # summary row here made the fees page think the month was already generated.)
             continue
         has_payments = FeeTransaction.query.filter_by(
             student_id=student.id, month_year=target_month,

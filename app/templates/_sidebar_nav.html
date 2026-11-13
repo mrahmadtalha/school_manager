@@ -71,6 +71,7 @@
 {% elif 'reports_hub' in ep %}{% set cur = 'reports' %}
 {% elif 'results' in ep %}{% set cur = 'results' %}
 {% elif 'attendance' in ep and 'report' not in ep %}{% set cur = ('attendance_summary' if 'summary' in ep else 'attendance') %}
+{% elif 'calendar' in ep %}{% set cur = 'calendar' %}
 {% elif 'student' in ep %}{% set cur = 'students' %}
 {% elif 'teacher' in ep %}{% set cur = 'teachers' %}
 {% elif ('class' in ep or 'section' in ep or 'subject' in ep or 'timetable' in ep) and 'report' not in ep %}{% set cur = 'classes' %}
@@ -103,6 +104,7 @@
     {{ nav_item(url_for('main.students_list'), 'fas fa-user-graduate', 'Students', 'academics', cur == 'students') }}
     {{ nav_item(url_for('main.teachers_list'), 'fas fa-chalkboard-teacher', 'Teachers', 'academics', cur == 'teachers') }}
     {{ nav_item(url_for('main.classes_list'), 'fas fa-book', 'Classes & Subjects', 'academics', cur == 'classes') }}
+    {{ nav_item(url_for('main.calendar_page'), 'fas fa-calendar-star', 'Academic Calendar', 'academics', cur == 'calendar') }}
 
     {% if has_feature('attendance') %}
     {{ nav_section('Attendance', 'attendance') }}

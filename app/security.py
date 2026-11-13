@@ -135,7 +135,7 @@ OWNER_ENDPOINTS = {
 # Endpoints the gate guard's phone app may reach (and nothing else).
 GUARD_ENDPOINTS = {
     'main.qr_api_ping', 'main.qr_api_scan', 'main.qr_api_logout',
-    'main.qr_student_photo', 'main.qr_guard_home',
+    'main.qr_student_photo', 'main.qr_teacher_photo', 'main.qr_guard_home',
 }
 
 ROUTE_ROLES = {}

@@ -57,10 +57,12 @@ PUBLIC_KEY_MODULE = ROOT / 'app' / 'services' / 'license_public_key.py'
 
 
 def _load_licensing():
-    """Load app/services/licensing.py directly (avoids importing the Flask app)."""
-    path = ROOT / 'app' / 'services' / 'licensing.py'
-    spec = importlib.util.spec_from_file_location('sm_licensing', path)
+    """Load the app/services/licensing package directly (avoids importing the Flask app)."""
+    path = ROOT / 'app' / 'services' / 'licensing'
+    spec = importlib.util.spec_from_file_location(
+        'sm_licensing', path / '__init__.py', submodule_search_locations=[str(path)])
     module = importlib.util.module_from_spec(spec)
+    sys.modules['sm_licensing'] = module    # the package's relative imports look it up here
     spec.loader.exec_module(module)
     return module
 
@@ -85,12 +87,12 @@ def public_key_b64(private_key):
 
 def build_payload(*, license_id, licensee, machine_code, issued, expires, grace_days,
                   rev=1, plan=None, features=None, wa_daily=None, wa_monthly=None, roles=None,
-                  notice=None):
+                  notice=None, max_students=None, max_staff=None):
     """The signed license payload (shared by this CLI and the vendor dashboard).
 
     ``features=None`` leaves the field out (legacy key: everything on);
     a list - even an empty one - switches exactly those modules on.  A missing
-    WhatsApp cap means unlimited.
+    cap (WhatsApp per day/month, ``max_students``, ``max_staff``) means unlimited.
     """
     payload = {
         'v': lic.PAYLOAD_VERSION,
@@ -115,6 +117,10 @@ def build_payload(*, license_id, licensee, machine_code, issued, expires, grace_
         limits[lic.LIMIT_WA_DAILY] = max(0, int(wa_daily))
     if wa_monthly is not None:
         limits[lic.LIMIT_WA_MONTHLY] = max(0, int(wa_monthly))
+    if max_students is not None:
+        limits[lic.LIMIT_MAX_STUDENTS] = max(0, int(max_students))
+    if max_staff is not None:
+        limits[lic.LIMIT_MAX_STAFF] = max(0, int(max_staff))
     if limits:
         payload['limits'] = limits
     notice = ' '.join(str(notice or '').split())[:lic.NOTICE_MAX_LENGTH]
@@ -226,7 +232,8 @@ def cmd_issue(args):
         license_id=args.license_id or _next_license_id(), licensee=args.licensee,
         machine_code=machine_code, issued=issued, expires=expires,
         grace_days=args.grace_days, rev=args.rev, plan=args.plan, features=features,
-        wa_daily=args.wa_daily, wa_monthly=args.wa_monthly, notice=args.notice)
+        wa_daily=args.wa_daily, wa_monthly=args.wa_monthly, notice=args.notice,
+        max_students=args.max_students, max_staff=args.max_staff)
     key_text = sign_license(private_key, payload)
 
     KEYS_DIR.mkdir(exist_ok=True)
@@ -249,7 +256,7 @@ def cmd_issue(args):
     print(f'Valid      : {payload["issued"]}  ->  {payload["expires"]}  (+{payload["grace_days"]} days grace)')
     print(f'Revision   : {payload["rev"]}   Plan: {payload.get("plan", "-")}')
     print(f'Features   : {", ".join(payload["features"]) if "features" in payload else "all (legacy key)"}')
-    print(f'WhatsApp   : {payload.get("limits", "unlimited")}')
+    print(f'Limits     : {payload.get("limits", "unlimited")}   (WhatsApp, students, staff logins)')
     print(f'Notice     : {payload.get("notice", "-")}')
     print(f'Key file   : {out}')
     print('\nLicense key (send this to the school):\n')
@@ -330,6 +337,9 @@ def main():
     p.add_argument('--features', help='comma-separated feature keys, or "all"; omit for a legacy everything-on key')
     p.add_argument('--wa-daily', type=int, help='WhatsApp messages allowed per day (omit = unlimited)')
     p.add_argument('--wa-monthly', type=int, help='WhatsApp messages allowed per month (omit = unlimited)')
+    p.add_argument('--max-students', type=int, help='active students the school may have (omit = unlimited)')
+    p.add_argument('--max-staff', type=int,
+                   help='active staff logins - teacher, accountant, owner, guard (omit = unlimited)')
     p.add_argument('--notice', help='short message the school sees with the key (e.g. "Renewal due")')
     p.add_argument('--out', help='where to write the .key file')
     p.set_defaults(func=cmd_issue)

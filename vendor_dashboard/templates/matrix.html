@@ -1,0 +1,49 @@
+{% extends "base.html" %}{% block title %}Who has what{% endblock %}
+{% block content %}
+{% set filtered = plan or feature %}
+<div class="vd-head">
+  <div><h1>Who has what</h1><p>Every school and every feature on one page. Use it to see what each school pays for — and who is missing something you could sell them.</p></div>
+  <div class="vd-tools"><a class="btn btn-outline-secondary" href="{{ url_for('matrix_csv', plan=(plan or None), feature=(feature or None), has=(has or None)) }}"><i class="fas fa-file-csv me-2"></i>Download as a spreadsheet</a></div>
+</div>
+
+<form class="vd-toolbar" method="get" role="search">
+  <div><label class="form-label small mb-1" for="mxPlan">Plan</label>
+    <select class="form-select" id="mxPlan" name="plan"><option value="">All plans</option>{% for p in plans %}<option value="{{ p.name }}" {{ 'selected' if plan == p.name }}>{{ p.label }}</option>{% endfor %}<option value="custom" {{ 'selected' if plan == 'custom' }}>Custom (not from a plan)</option></select></div>
+  <div><label class="form-label small mb-1" for="mxHas">Schools that</label>
+    <select class="form-select" id="mxHas" name="has"><option value="">— any —</option><option value="yes" {{ 'selected' if has == 'yes' }}>have</option><option value="no" {{ 'selected' if has == 'no' }}>do not have</option></select></div>
+  <div><label class="form-label small mb-1" for="mxFeature">This feature</label>
+    <select class="form-select" id="mxFeature" name="feature"><option value="">— choose —</option>{% for key, label, desc, group in catalog %}<option value="{{ key }}" {{ 'selected' if feature == key }}>{{ label }}</option>{% endfor %}</select></div>
+  <div class="align-self-end d-flex gap-2"><button class="btn btn-primary"><i class="fas fa-filter me-2"></i>Show</button>{% if filtered %}<a class="btn btn-outline-secondary" href="{{ url_for('matrix') }}">Clear</a>{% endif %}</div>
+</form>
+
+{% if waiting %}<div class="vd-note">{{ waiting }} school{{ '' if waiting == 1 else 's' }} {{ 'has' if waiting == 1 else 'have' }} no key yet, so {{ 'it is' if waiting == 1 else 'they are' }} not listed here.</div>{% endif %}
+
+{% if entries %}
+<div class="vd-count small text-muted mb-2">Showing <b class="text-dark">{{ entries|length }}</b> of {{ everyone }} school{{ '' if everyone == 1 else 's' }} with a key.</div>
+<div class="vd-card p-0"><div class="vd-tablewrap vd-mx-wrap"><table class="vd-mx">
+  <thead><tr>
+    <th class="vd-mx-school">School</th><th>Plan</th><th>Students</th><th>Staff logins</th>
+    {% for key, label, desc, group in catalog %}<th class="vd-mx-f" title="{{ label }}"><span>{{ label }}</span></th>{% endfor %}
+  </tr></thead>
+  <tbody>
+  {% for e in entries %}{% set s = e.school %}{% set ui = status_ui[e.code] %}
+    <tr>
+      <th class="vd-mx-school" scope="row"><a href="{{ url_for('school_detail', school_id=s.id) }}">{{ s.name }}</a>
+        <div><span class="vd-pill {{ ui.tone }}">{{ ui.label }}</span> <span class="small text-muted">ends {{ s.expires|nicedate }}</span></div></th>
+      <td>{{ e.plan|niceplan if e.plan else 'Custom' }}</td>
+      <td class="vd-mx-n">{{ e.max_students|limit }}</td>
+      <td class="vd-mx-n">{{ e.max_staff|limit }}</td>
+      {% for key, label, desc, group in catalog %}
+      <td class="vd-mx-c">{% if key in e.features %}<i class="fas fa-check text-success" aria-hidden="true"></i><span class="visually-hidden">{{ label }}: yes</span>{% else %}<i class="fas fa-minus text-muted" aria-hidden="true"></i><span class="visually-hidden">{{ label }}: no</span>{% endif %}</td>
+      {% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><th class="vd-mx-school" scope="row">Schools with it</th><td></td><td></td><td></td>
+    {% for key, label, desc, group in catalog %}<td class="vd-mx-c"><b>{{ totals[key] }}</b></td>{% endfor %}</tr></tfoot>
+</table></div></div>
+{% else %}
+<div class="vd-card"><div class="vd-empty"><i class="fas fa-table-cells"></i><b>{{ 'No school matches' if filtered else 'No school has a key yet' }}</b>
+  {% if filtered %}Try another plan or feature, or press <b>Clear</b>.{% else %}Send a key to a school and it will appear here.{% endif %}</div></div>
+{% endif %}
+{% endblock %}

@@ -1,16 +1,49 @@
 {% extends "base.html" %}{% block title %}Schools{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h3 mb-0">Schools</h1>
-<a class="btn btn-dark" href="{{ url_for('school_new') }}"><i class="fas fa-plus me-1"></i>Add school</a></div>
-<form class="mb-3"><input class="form-control" name="q" value="{{ search }}" placeholder="Search name, city, phone or license ID"></form>
-<div class="card border-0 shadow-sm"><div class="table-responsive"><table class="table align-middle mb-0">
-<thead><tr><th>School</th><th>Plan</th><th>Status</th><th>Expires</th><th>WhatsApp/day · month</th></tr></thead><tbody>
-{% for i in items %}{% set s=i.school %}<tr class="{{ '' if s.active else 'text-muted' }}">
-<td><a href="{{ url_for('school_detail', school_id=s.id) }}">{{ s.name }}</a>{% if not s.active %} <span class="badge bg-secondary">inactive</span>{% endif %}<div class="small text-muted">{{ s.city or '' }} {{ s.phone or '' }}</div></td>
-<td>{{ s.plan|niceplan }} <span class="small text-muted">({{ s.billing }})</span></td>
-<td><span class="badge bg-{{ {'active':'success','soon':'warning text-dark','grace':'warning text-dark','expired':'danger','none':'secondary'}[i.code] }}">{{ i.label }}</span></td>
-<td>{{ s.expires|nicedate }}</td>
-<td>{% if s.expires %}{{ s.wa_daily if s.wa_daily is not none else '∞' }} · {{ s.wa_monthly if s.wa_monthly is not none else '∞' }}{% else %}-{% endif %}</td></tr>
-{% else %}<tr><td colspan="5" class="text-muted text-center py-4">No schools yet.</td></tr>{% endfor %}
-</tbody></table></div></div>
+<div class="vd-head">
+  <div><h1>Schools</h1><p>Open a school to send, renew or change its key.</p></div>
+  <div class="vd-tools"><a class="btn btn-primary" href="{{ url_for('school_new') }}"><i class="fas fa-plus me-2"></i>Add a school</a></div>
+</div>
+
+<div class="vd-toolbar">
+  <form class="vd-search" method="get" role="search">
+    <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+    <input class="form-control" type="search" name="q" value="{{ search }}" aria-label="Find a school" placeholder="Find a school by name, city or phone">
+    {% if status != 'all' %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+  </form>
+  <nav class="vd-seg" aria-label="Show schools">
+    {% for key, label in [('all','All'), ('active','Active'), ('soon','Ending soon'), ('grace','Extra time'), ('expired','Ended'), ('none','No key yet')] %}
+    <a href="{{ url_for('schools', status=(key if key != 'all' else None), q=(search or None)) }}" class="{{ 'on' if status == key }}" {{ 'aria-current=true' if status == key }}>{{ label }}<span class="n">{{ counts[key] }}</span></a>
+    {% endfor %}
+    {% if counts['inactive'] %}<a href="{{ url_for('schools', status='inactive', q=(search or None)) }}" class="{{ 'on' if status == 'inactive' }}">Not a customer<span class="n">{{ counts['inactive'] }}</span></a>{% endif %}
+  </nav>
+</div>
+
+{% if items %}
+<div class="vd-count small text-muted mb-2">Showing <b class="text-dark">{{ items|length }}</b> of {{ counts['all'] }} school{{ '' if counts['all'] == 1 else 's' }}{% if search %} matching “{{ search }}”{% endif %}.</div>
+<div class="vd-list">
+  <div class="vd-lhead"><div>School</div><div>Status</div><div>Key ends</div><div></div></div>
+  {% for i in items %}{% set s = i.school %}{% set ui = status_ui[i.code] %}
+  <div class="vd-row {{ '' if s.active else 'off' }}">
+    <div><a class="vd-name stretched-link" href="{{ url_for('school_detail', school_id=s.id) }}">{{ s.name }}</a>{% if not s.active %} <span class="vd-pill none">Not a customer</span>{% endif %}
+      <div class="vd-sub">{{ s.city or '' }}{{ ' · ' if s.city and s.phone }}{{ s.phone or '' }}</div></div>
+    <div><span class="vd-pill {{ ui.tone }}"><i class="fas {{ ui.icon }}" aria-hidden="true"></i>{{ ui.label }}</span>
+      <div class="vd-sub mt-1">{{ s.plan|niceplan if s.expires else '' }}{{ ' · ' ~ s.billing if s.expires }}</div></div>
+    <div>{% if s.expires %}{{ i.when }}<div class="vd-sub">{{ s.expires|nicedate }}</div>{% else %}<span class="text-muted">—</span>{% endif %}</div>
+    <div class="vd-act">{% if s.active and i.code in ('soon','grace','expired') %}<a class="btn btn-primary btn-sm" href="{{ url_for('school_detail', school_id=s.id, do='renew') }}#send-key">Renew</a>{% elif s.active and i.code == 'none' %}<a class="btn btn-outline-secondary btn-sm" href="{{ url_for('school_detail', school_id=s.id) }}#send-key">Send first key</a>{% else %}<span class="text-muted small d-none d-md-inline"><i class="fas fa-chevron-right"></i></span>{% endif %}</div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="vd-card"><div class="vd-empty">
+  {% if search or status != 'all' %}
+    <i class="fas fa-magnifying-glass"></i><b>No school found</b>
+    <p class="mb-3">{% if search %}Nothing matches “{{ search }}”{% if status != 'all' %} in this list{% endif %}.{% else %}No school is in this list right now.{% endif %}</p>
+    <a class="btn btn-outline-secondary" href="{{ url_for('schools') }}">Show all schools</a>
+  {% else %}
+    <i class="fas fa-school"></i><b>No schools yet</b><p class="mb-3">Add your first school to start sending keys.</p>
+    <a class="btn btn-primary" href="{{ url_for('school_new') }}"><i class="fas fa-plus me-2"></i>Add a school</a>
+  {% endif %}
+</div></div>
+{% endif %}
 {% endblock %}

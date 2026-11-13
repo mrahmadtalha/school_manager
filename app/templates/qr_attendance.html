@@ -409,6 +409,59 @@
     {% endif %}
 </div>
 
+{# ---------------------------------------------------------------- teachers (scan their staff ID card) #}
+{% set tcounts = teacher_report.counts %}
+{% if tcounts.total %}
+<details class="qa-card mb-4 {{ 'is-ok' if tcounts.absent == 0 else '' }}" id="qaTeachers" open>
+    <summary>
+        <span class="qa-ico"><i class="fas fa-chalkboard-user"></i></span>
+        <span class="qa-sum-text">
+            <span class="qa-sum-title d-block">Teachers {{ 'today' if qr_is_today else 'on this day' }}</span>
+            <span class="qa-sum-sub d-block">
+                <span><b>{{ tcounts.present }}</b> <span>Arrived</span></span> &middot;
+                <span><b>{{ tcounts.late }}</b> <span>Late</span></span> &middot;
+                <span><b>{{ tcounts.absent }}</b> <span>{{ 'Not arrived yet' if qr_is_today else 'Not scanned' }}</span></span>{% if tcounts.leave %} &middot;
+                <span><b>{{ tcounts.leave }}</b> <span>On leave</span></span>{% endif %} &middot;
+                <span><b>{{ tcounts.total }}</b> <span>Teachers</span></span>
+            </span>
+        </span>
+        <i class="fas fa-chevron-down qa-chev"></i>
+    </summary>
+    <div class="qa-head">
+        <span>ID</span><span>Teacher</span><span class="qa-c-class">Post</span><span>Status</span><span>Scanned at</span>
+    </div>
+    {% set trows = [] %}
+    {% for row in teacher_report.absent %}{% set _ = trows.append(('absent', row)) %}{% endfor %}
+    {% for row in teacher_report.late %}{% set _ = trows.append(('late', row)) %}{% endfor %}
+    {% for row in teacher_report.present %}{% set _ = trows.append(('present', row)) %}{% endfor %}
+    {% for row in teacher_report.leave %}{% set _ = trows.append(('leave', row)) %}{% endfor %}
+    {% for group, row in trows %}
+    {% set teacher = row.teacher %}
+    <div class="qa-row qa-trow" data-group="{{ group }}">
+        <span class="qa-c-roll"><span class="sa-roll">{{ teacher.teacher_id_str }}</span></span>
+        <span class="qa-c-who sa-who">
+            {{ avatar('teacher', teacher, 40) }}
+            <span class="sa-who-text">
+                <span class="sa-who-name d-block">{{ teacher.teacher_name }}</span>
+            </span>
+        </span>
+        <span class="qa-c-class qa-sub">{{ teacher.designation or teacher.qualification or '' }}</span>
+        <span class="qa-c-status">
+            {% if group == 'present' %}<span class="sa-pill p"><i class="fas fa-check me-1"></i>Arrived</span>
+            {% elif group == 'late' %}<span class="sa-pill l"><i class="fas fa-clock me-1"></i>Late</span>
+            {% elif group == 'leave' %}<span class="sa-pill v">On leave</span>
+            {% elif row.label == 'Absent' %}<span class="sa-pill a">Marked absent</span>
+            {% else %}<span class="sa-pill n">{{ 'Not arrived yet' if qr_is_today else 'Not scanned' }}</span>{% endif %}
+        </span>
+        <span class="qa-c-when qa-when">
+            {% if row.qr_time or row.time %}{{ row.qr_time or row.time }}{% if group == 'late' and row.late_minutes %}<small>{{ row.late_minutes }} min late</small>{% endif %}
+            {% else %}<span class="sa-dash">—</span>{% endif %}
+        </span>
+    </div>
+    {% endfor %}
+</details>
+{% endif %}
+
 {# ---------------------------------------------------------------- auto-absent settings #}
 {% if is_admin %}
 <details class="qa-card mb-5" id="qaAuto">
@@ -575,7 +628,7 @@
             .then(function (r) { if (!r.ok) { throw new Error('bad'); } return r.text(); })
             .then(function (text) {
                 var doc = new DOMParser().parseFromString(text, 'text/html');
-                ['qaTop', 'qaList'].forEach(function (id) {
+                ['qaTop', 'qaList', 'qaTeachers'].forEach(function (id) {
                     var fresh = doc.getElementById(id);
                     var old = document.getElementById(id);
                     if (fresh && old) { old.innerHTML = fresh.innerHTML; }

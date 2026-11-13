@@ -170,3 +170,15 @@ def test_urdu_page_is_translated(admin_client, app):
     for urdu in ('ماہانہ خلاصہ', 'اسکول کے اساتذہ', 'ابھی محفوظ نہیں', 'سب اساتذہ اس وقت پر',
                  'اساتذہ کی حاضری محفوظ کریں', 'جن اساتذہ کو ضرورت ہو'):
         assert urdu in body, urdu
+
+
+def test_gate_qr_scan_time_is_shown_next_to_the_teacher(admin_client, app):
+    from datetime import datetime
+    from app.services import qr_attendance as qr
+    with app.app_context():
+        _settings()
+        teacher_id = _teachers(1)[0]
+        qr.process_scan(qr.make_teacher_token(qr.get_secret(), teacher_id),
+                        now=datetime(DAY.year, DAY.month, DAY.day, 8, 20))
+    body = _body(admin_client)
+    assert 'Gate QR scan time' in body and 'QR 08:20' in body

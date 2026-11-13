@@ -255,6 +255,15 @@
     {% endif %}
 </div>
 
+{% if staff_usage and staff_usage.limit is not none %}
+<div class="ud-note no-print" role="status">
+    <i class="fas fa-users me-1"></i>
+    <b>Staff logins in your plan:</b> {{ staff_usage.used }} of {{ staff_usage.limit }} used
+    (teacher, accountant, principal/owner and guard accounts; administrators and parents are not counted).
+    {% if staff_usage.full %}<b>The limit is reached</b> - new staff logins cannot be added until you upgrade.{% endif %}
+</div>
+{% endif %}
+
 <section class="ud-ribbon no-print" aria-label="Summary">
     <div class="ud-stat">
         <span class="ud-num">{{ stats.total }}</span>

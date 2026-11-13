@@ -1,22 +1,64 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% block title %}Home{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h3 mb-0">Overview</h1>
-<a class="btn btn-dark" href="{{ url_for('school_new') }}"><i class="fas fa-plus me-1"></i>Add school</a></div>
-<div class="row g-3 mb-4">
-{% for label, key, color in [('Active','active','success'),('Expiring ≤30 days','soon','warning'),('In grace','grace','warning'),('Expired','expired','danger'),('No license yet','none','secondary')] %}
-<div class="col-6 col-md"><div class="card border-0 shadow-sm"><div class="card-body py-3"><div class="text-muted small">{{ label }}</div><div class="h3 mb-0 text-{{ color }}">{{ counts[key] }}</div></div></div></div>
-{% endfor %}</div>
-<div class="card border-0 shadow-sm"><div class="card-body">
-<h2 class="h5">Needs attention</h2>
-{% if attention %}
-<div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>School</th><th>Status</th><th>Expires</th><th>Plan</th><th></th></tr></thead><tbody>
-{% for i in attention %}<tr>
-<td><a href="{{ url_for('school_detail', school_id=i.school.id) }}">{{ i.school.name }}</a><div class="small text-muted">{{ i.school.phone or '' }} {{ i.school.city or '' }}</div></td>
-<td><span class="badge bg-{{ 'danger' if i.code=='expired' else 'warning text-dark' }}">{{ i.label }}</span> <span class="small text-muted">{{ i.days_left }} d</span></td>
-<td>{{ i.school.expires|nicedate }}</td><td>{{ i.school.plan|niceplan }}</td>
-<td class="text-end"><textarea id="rem{{ i.school.id }}" class="d-none">{{ i.reminder }}</textarea>
-<button class="btn btn-sm btn-outline-secondary" onclick="copyFrom('rem{{ i.school.id }}',this)"><i class="fas fa-copy me-1"></i>Reminder</button></td></tr>{% endfor %}
-</tbody></table></div>
-{% else %}<p class="text-muted mb-0">Nothing needs attention right now.</p>{% endif %}
+<div class="vd-head">
+  <div><h1>Home</h1><p>Your schools at a glance — and what needs you today.</p></div>
+  <div class="vd-tools"><a class="btn btn-primary" href="{{ url_for('school_new') }}"><i class="fas fa-plus me-2"></i>Add a school</a></div>
+</div>
+
+{% if total == 0 %}
+<div class="vd-card"><div class="vd-empty">
+  <i class="fas fa-school"></i><b>Welcome! Let’s add your first school.</b>
+  <p class="mb-3">It takes about a minute. After that you can send the school its license key.</p>
+  <ol class="text-start d-inline-block small mb-3"><li>Add the school’s name and phone number.</li><li>Ask the school to send you “This computer’s code” from their License page.</li><li>Send them their first key.</li></ol>
+  <div><a class="btn btn-primary btn-xl" href="{{ url_for('school_new') }}"><i class="fas fa-plus me-2"></i>Add a school</a></div>
 </div></div>
+{% else %}
+
+<div class="vd-actions">
+  <a class="vd-action" href="{{ url_for('schools') }}"><span class="vd-ico b"><i class="fas fa-key"></i></span><div><b>Send or renew a key</b><span>A school paid or needs a change</span></div></a>
+  <a class="vd-action" href="{{ url_for('school_new') }}"><span class="vd-ico g"><i class="fas fa-school-circle-check"></i></span><div><b>Add a new school</b><span>A new customer</span></div></a>
+  <a class="vd-action" href="{{ url_for('recovery') }}"><span class="vd-ico o"><i class="fas fa-unlock-keyhole"></i></span><div><b>Forgotten password</b><span>Help a school get back in</span></div></a>
+  <a class="vd-action" href="{{ url_for('settings') }}#backup"><span class="vd-ico v"><i class="fas fa-shield-halved"></i></span><div><b>Back up my data</b><span>Keep your records safe</span></div></a>
+</div>
+
+<div class="vd-tiles" role="list" aria-label="Schools by status">
+{% for key, ico in [('active','g'), ('soon','o'), ('grace','o'), ('expired','r'), ('none','s')] %}{% set ui = status_ui[key] %}
+  <a class="vd-tile" role="listitem" href="{{ url_for('schools', status=key) }}">
+    <span class="vd-ico {{ ico }}"><i class="fas {{ ui.icon }}" aria-hidden="true"></i></span>
+    <div><div class="vd-num">{{ counts[key] }}</div><div class="vd-lab">{{ {'active': 'Active', 'soon': 'Ending in 30 days', 'grace': 'Extra time after ending', 'expired': 'Ended (view-only)', 'none': 'Waiting for a first key'}[key] }}</div></div>
+  </a>
+{% endfor %}
+</div>
+
+{% if attention %}
+<div class="vd-note warn"><b>What to do now:</b> {{ attention|length }} school{{ '' if attention|length == 1 else 's' }} need{{ 's' if attention|length == 1 }} a renewal. Press <b>Renew</b> when the payment arrives, or <b>Copy reminder</b> to send a polite message first.</div>
+<div class="vd-card p-0 overflow-hidden">
+  <div class="px-4 pt-3 pb-2"><h2 class="vd-card-h mb-0"><span class="vd-ico o"><i class="fas fa-bell"></i></span>Needs attention</h2></div>
+  <div class="vd-list border-0 rounded-0 mb-0">
+  <div class="vd-lhead"><div>School</div><div>Status</div><div>When</div><div></div></div>
+  {% for i in attention %}{% set s = i.school %}{% set ui = status_ui[i.code] %}
+  <div class="vd-row">
+    <div><a class="vd-name stretched-link" href="{{ url_for('school_detail', school_id=s.id) }}">{{ s.name }}</a><div class="vd-sub">{{ s.city or '' }}{{ ' · ' if s.city and s.phone }}{{ s.phone or '' }}</div></div>
+    <div><span class="vd-pill {{ ui.tone }}"><i class="fas {{ ui.icon }}" aria-hidden="true"></i>{{ ui.label }}</span></div>
+    <div>{{ i.when }}<div class="vd-sub">on {{ s.expires|nicedate }} · {{ s.plan|niceplan }}</div></div>
+    <div class="vd-act"><textarea id="rem{{ s.id }}" class="d-none" readonly>{{ i.reminder }}</textarea>
+      <a class="btn btn-primary btn-sm" href="{{ url_for('school_detail', school_id=s.id, do='renew') }}#send-key"><i class="fas fa-rotate me-1"></i>Renew</a>
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyFrom('rem{{ s.id }}',this)"><i class="fas fa-copy me-1"></i>Copy reminder</button></div>
+  </div>
+  {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="vd-note good"><i class="fas fa-circle-check me-2 text-success"></i><b>All good.</b> Every school with a key is up to date. Nothing needs you right now.</div>
+{% endif %}
+
+{% if waiting %}
+<div class="vd-card"><h2><span class="vd-ico s"><i class="fas fa-hourglass-start"></i></span>Waiting for their first key</h2>
+  <p class="vd-card-sub">These schools are added but have not received a key yet.</p>
+  {% for i in waiting %}<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 py-2 {{ 'border-top' if not loop.first }}">
+    <div><a class="fw-bold text-decoration-none" href="{{ url_for('school_detail', school_id=i.school.id) }}">{{ i.school.name }}</a><span class="text-muted small ms-2">{{ i.school.city or '' }}</span></div>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('school_detail', school_id=i.school.id) }}#send-key">Send first key</a></div>{% endfor %}
+</div>
+{% endif %}
+{% endif %}
 {% endblock %}

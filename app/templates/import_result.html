@@ -77,6 +77,7 @@
                     <td>
                         {% if item.type == 'duplicate' %}<span class="badge bg-warning text-dark">Duplicate</span>
                         {% elif item.type == 'missing' %}<span class="badge bg-danger">Missing data</span>
+                        {% elif item.type == 'limit' %}<span class="badge bg-info text-dark">Plan limit</span>
                         {% else %}<span class="badge bg-secondary">Incorrect data</span>{% endif %}
                     </td>
                     <td class="small">{{ item.reason }}</td>

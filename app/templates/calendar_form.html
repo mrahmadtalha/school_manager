@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .cf-wrap  { max-width:36rem; margin:0 auto; }
+    .cf-card  { background:#fff; border:1px solid #e2e8f0; border-radius:18px; padding:1.75rem; }
+    .cf-card .form-label  { font-weight:700; font-size:.88rem; color:#334155; }
+    .cf-card .form-control,.cf-card .form-select
+              { border-radius:12px; border-color:#e2e8f0; background:#f8fafc; }
+    .cf-card .form-control:focus,.cf-card .form-select:focus
+              { background:#fff; border-color:rgba(var(--bs-primary-rgb),.5); box-shadow:0 0 0 3px rgba(var(--bs-primary-rgb),.12); }
+    .cf-cat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(8rem,1fr)); gap:.5rem; margin-top:.35rem; }
+    .cf-cat-opt  { position:relative; }
+    .cf-cat-opt input  { position:absolute; opacity:0; pointer-events:none; }
+    .cf-cat-opt label  { display:flex; flex-direction:column; align-items:center; justify-content:center;
+                          gap:.25rem; padding:.65rem .4rem; border-radius:12px; border:2px solid #e2e8f0;
+                          font-size:.8rem; font-weight:700; color:#475569; cursor:pointer;
+                          transition:all .15s ease; text-align:center; }
+    .cf-cat-opt input:checked + label { border-color:rgb(var(--bs-primary-rgb));
+                                         background:rgba(var(--bs-primary-rgb),.07); color:rgb(var(--bs-primary-rgb)); }
+    .cf-cat-opt label .cat-emoji { font-size:1.3rem; line-height:1; }
+    .cf-actions { display:flex; gap:.6rem; margin-top:1.5rem; flex-wrap:wrap; }
+    .cf-actions .btn { flex:1; min-width:7rem; border-radius:12px; height:2.75rem; font-weight:700; }
+</style>
+
+<div class="cf-wrap">
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <a href="{{ url_for('main.calendar_page') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i>
+        </a>
+        <h1 style="font-size:1.3rem;font-weight:800;color:#0f172a;margin:0;">
+            {{ 'Edit Event' if event else 'Add New Event' }}
+        </h1>
+    </div>
+
+    <div class="cf-card">
+        <form method="post">
+            {# Title #}
+            <div class="mb-3">
+                <label class="form-label" for="title">Event Title <span class="text-danger">*</span></label>
+                <input type="text" id="title" name="title" class="form-control"
+                       placeholder="e.g. Mid-Term Exams, Eid Holiday, Parents' Day"
+                       value="{{ event.title if event else '' }}" required maxlength="200" autofocus>
+            </div>
+
+            {# Description #}
+            <div class="mb-3">
+                <label class="form-label" for="description">Details <span class="text-muted fw-normal">(optional)</span></label>
+                <textarea id="description" name="description" class="form-control" rows="2"
+                          placeholder="Any extra info, instructions, or note for staff">{{ event.description if event else '' }}</textarea>
+            </div>
+
+            {# Dates #}
+            <div class="row g-3 mb-3">
+                <div class="col-6">
+                    <label class="form-label" for="event_date">Start Date <span class="text-danger">*</span></label>
+                    <input type="date" id="event_date" name="event_date" class="form-control"
+                           value="{{ event.event_date.isoformat() if event else prefill_date }}" required>
+                </div>
+                <div class="col-6">
+                    <label class="form-label" for="end_date">End Date <span class="text-muted fw-normal">(if multi-day)</span></label>
+                    <input type="date" id="end_date" name="end_date" class="form-control"
+                           value="{{ event.end_date.isoformat() if event and event.end_date else '' }}">
+                </div>
+            </div>
+
+            {# Category #}
+            <div class="mb-3">
+                <label class="form-label">Category</label>
+                <div class="cf-cat-grid">
+                    {% set cat_map = {
+                        'general': ('📌', 'General'),
+                        'holiday': ('🌙', 'Holiday'),
+                        'exam':    ('📝', 'Exam / Test'),
+                        'meeting': ('👥', 'Meeting'),
+                        'trip':    ('🚌', 'School Trip'),
+                        'sport':   ('🏅', 'Sports'),
+                        'other':   ('📋', 'Other'),
+                    } %}
+                    {% set current_cat = event.category if event else 'general' %}
+                    {% for cat, (emoji, label) in cat_map.items() %}
+                    <div class="cf-cat-opt">
+                        <input type="radio" id="cat_{{ cat }}" name="category" value="{{ cat }}"
+                               {{ 'checked' if current_cat == cat else '' }}>
+                        <label for="cat_{{ cat }}">
+                            <span class="cat-emoji">{{ emoji }}</span>
+                            {{ label }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {# Pin #}
+            <div class="mb-1">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="is_pinned" name="is_pinned"
+                           value="1" {{ 'checked' if event and event.is_pinned else '' }}>
+                    <label class="form-check-label fw-700" for="is_pinned" style="font-weight:700;font-size:.88rem;">
+                        <i class="fas fa-thumbtack me-1" style="color:#f59e0b;"></i>
+                        Pin this event (shows at top of calendar for everyone)
+                    </label>
+                </div>
+            </div>
+
+            <div class="cf-actions">
+                <a href="{{ url_for('main.calendar_page') }}" class="btn btn-outline-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-{{ 'save' if event else 'plus' }} me-1"></i>
+                    {{ 'Save Changes' if event else 'Add Event' }}
+                </button>
+            </div>
+        </form>
+
+        {# Delete / Archive — only on edit #}
+        {% if event %}
+        <hr class="my-3">
+        <div class="d-flex flex-wrap gap-2">
+            <form method="post" action="{{ url_for('main.calendar_archive', event_id=event.id) }}"
+                  data-confirm="{{ 'Restore this event?' if event.is_archived else 'Archive this event? It will be hidden from the main calendar.' }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                    <i class="fas {{ 'fa-box-open' if event.is_archived else 'fa-archive' }} me-1"></i>
+                    {{ 'Restore from Archive' if event.is_archived else 'Archive Event' }}
+                </button>
+            </form>
+            <form method="post" action="{{ url_for('main.calendar_delete', event_id=event.id) }}"
+                  data-confirm="Delete "{{ event.title }}" permanently? This cannot be undone.">
+                <button type="submit" class="btn btn-sm btn-outline-danger">
+                    <i class="fas fa-trash me-1"></i> Delete
+                </button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

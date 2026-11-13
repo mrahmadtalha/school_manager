@@ -195,9 +195,15 @@ def build_log(action, *, entity_type=None, entity_id=None, summary='', before=No
 
 def log_action(action, *, entity_type=None, entity_id=None, summary='', before=None,
                after=None, session=None, actor=None):
-    """Record an explicit business action. Returns the AuditLog row (or None)."""
+    """Record an explicit business action. Returns the AuditLog row (or None).
+
+    Nothing is recorded while auditing is suspended (``suspend_audit``): bulk jobs such as
+    the demo-data generator must not write one log line per generated record.
+    """
     try:
         session = session or _default_session()
+        if session.info.get(SUSPEND_KEY):
+            return None
         row = build_log(action, entity_type=entity_type, entity_id=entity_id,
                         summary=summary, before=before, after=after, actor=actor)
         session.add(row)

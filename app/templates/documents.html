@@ -190,6 +190,15 @@
                 <label class="form-label" for="sSession">Academic session</label>
                 <input type="text" class="form-control" id="sSession" name="session" value="{{ default_session }}">
             </div>
+            <div class="col-md-6">
+                <label class="form-label" for="sCardStyle">Card design</label>
+                <select class="form-select" id="sCardStyle" name="card_style">
+                    {% for key, label in card_styles.items() %}
+                    <option value="{{ key }}" {% if id_card_style == key %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Your choice is remembered next time — change it here anytime.</div>
+            </div>
         </div>
         <div class="dc-result" data-result><i class="fas fa-print text-primary"></i><span data-result-text></span></div>
         <div class="dc-go"><button type="submit" class="btn btn-primary px-4"><i class="fas fa-download me-1"></i> Download student cards</button></div>
@@ -221,6 +230,15 @@
             <div class="col-md-6">
                 <label class="form-label" for="tSession">Academic session</label>
                 <input type="text" class="form-control" id="tSession" name="session" value="{{ default_session }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="tCardStyle">Card design</label>
+                <select class="form-select" id="tCardStyle" name="card_style">
+                    {% for key, label in card_styles.items() %}
+                    <option value="{{ key }}" {% if id_card_style == key %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Your choice is remembered next time — change it here anytime.</div>
             </div>
         </div>
         <div class="dc-result" data-result><i class="fas fa-print text-primary"></i><span data-result-text></span></div>

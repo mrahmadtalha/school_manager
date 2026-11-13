@@ -8,7 +8,7 @@ from app.database import db
 from app.models import StudentModel, ClassModel, SectionModel
 from app.models.student import STUDENT_STATUSES, STUDENT_STATUS_LABELS
 from app.routes import main
-from app.services import record_view
+from app.services import record_view, usage_limits
 from app.services import admission_fee, student_stock
 from app.services import admission_numbers
 from app.services.photos import photo_path, save_photo, stash_upload, delete_photo, PhotoError
@@ -75,6 +75,10 @@ def students_list():
 
 @main.route('/students/add', methods=['POST'])
 def add_student():
+    blocked = usage_limits.student_block_message()      # the license's student limit
+    if blocked:
+        flash(blocked, 'danger')
+        return redirect(url_for('main.students_list'))
     payload = {field: (request.form.get(field) or '') for field in (
         'roll_number', 'student_name', 'father_name', 'guardian_phone',
         'address', 'class_id', 'section_id', 'monthly_fee',
@@ -424,6 +428,11 @@ def archived_students_list():
 def restore_student(id):
     try:
         student = StudentModel.query.get_or_404(id)
+        if not student.is_active:                       # restoring adds one to the student count
+            blocked = usage_limits.student_block_message()
+            if blocked:
+                flash(blocked, 'danger')
+                return redirect(url_for('main.archived_students_list'))
         student.is_active = True
         student.status = 'enrolled'
         start_enrollment(student, reason='restored', start_date=date.today())
@@ -442,6 +451,11 @@ def restore_student(id):
 
 @main.route('/students/restore-all', methods=['POST'])
 def restore_all_students():
+    waiting = StudentModel.query.filter_by(is_active=False).count()
+    blocked = usage_limits.student_block_message(adding=waiting) if waiting else ''
+    if blocked:
+        flash(blocked, 'danger')
+        return redirect(url_for('main.archived_students_list'))
     count = StudentModel.query.filter_by(is_active=False).update({'is_active': True})
     db.session.commit()
     flash(f'{count} student(s) restored successfully.', 'success')

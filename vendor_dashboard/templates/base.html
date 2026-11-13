@@ -6,33 +6,264 @@
 <title>{% block title %}License Manager{% endblock %} — School Manager (vendor)</title>
 <link href="{{ url_for('static', filename='bootstrap/bootstrap.min.css') }}" rel="stylesheet">
 <link href="{{ url_for('static', filename='fontawesome/css/all.min.css') }}" rel="stylesheet">
-<style>.code-box{word-break:break-all;font-size:.8rem}.feat-group{font-size:.72rem;letter-spacing:.05em}</style>
+<style>
+    /* ------------------------------------------------------------------
+       License Manager - same family as the School Manager pages (dark
+       sidebar, plain header, summary band, soft cards, pills), written for
+       a non-technical person: one job per screen, plain words, big buttons.
+       Everything is prefixed vd- so nothing leaks into Bootstrap.
+       ------------------------------------------------------------------ */
+    :root {
+        --vd-primary: #2563eb; --vd-primary-dark: #1d4ed8; --vd-primary-soft: #dbeafe;
+        --vd-ink: #0f172a; --vd-text: #334155; --vd-muted: #64748b; --vd-line: #e2e8f0; --vd-soft: #f8fafc;
+        --bs-primary: #2563eb; --bs-primary-rgb: 37, 99, 235; --bs-link-color: #1d4ed8; --bs-link-hover-color: #1e40af;
+        --bs-link-color-rgb: 29, 78, 216; --bs-body-color: #334155; --bs-body-font-size: 1rem;
+    }
+    body { background: linear-gradient(180deg, #f5f7ff 0%, #f8fafc 100%); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: var(--vd-text); min-height: 100vh; }
+    h1, h2, h3, h4, h5 { color: var(--vd-ink); }
+    :focus-visible { outline: 3px solid rgba(59, 130, 246, 0.65) !important; outline-offset: 2px !important; }
+    .btn { border-radius: 12px; font-weight: 600; }
+    .btn-primary { --bs-btn-bg: #2563eb; --bs-btn-border-color: #2563eb; --bs-btn-hover-bg: #1d4ed8; --bs-btn-hover-border-color: #1d4ed8; --bs-btn-active-bg: #1e40af; --bs-btn-active-border-color: #1e40af; --bs-btn-disabled-bg: #2563eb; --bs-btn-disabled-border-color: #2563eb; }
+    .btn-outline-secondary { --bs-btn-color: #334155; --bs-btn-border-color: #cbd5e1; --bs-btn-hover-bg: #f1f5f9; --bs-btn-hover-color: #0f172a; --bs-btn-hover-border-color: #94a3b8; --bs-btn-active-bg: #e2e8f0; --bs-btn-active-color: #0f172a; background: #fff; }
+    .btn-xl { padding: 0.8rem 1.6rem; font-size: 1.05rem; border-radius: 14px; }
+    .form-control, .form-select { border-radius: 12px; border-color: #cbd5e1; min-height: 2.75rem; }
+    .form-control:focus, .form-select:focus { border-color: #60a5fa; box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.15); }
+    .form-label { font-weight: 600; color: var(--vd-ink); margin-bottom: 0.3rem; }
+    .form-text, .vd-help { color: var(--vd-muted); font-size: 0.86rem; }
+    .form-check-input:checked { background-color: var(--vd-primary); border-color: var(--vd-primary); }
+    .text-muted { color: var(--vd-muted) !important; }
+
+    /* ---- shell: sidebar + content ---- */
+    .vd-shell { display: flex; min-height: 100vh; }
+    .vd-side { flex: 0 0 248px; width: 248px; background: linear-gradient(180deg, #0f172a 0%, #111827 100%); border-right: 1px solid rgba(148, 163, 184, 0.15); display: flex; flex-direction: column; padding: 1.1rem 0.85rem; position: sticky; top: 0; height: 100vh; z-index: 1040; }
+    .vd-brand { display: flex; align-items: center; gap: 0.7rem; padding: 0.35rem 0.5rem 1.2rem; color: #fff; text-decoration: none; }
+    .vd-brand:hover { color: #fff; }
+    .vd-brand-ico { width: 42px; height: 42px; border-radius: 13px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex: 0 0 auto; }
+    .vd-brand b { display: block; font-size: 1.02rem; line-height: 1.15; }
+    .vd-brand small { color: #94a3b8; font-size: 0.74rem; }
+    .vd-nav { display: flex; flex-direction: column; gap: 0.25rem; }
+    .vd-nav a { display: flex; align-items: center; gap: 0.7rem; padding: 0.7rem 0.8rem; border-radius: 12px; color: rgba(255, 255, 255, 0.82); text-decoration: none; font-weight: 600; font-size: 0.98rem; border: 1px solid transparent; }
+    .vd-nav a i { width: 1.25rem; text-align: center; color: #93c5fd; }
+    .vd-nav a:hover { background: rgba(148, 163, 184, 0.14); color: #fff; }
+    .vd-nav a[aria-current="page"] { background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(168, 85, 247, 0.24)); border-color: rgba(96, 165, 250, 0.25); color: #fff; box-shadow: 0 8px 18px rgba(59, 130, 246, 0.18); }
+    .vd-nav .vd-badge { margin-left: auto; background: #f59e0b; color: #1f2937; border-radius: 99px; font-size: 0.75rem; font-weight: 800; padding: 0.05rem 0.5rem; }
+    .vd-side-foot { margin-top: auto; padding-top: 1rem; border-top: 1px solid rgba(148, 163, 184, 0.18); }
+    .vd-side-foot .btn { width: 100%; text-align: left; color: rgba(255, 255, 255, 0.85); border: 1px solid rgba(148, 163, 184, 0.3); background: transparent; display: flex; align-items: center; gap: 0.7rem; padding: 0.65rem 0.8rem; }
+    .vd-side-foot .btn:hover { background: rgba(148, 163, 184, 0.14); color: #fff; }
+    .vd-side-foot small { display: block; color: #94a3b8; font-size: 0.74rem; margin-top: 0.5rem; padding: 0 0.2rem; line-height: 1.35; }
+    .vd-main { flex: 1 1 auto; min-width: 0; }
+    .vd-topbar { display: none; }
+    .vd-content { max-width: 1180px; margin: 0 auto; padding: 1.6rem 1.8rem 4rem; }
+    .vd-scrim { display: none; }
+    @media (max-width: 991.98px) {
+        .vd-side { position: fixed; left: 0; top: 0; transform: translateX(-102%); transition: transform 0.2s ease; box-shadow: 0 0 40px rgba(0, 0, 0, 0.4); }
+        body.vd-nav-open .vd-side { transform: none; }
+        body.vd-nav-open .vd-scrim { display: block; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.5); z-index: 1030; }
+        .vd-topbar { display: flex; align-items: center; gap: 0.8rem; background: #0f172a; color: #fff; padding: 0.6rem 1rem; position: sticky; top: 0; z-index: 1020; }
+        .vd-topbar button { background: transparent; border: 1px solid rgba(148, 163, 184, 0.4); color: #fff; border-radius: 10px; width: 42px; height: 42px; }
+        .vd-content { padding: 1.1rem 1rem 3rem; }
+    }
+    .vd-locked-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem 1rem; }
+
+    /* ---- page header ---- */
+    .vd-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0.2rem 0 1.2rem; }
+    .vd-head h1 { font-size: clamp(1.55rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: -0.025em; margin: 0; line-height: 1.12; }
+    .vd-head p { margin: 0.35rem 0 0; color: var(--vd-muted); font-size: 0.95rem; }
+    .vd-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .vd-back { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 600; text-decoration: none; font-size: 0.92rem; margin-bottom: 0.5rem; }
+
+    /* ---- cards, notes ---- */
+    .vd-card { background: #fff; border: 1px solid var(--vd-line); border-radius: 18px; padding: 1.25rem 1.35rem; margin-bottom: 1.1rem; }
+    .vd-card > h2, .vd-card-h { font-size: 1.12rem; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 0.2rem; display: flex; align-items: center; gap: 0.6rem; }
+    .vd-card-sub { color: var(--vd-muted); font-size: 0.9rem; margin: 0 0 1rem; }
+    .vd-ico { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; }
+    .vd-ico.b { background: #dbeafe; color: #1d4ed8; } .vd-ico.v { background: #ede9fe; color: #6d28d9; }
+    .vd-ico.g { background: #dcfce7; color: #15803d; } .vd-ico.o { background: #fef3c7; color: #b45309; }
+    .vd-ico.r { background: #fee2e2; color: #b91c1c; } .vd-ico.s { background: #f1f5f9; color: #475569; }
+    .vd-note { background: #fff; border: 1px solid var(--vd-line); border-left: 4px solid var(--vd-primary); border-radius: 14px; color: #475569; font-size: 0.92rem; padding: 0.7rem 1rem; margin-bottom: 1rem; }
+    .vd-note b { color: var(--vd-ink); }
+    .vd-note.warn { border-left-color: #f59e0b; background: #fffbf3; } .vd-note.good { border-left-color: #16a34a; background: #f3fbf6; } .vd-note.bad { border-left-color: #dc2626; background: #fff6f6; }
+
+    /* ---- summary band ---- */
+    .vd-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); background: #fff; border: 1px solid var(--vd-line); border-radius: 18px; margin-bottom: 1.1rem; overflow: hidden; }
+    .vd-tile { padding: 0.9rem 1.15rem; display: flex; align-items: center; gap: 0.8rem; min-width: 0; color: inherit; text-decoration: none; }
+    .vd-tile + .vd-tile { border-left: 1px solid #eef2f7; }
+    a.vd-tile:hover { background: #f8fafc; color: inherit; }
+    .vd-num { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums; color: var(--vd-ink); }
+    .vd-lab { font-size: 0.8rem; color: var(--vd-muted); margin-top: 0.15rem; }
+    .vd-tile .vd-val { font-weight: 800; color: var(--vd-ink); font-size: 1.02rem; line-height: 1.25; overflow-wrap: anywhere; }
+    @media (max-width: 575.98px) { .vd-tile + .vd-tile { border-left: 0; border-top: 1px solid #eef2f7; } }
+
+    /* ---- status pill ---- */
+    .vd-pill { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.18rem 0.7rem; border-radius: 99px; font-size: 0.8rem; font-weight: 700; white-space: nowrap; }
+    .vd-pill.ok { background: #dcfce7; color: #166534; } .vd-pill.soon { background: #fef3c7; color: #92400e; }
+    .vd-pill.grace { background: #ffedd5; color: #9a3412; } .vd-pill.bad { background: #fee2e2; color: #991b1b; }
+    .vd-pill.none { background: #f1f5f9; color: #475569; }
+    .vd-pill.lg { font-size: 0.95rem; padding: 0.3rem 0.95rem; }
+
+    /* ---- toolbar, segmented filter ---- */
+    .vd-toolbar { background: #fff; border: 1px solid var(--vd-line); border-radius: 18px; padding: 0.7rem; margin-bottom: 0.9rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+    .vd-search { position: relative; flex: 1 1 15rem; min-width: 11rem; }
+    .vd-search i { position: absolute; left: 0.95rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+    .vd-search input { padding-left: 2.5rem; height: 2.75rem; background: #f8fafc; border-color: var(--vd-line); }
+    .vd-search input:focus { background: #fff; }
+    .vd-seg { display: inline-flex; background: #f1f5f9; border-radius: 12px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+    .vd-seg a { padding: 0.42rem 0.85rem; border-radius: 9px; font-size: 0.88rem; font-weight: 600; color: #475569; text-decoration: none; white-space: nowrap; }
+    .vd-seg a:hover { color: var(--vd-ink); }
+    .vd-seg a.on { background: #fff; color: var(--vd-ink); box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+    .vd-seg a .n { font-variant-numeric: tabular-nums; opacity: 0.7; margin-left: 0.2rem; }
+
+    /* ---- lists of schools ---- */
+    .vd-list { background: #fff; border: 1px solid var(--vd-line); border-radius: 18px; overflow: hidden; margin-bottom: 1rem; }
+    .vd-lhead, .vd-row { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1.4fr) minmax(0, 1.9fr) 14rem; gap: 1rem; align-items: center; padding: 0.85rem 1.2rem; }
+    .vd-lhead { background: #f8fafc; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--vd-muted); padding-top: 0.6rem; padding-bottom: 0.6rem; }
+    .vd-row { position: relative; border-top: 1px solid #eef2f7; transition: background 0.12s ease; }
+    .vd-row:hover { background: #f8fbff; }
+    .vd-row .vd-name { font-weight: 800; color: var(--vd-ink); font-size: 1.02rem; text-decoration: none; overflow-wrap: anywhere; }
+    .vd-row .vd-sub { color: var(--vd-muted); font-size: 0.85rem; }
+    .vd-row .vd-act { position: relative; z-index: 2; display: flex; gap: 0.4rem; justify-content: flex-end; flex-wrap: wrap; }
+    .vd-row.off { opacity: 0.7; }
+    @media (max-width: 767.98px) {
+        .vd-lhead { display: none; }
+        .vd-row { grid-template-columns: 1fr; gap: 0.45rem; padding: 1rem 1.1rem; }
+        .vd-row .vd-act { justify-content: flex-start; }
+    }
+
+    /* ---- big action cards (home) ---- */
+    .vd-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.9rem; margin-bottom: 1.2rem; }
+    .vd-action { display: flex; align-items: center; gap: 0.9rem; background: #fff; border: 1px solid var(--vd-line); border-radius: 18px; padding: 1rem 1.1rem; text-decoration: none; color: inherit; transition: box-shadow 0.15s ease, transform 0.15s ease; }
+    .vd-action:hover { box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08); transform: translateY(-2px); color: inherit; }
+    .vd-action .vd-ico { width: 48px; height: 48px; font-size: 1.2rem; border-radius: 14px; }
+    .vd-action b { display: block; color: var(--vd-ink); font-size: 1.02rem; line-height: 1.2; }
+    .vd-action div span { color: var(--vd-muted); font-size: 0.85rem; line-height: 1.3; display: block; margin-top: 0.15rem; }
+
+    /* ---- guided steps ---- */
+    .vd-step { display: flex; align-items: center; gap: 0.7rem; margin: 1.4rem 0 0.7rem; font-weight: 800; color: var(--vd-ink); font-size: 1.05rem; }
+    .vd-step.first { margin-top: 0.3rem; }
+    .vd-step .vd-n { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 99px; background: var(--vd-primary); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 0.9rem; }
+    .vd-step small { font-weight: 500; color: var(--vd-muted); font-size: 0.86rem; margin-left: 0.2rem; }
+    .vd-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.7rem; }
+    .vd-choice { position: relative; display: block; margin: 0; cursor: pointer; }
+    .vd-choice input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; cursor: pointer; margin: 0; }
+    .vd-choice-body { height: 100%; display: flex; gap: 0.7rem; align-items: flex-start; background: #fff; border: 2px solid var(--vd-line); border-radius: 14px; padding: 0.8rem 0.9rem; transition: border-color 0.12s ease, background 0.12s ease; }
+    .vd-choice-body i { margin-top: 0.15rem; color: #94a3b8; font-size: 1.1rem; width: 1.3rem; text-align: center; }
+    .vd-choice-body b { display: block; color: var(--vd-ink); line-height: 1.2; }
+    .vd-choice-body span { display: block; color: var(--vd-muted); font-size: 0.83rem; line-height: 1.3; margin-top: 0.15rem; }
+    .vd-choice:hover .vd-choice-body { border-color: #93c5fd; }
+    .vd-choice input:checked + .vd-choice-body { border-color: var(--vd-primary); background: #eff6ff; }
+    .vd-choice input:checked + .vd-choice-body i { color: var(--vd-primary); }
+    .vd-choice input:focus-visible + .vd-choice-body { outline: 3px solid rgba(59, 130, 246, 0.65); outline-offset: 2px; }
+    .vd-choice input:disabled + .vd-choice-body { opacity: 0.45; cursor: not-allowed; }
+
+    /* ---- "more" disclosures ---- */
+    details.vd-more { border: 1px solid var(--vd-line); border-radius: 14px; background: #fff; margin-top: 0.8rem; }
+    details.vd-more > summary { list-style: none; cursor: pointer; padding: 0.8rem 1rem; font-weight: 700; color: var(--vd-ink); display: flex; align-items: center; gap: 0.6rem; border-radius: 14px; }
+    details.vd-more > summary::-webkit-details-marker { display: none; }
+    details.vd-more > summary::after { content: "\f078"; font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 0.75rem; margin-left: auto; color: var(--vd-muted); transition: transform 0.15s ease; }
+    details.vd-more[open] > summary::after { transform: rotate(180deg); }
+    details.vd-more > summary:hover { background: #f8fafc; }
+    details.vd-more > summary small { font-weight: 500; color: var(--vd-muted); }
+    details.vd-more > .vd-more-body { padding: 0.3rem 1rem 1rem; border-top: 1px solid #eef2f7; }
+    .vd-grp { font-size: 0.74rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--vd-muted); margin: 1rem 0 0.3rem; }
+    .vd-switch { display: flex; gap: 0.6rem; padding: 0.4rem 0; align-items: flex-start; }
+    .vd-switch .form-check-input { flex: 0 0 auto; margin-top: 0.25rem; width: 2.3em; height: 1.25em; }
+    .vd-switch label { cursor: pointer; line-height: 1.25; }
+    .vd-switch label b { color: var(--vd-ink); font-weight: 600; }
+    .vd-switch label small { display: block; color: var(--vd-muted); font-size: 0.8rem; margin-top: 0.1rem; }
+
+    /* ---- submit bar ---- */
+    .vd-submit { background: #f8fafc; border: 1px solid var(--vd-line); border-radius: 14px; padding: 0.9rem 1rem; margin-top: 1.4rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem 1.2rem; justify-content: space-between; }
+    .vd-submit .vd-sum { color: #475569; font-size: 0.92rem; flex: 1 1 18rem; }
+    .vd-submit .vd-sum b { color: var(--vd-ink); }
+
+    /* ---- facts, key/value ---- */
+    .vd-kv { display: grid; grid-template-columns: auto 1fr; gap: 0.4rem 1rem; margin: 0; font-size: 0.93rem; }
+    .vd-kv dt { color: var(--vd-muted); font-weight: 600; } .vd-kv dd { margin: 0; color: var(--vd-ink); overflow-wrap: anywhere; }
+    .vd-code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.86rem; background: #f1f5f9; border-radius: 8px; padding: 0.1rem 0.45rem; color: var(--vd-ink); }
+    .vd-box { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.82rem; word-break: break-all; background: #f8fafc; }
+    .vd-empty { text-align: center; padding: 2.2rem 1rem; color: var(--vd-muted); }
+    .vd-empty i { font-size: 2rem; color: #cbd5e1; display: block; margin-bottom: 0.6rem; }
+    .vd-empty b { display: block; color: var(--vd-ink); font-size: 1.05rem; margin-bottom: 0.2rem; }
+    .vd-mini { width: 100%; font-size: 0.9rem; border-collapse: collapse; }
+    .vd-mini td, .vd-mini th { padding: 0.5rem 0.4rem; border-top: 1px solid #eef2f7; vertical-align: middle; }
+    .vd-mini th { font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vd-muted); border-top: 0; }
+    .vd-tablewrap { overflow-x: auto; }
+
+    /* ---- "who has what" matrix: schools down the side, features across the top ---- */
+    .vd-mx-wrap { max-height: 75vh; overflow: auto; }
+    .vd-mx { border-collapse: separate; border-spacing: 0; font-size: 0.9rem; min-width: 100%; }
+    .vd-mx th, .vd-mx td { padding: 0.55rem 0.6rem; border-bottom: 1px solid #eef2f7; vertical-align: middle; background: #fff; }
+    .vd-mx thead th { position: sticky; top: 0; z-index: 3; background: #f8fafc; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vd-muted); vertical-align: bottom; }
+    .vd-mx .vd-mx-school { position: sticky; left: 0; z-index: 2; min-width: 15rem; max-width: 18rem; text-align: left; box-shadow: 1px 0 0 #e2e8f0; }
+    .vd-mx thead .vd-mx-school { z-index: 4; }
+    .vd-mx-school a { font-weight: 800; color: var(--vd-ink); text-decoration: none; }
+    .vd-mx-f { height: 11rem; padding: 0.4rem 0.2rem !important; text-align: center; }
+    .vd-mx-f span { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; display: inline-block; }
+    .vd-mx-c { text-align: center; width: 2.6rem; } .vd-mx-n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .vd-mx tbody tr:hover td, .vd-mx tbody tr:hover th { background: #f8fbff; }
+    .vd-mx tfoot th, .vd-mx tfoot td { position: sticky; bottom: 0; background: #f1f5f9; border-top: 2px solid #e2e8f0; z-index: 2; }
+    .vd-mx tfoot .vd-mx-school { z-index: 4; }
+
+    /* ---- flash messages ---- */
+    .vd-flash { display: flex; gap: 0.7rem; align-items: flex-start; border-radius: 14px; padding: 0.75rem 1rem; margin-bottom: 1rem; border: 1px solid; font-weight: 500; }
+    .vd-flash i { margin-top: 0.2rem; }
+    .vd-flash.success { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+    .vd-flash.danger { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+    .vd-flash.warning { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+    .vd-flash.info { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+    .vd-toast { position: fixed; left: 50%; bottom: 1.6rem; transform: translateX(-50%); background: #0f172a; color: #fff; padding: 0.65rem 1.2rem; border-radius: 99px; font-weight: 600; box-shadow: 0 12px 30px rgba(15, 23, 42, 0.3); z-index: 2000; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
+    .vd-toast.show { opacity: 1; }
+    @media print { .vd-side, .vd-topbar, .vd-toast { display: none !important; } }
+</style>
 </head>
-<body class="bg-light">
+<body>
+{% macro nav_item(endpoint, icon, label, group) %}
+  <a href="{{ url_for(endpoint) }}" {% if request.endpoint in group %}aria-current="page"{% endif %}><i class="fas {{ icon }}" aria-hidden="true"></i><span>{{ label }}</span>
+  {% if endpoint == 'schools' and nav_attention %}<span class="vd-badge" title="Schools that need attention">{{ nav_attention }}</span>{% endif %}</a>
+{% endmacro %}
+
 {% if session.get('unlocked') %}
-<nav class="navbar navbar-expand-md navbar-dark bg-dark mb-4">
-  <div class="container">
-    <a class="navbar-brand" href="{{ url_for('index') }}"><i class="fas fa-key text-warning me-2"></i>License Manager</a>
-    <div class="navbar-nav me-auto flex-row gap-3">
-      <a class="nav-link" href="{{ url_for('index') }}">Home</a>
-      <a class="nav-link" href="{{ url_for('schools') }}">Schools</a>
-      <a class="nav-link" href="{{ url_for('recovery') }}">Recovery</a>
-      <a class="nav-link" href="{{ url_for('plans') }}">Plans</a>
-      <a class="nav-link" href="{{ url_for('settings') }}">Settings</a>
+<div class="vd-topbar"><button type="button" id="vdMenu" aria-label="Open menu" aria-expanded="false"><i class="fas fa-bars"></i></button><b>License Manager</b></div>
+<div class="vd-scrim" id="vdScrim"></div>
+<div class="vd-shell">
+  <aside class="vd-side" id="vdSide" aria-label="Main menu">
+    <a class="vd-brand" href="{{ url_for('index') }}"><span class="vd-brand-ico"><i class="fas fa-key"></i></span><span><b>License Manager</b><small>School Manager · vendor</small></span></a>
+    <nav class="vd-nav">
+      {{ nav_item('index', 'fa-house', 'Home', ('index',)) }}
+      {{ nav_item('schools', 'fa-school', 'Schools', ('schools', 'school_new', 'school_detail', 'key_view', 'inspection_view')) }}
+      {{ nav_item('recovery', 'fa-unlock-keyhole', 'Password help', ('recovery',)) }}
+      {{ nav_item('plans', 'fa-layer-group', 'Plans', ('plans',)) }}
+      {{ nav_item('matrix', 'fa-table-cells', 'Who has what', ('matrix', 'matrix_csv')) }}
+      {{ nav_item('settings', 'fa-gear', 'Backup & settings', ('settings',)) }}
+    </nav>
+    <div class="vd-side-foot">
+      <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <button class="btn"><i class="fas fa-lock"></i>Lock dashboard</button></form>
+      <small>Lock it whenever you step away. You will need your password to open it again.</small>
     </div>
-    <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="_csrf" value="{{ csrf_token }}">
-      <button class="btn btn-outline-light btn-sm"><i class="fas fa-lock me-1"></i>Lock</button></form>
-  </div>
-</nav>
+  </aside>
+  <div class="vd-main"><main class="vd-content">
+{% else %}
+<div class="vd-locked-wrap"><main style="width:100%">
 {% endif %}
-<div class="container pb-5">
 {% with messages = get_flashed_messages(with_categories=true) %}{% for c, m in messages %}
-<div class="alert alert-{{ c }} py-2">{{ m }}</div>{% endfor %}{% endwith %}
+<div class="vd-flash {{ c }}" role="{{ 'alert' if c in ('danger', 'warning') else 'status' }}"><i class="fas {{ {'success': 'fa-circle-check', 'danger': 'fa-circle-exclamation', 'warning': 'fa-triangle-exclamation'}.get(c, 'fa-circle-info') }}" aria-hidden="true"></i><div>{{ m }}</div></div>{% endfor %}{% endwith %}
 {% block content %}{% endblock %}
+{% if session.get('unlocked') %}
+  </main></div>
 </div>
+{% else %}
+</main></div>
+{% endif %}
+<div class="vd-toast" id="vdToast" role="status" aria-live="polite"></div>
 <script>
+function vdToast(text){var t=document.getElementById('vdToast');t.textContent=text;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove('show')},2200)}
 function copyFrom(id, btn){var el=document.getElementById(id);var t=el.value!==undefined?el.value:el.textContent;
- var done=function(){var o=btn.innerHTML;btn.innerHTML='Copied';setTimeout(function(){btn.innerHTML=o},1500)};
+ var done=function(){var o=btn.innerHTML;btn.innerHTML='<i class="fas fa-check me-1"></i>Copied';vdToast('Copied - now paste it where you need it');setTimeout(function(){btn.innerHTML=o},1800)};
  if(navigator.clipboard){navigator.clipboard.writeText(t).then(done)}else{el.select();document.execCommand('copy');done()}}
+(function(){var b=document.getElementById('vdMenu'),s=document.getElementById('vdScrim');if(!b)return;
+ function set(o){document.body.classList.toggle('vd-nav-open',o);b.setAttribute('aria-expanded',o?'true':'false')}
+ b.addEventListener('click',function(){set(!document.body.classList.contains('vd-nav-open'))});s.addEventListener('click',function(){set(false)});
+ document.addEventListener('keydown',function(e){if(e.key==='Escape')set(false)})})();
 </script>
 </body></html>

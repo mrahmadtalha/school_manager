@@ -1,24 +1,51 @@
-{% extends "base.html" %}{% block title %}Key{% endblock %}
+{% extends "base.html" %}{% block title %}Key for {{ school.name }}{% endblock %}
 {% block content %}
-<a href="{{ url_for('school_detail', school_id=school.id) }}" class="small">&larr; {{ school.name }}</a>
-<h1 class="h3 my-3">Key for {{ school.name }}</h1>
-<div class="card border-0 shadow-sm mb-3"><div class="card-body small">
-<div class="row"><div class="col-md-3"><b>License</b><br><code>{{ row.license_id }}</code> rev {{ row.rev }}</div>
-<div class="col-md-3"><b>Valid</b><br>{{ row.issued|nicedate }} → {{ row.expires|nicedate }} (+{{ row.grace_days }} d grace)</div>
-<div class="col-md-3"><b>Machine</b><br><code>{{ row.machine_code }}</code></div>
-<div class="col-md-3"><b>WhatsApp</b><br>{{ row.wa_daily if row.wa_daily is not none else '∞' }}/day · {{ row.wa_monthly if row.wa_monthly is not none else '∞' }}/month</div></div>
-<div class="mt-2"><b>Features:</b> {{ (row.features|fromjson)|join(', ') or 'none' }}</div>
-{% if row.notice %}<div class="mt-1"><b>Notice:</b> {{ row.notice }}</div>{% endif %}
-<div class="mt-1"><b>Roles:</b> {{ (row.roles|fromjson)|join(', ') if row.roles else 'all roles (legacy key)' }}</div></div></div>
+<a class="vd-back" href="{{ url_for('school_detail', school_id=school.id) }}"><i class="fas fa-arrow-left"></i>{{ school.name }}</a>
+<div class="vd-head"><div><h1>Key for {{ school.name }}</h1><p>{% if row.key_text %}Your key is ready. Send it to the school in three easy steps.{% else %}This key was imported from your old records.{% endif %}</p></div></div>
+
+<div class="vd-tiles">
+  <div class="vd-tile"><span class="vd-ico g"><i class="fas fa-calendar-check"></i></span><div><div class="vd-val">{{ row.expires|nicedate }}</div><div class="vd-lab">key ends · then {{ row.grace_days }} extra day{{ '' if row.grace_days == 1 }}{{ 's' if row.grace_days != 1 }}</div></div></div>
+  <div class="vd-tile"><span class="vd-ico v"><i class="fas fa-layer-group"></i></span><div><div class="vd-val">{{ row.plan|niceplan if row.plan else 'Custom' }}</div><div class="vd-lab">{{ (row.features|fromjson)|length }} feature{{ '' if (row.features|fromjson)|length == 1 else 's' }}</div></div></div>
+  <div class="vd-tile"><span class="vd-ico b"><i class="fas fa-laptop"></i></span><div><div class="vd-val"><span class="vd-code">{{ row.machine_code }}</span></div><div class="vd-lab">works on this computer only</div></div></div>
+  <div class="vd-tile"><span class="vd-ico o"><i class="fab fa-whatsapp"></i></span><div><div class="vd-val">{{ row.wa_daily if row.wa_daily is not none else 'No limit' }} / {{ row.wa_monthly if row.wa_monthly is not none else 'No limit' }}</div><div class="vd-lab">WhatsApp per day / month</div></div></div>
+</div>
+
 {% if row.key_text %}
-<div class="card border-0 shadow-sm"><div class="card-body">
-<label class="form-label fw-bold">License key</label>
-<textarea id="keyText" class="form-control font-monospace code-box" rows="5" readonly>{{ row.key_text }}</textarea>
-<div class="mt-2 d-flex gap-2"><button class="btn btn-dark" onclick="copyFrom('keyText',this)"><i class="fas fa-copy me-1"></i>Copy key</button>
-<a class="btn btn-outline-dark" href="{{ url_for('key_download', row_id=row.id) }}"><i class="fas fa-download me-1"></i>Download .key file</a></div>
-<label class="form-label fw-bold mt-4">Ready-to-send message</label>
-<textarea id="msg" class="form-control code-box" rows="8" readonly>{{ message }}</textarea>
-<button class="btn btn-outline-secondary mt-2" onclick="copyFrom('msg',this)"><i class="fas fa-copy me-1"></i>Copy message</button>
-</div></div>
-{% else %}<div class="alert alert-secondary">This entry was imported from the old ledger; the original key text was never stored. Issue a new key to get a copy.</div>{% endif %}
+<div class="vd-card">
+  <div class="vd-step first"><span class="vd-n">1</span>Copy the message <small>it already contains the key and the instructions</small></div>
+  <label class="form-label" for="msg">Ready-to-send message</label>
+  <textarea id="msg" class="form-control vd-box" rows="8" readonly>{{ message }}</textarea>
+  <button type="button" class="btn btn-primary btn-xl mt-3" onclick="copyFrom('msg',this)"><i class="fas fa-copy me-2"></i>Copy message</button>
+
+  <div class="vd-step"><span class="vd-n">2</span>Paste it into WhatsApp or email and send</div>
+  <p class="text-muted mb-0">Open the chat with the school’s contact{% if school.phone %} (<b>{{ school.phone }}</b>){% endif %}, paste, and press send.</p>
+
+  <div class="vd-step"><span class="vd-n">3</span>The school activates it</div>
+  <p class="text-muted mb-0">In School Manager they open <b>License</b>, paste the key and press <b>Activate</b>. No internet is needed on their side.</p>
+</div>
+
+<details class="vd-more">
+  <summary><i class="fas fa-key text-muted"></i><span>Other ways to send <small>· only the key, or a .key file</small></span></summary>
+  <div class="vd-more-body">
+    <label class="form-label mt-3" for="keyText">License key (without the message)</label>
+    <textarea id="keyText" class="form-control vd-box" rows="4" readonly>{{ row.key_text }}</textarea>
+    <div class="mt-2 d-flex flex-wrap gap-2"><button type="button" class="btn btn-outline-secondary" onclick="copyFrom('keyText',this)"><i class="fas fa-copy me-2"></i>Copy key only</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('key_download', row_id=row.id) }}"><i class="fas fa-download me-2"></i>Download .key file</a></div>
+  </div>
+</details>
+{% else %}
+<div class="vd-note warn">This entry was imported from the old ledger; the original key text was never stored. Issue a new key to get a copy.</div>
+{% endif %}
+
+<details class="vd-more">
+  <summary><i class="fas fa-circle-info text-muted"></i><span>What this key contains <small>· for your records</small></span></summary>
+  <div class="vd-more-body"><dl class="vd-kv mt-3">
+    <dt>License ID</dt><dd><span class="vd-code">{{ row.license_id }}</span> · revision {{ row.rev }}</dd>
+    <dt>Made on</dt><dd>{{ row.issued|nicedate }}</dd>
+    <dt>Features</dt><dd>{% set fl = row.features|fromjson %}{% if fl %}{% for k in fl %}{{ feature_labels.get(k, k) }}{{ ', ' if not loop.last }}{% endfor %}{% else %}none{% endif %}</dd>
+    <dt>User roles</dt><dd>{% if row.roles %}{% for k in row.roles|fromjson %}{{ role_labels.get(k, k) }}{{ ', ' if not loop.last }}{% endfor %}{% else %}all roles (older key){% endif %}</dd>
+    {% if row.notice %}<dt>Message to school</dt><dd>{{ row.notice }}</dd>{% endif %}
+  </dl></div>
+</details>
+<div class="mt-4"><a class="btn btn-outline-secondary" href="{{ url_for('school_detail', school_id=school.id) }}"><i class="fas fa-check me-2"></i>Done — back to {{ school.name }}</a></div>
 {% endblock %}

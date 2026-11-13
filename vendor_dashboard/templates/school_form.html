@@ -1,16 +1,57 @@
-{% extends "base.html" %}{% block title %}Add school{% endblock %}
+{% extends "base.html" %}{% block title %}Add a school{% endblock %}
 {% block content %}
-<h1 class="h3 mb-3">Add school</h1>
-<form method="post" class="card border-0 shadow-sm"><div class="card-body row g-3">
+<a class="vd-back" href="{{ url_for('schools') }}"><i class="fas fa-arrow-left"></i>All schools</a>
+<div class="vd-head"><div><h1>Add a school</h1><p>Only the name is required. You can fill in the rest later.</p></div></div>
+
+<form method="post">
 <input type="hidden" name="_csrf" value="{{ csrf_token }}">
-<div class="col-md-6"><label class="form-label">School name *</label><input class="form-control" name="name" value="{{ school.get('name','') }}" required></div>
-<div class="col-md-6"><label class="form-label">Contact person</label><input class="form-control" name="contact_name" value="{{ school.get('contact_name','') }}"></div>
-<div class="col-md-4"><label class="form-label">Phone / WhatsApp</label><input class="form-control" name="phone" value="{{ school.get('phone','') }}"></div>
-<div class="col-md-4"><label class="form-label">Email</label><input class="form-control" name="email" value="{{ school.get('email','') }}"></div>
-<div class="col-md-4"><label class="form-label">City</label><input class="form-control" name="city" value="{{ school.get('city','') }}"></div>
-<div class="col-md-6"><label class="form-label">Machine code (from the school's License page)</label><input class="form-control font-monospace" name="machine_code" value="{{ school.get('machine_code','') }}" placeholder="7F3A-91BC-0D42-E8A5"></div>
-<div class="col-md-6"><label class="form-label">Billing</label><select class="form-select" name="billing"><option value="yearly">Yearly</option><option value="monthly" {{ 'selected' if school.get('billing')=='monthly' }}>Monthly</option></select></div>
-<div class="col-12"><label class="form-label">Notes</label><textarea class="form-control" name="notes" rows="2">{{ school.get('notes','') }}</textarea></div>
-<div class="col-12"><button class="btn btn-dark">Save school</button> <a class="btn btn-link" href="{{ url_for('schools') }}">Cancel</a></div>
-</div></form>
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="vd-card">
+      <h2><span class="vd-ico b"><i class="fas fa-school"></i></span>The school</h2>
+      <p class="vd-card-sub">How should we list this school?</p>
+      <div class="row g-3">
+        <div class="col-md-7"><label class="form-label" for="name">School name <span class="text-danger" aria-hidden="true">*</span></label>
+          <input class="form-control" id="name" name="name" value="{{ school.get('name','') }}" required autofocus placeholder="e.g. Al-Noor Public School"></div>
+        <div class="col-md-5"><label class="form-label" for="city">City</label>
+          <input class="form-control" id="city" name="city" value="{{ school.get('city','') }}" placeholder="e.g. Sialkot"></div>
+      </div>
+    </div>
+
+    <div class="vd-card">
+      <h2><span class="vd-ico g"><i class="fas fa-address-book"></i></span>Who do we talk to?</h2>
+      <p class="vd-card-sub">Used for reminders and to call back when someone asks for a password reset.</p>
+      <div class="row g-3">
+        <div class="col-md-6"><label class="form-label" for="contact_name">Contact person</label><input class="form-control" id="contact_name" name="contact_name" value="{{ school.get('contact_name','') }}" placeholder="e.g. Principal Ahmed"></div>
+        <div class="col-md-6"><label class="form-label" for="phone">Phone / WhatsApp</label><input class="form-control" id="phone" name="phone" inputmode="tel" value="{{ school.get('phone','') }}" placeholder="03xx xxxxxxx"></div>
+        <div class="col-md-12"><label class="form-label" for="email">Email <span class="text-muted fw-normal">(optional)</span></label><input class="form-control" id="email" name="email" type="email" value="{{ school.get('email','') }}"></div>
+      </div>
+    </div>
+
+    <div class="vd-card">
+      <h2><span class="vd-ico o"><i class="fas fa-credit-card"></i></span>Payment and computer</h2>
+      <p class="vd-card-sub">Helps us suggest the right renewal length and prepare the first key.</p>
+      <div class="form-label">How does this school usually pay?</div>
+      <div class="vd-choices mb-3" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+        <label class="vd-choice"><input type="radio" name="billing" value="yearly" {{ 'checked' if school.get('billing') != 'monthly' }}><span class="vd-choice-body"><i class="fas fa-calendar"></i><div><b>Once a year</b><span>Renewals are for 1 year</span></div></span></label>
+        <label class="vd-choice"><input type="radio" name="billing" value="monthly" {{ 'checked' if school.get('billing') == 'monthly' }}><span class="vd-choice-body"><i class="fas fa-calendar-days"></i><div><b>Every month</b><span>Renewals are for 1 month</span></div></span></label>
+      </div>
+      <label class="form-label" for="machine_code">The school’s computer code <span class="text-muted fw-normal">(you can add it later)</span></label>
+      <input class="form-control font-monospace" id="machine_code" name="machine_code" value="{{ school.get('machine_code','') }}" placeholder="7F3A-91BC-0D42-E8A5" autocomplete="off">
+      <div class="form-text">Ask the school to open <b>License</b> in School Manager and send you <b>“This computer’s code”</b>. It has 16 letters and numbers.</div>
+    </div>
+
+    <div class="vd-card">
+      <label class="form-label" for="notes">Private notes <span class="text-muted fw-normal">(only you see this)</span></label>
+      <textarea class="form-control" id="notes" name="notes" rows="2" placeholder="Anything worth remembering about this school">{{ school.get('notes','') }}</textarea>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <button class="btn btn-primary btn-xl"><i class="fas fa-check me-2"></i>Save school</button>
+      <a class="btn btn-link" href="{{ url_for('schools') }}">Cancel</a>
+    </div>
+  </div>
+  <div class="col-lg-4"><div class="vd-note"><b>What happens next?</b><ol class="ps-3 mb-0 mt-2 small"><li>You save the school.</li><li>On its page, choose how long the key should last and what features it gets.</li><li>Copy the ready-made message and send it on WhatsApp.</li></ol></div></div>
+</div>
+</form>
 {% endblock %}

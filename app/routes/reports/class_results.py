@@ -9,6 +9,7 @@ from app.database import db
 from app.models import (
     ClassModel,
     StudentModel,
+    SubjectModel,
     TestModel,
     StudentMarkModel,
     SchoolSettings,
@@ -16,6 +17,7 @@ from app.models import (
 )
 from app.routes import main
 from app.services.marks import ABSENT_LABEL, mark_is_absent
+from app.services.pdf_logo import logo_flowable, school_logo_path
 
 from app.models.settings import get_grading_scale
 from app.routes.reports.core import (
@@ -48,6 +50,7 @@ def class_results_matrix():
 
     test_types, class_tests, matrix_data, marks_map = [], [], [], {}
     summary = {}
+    subjects = []
     if selected_class_id:
         test_types, class_tests, matrix_data, marks_map = _class_results_evaluation(
             selected_class_id, selected_type)
@@ -56,6 +59,10 @@ def class_results_matrix():
             row['remarks'] = remarks_map.get(row['student'].id, '')
         if matrix_data:
             summary = _class_results_summary(matrix_data, class_tests)
+        # Subjects for the PDF filter dropdown — only those with at least one
+        # test in this class (filtered by selected_type when active)
+        subjects = SubjectModel.query.filter_by(class_id=selected_class_id).order_by(
+            SubjectModel.name).all()
 
     return render_template('class_results.html',
                            classes=classes,
@@ -68,7 +75,8 @@ def class_results_matrix():
                            test_types=test_types,
                            class_tests=class_tests,
                            matrix_data=matrix_data,
-                           summary=summary)
+                           summary=summary,
+                           subjects=subjects)
 
 
 @main.route('/reports/class-results/remarks', methods=['POST'])
@@ -190,12 +198,13 @@ def _build_class_tabulation_doc(output, class_obj, subject_cols, matrix_data, su
     head_style = ParagraphStyle('CH', parent=styles['Normal'], fontSize=7, leading=8.5,
                                 textColor=colors.white, alignment=1)
 
-    logo_path = os.path.join(current_app.root_path, 'static', 'logo.png')
+    logo_path = school_logo_path(current_app.root_path)
     school_block = [Paragraph('<b>%s</b>' % escape(school_name), title_style)]
     if school_tagline:
         school_block.append(Paragraph(escape(school_tagline), tag_style))
-    if os.path.exists(logo_path):
-        header_table = Table([[Image(logo_path, width=54, height=54), school_block]],
+    logo_img = logo_flowable(logo_path, 54, 54)
+    if logo_img is not None:
+        header_table = Table([[logo_img, school_block]],
                              colWidths=[66, doc.width - 66],
                              style=TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE')]))
         story.append(header_table)

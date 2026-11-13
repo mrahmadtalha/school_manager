@@ -29,4 +29,5 @@ from app.routes import (
     assistant,
     admission_fees,
     qr_attendance,
+    calendar,
 )

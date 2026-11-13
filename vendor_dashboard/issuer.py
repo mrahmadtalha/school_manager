@@ -2,6 +2,7 @@
 and recovery tokens.  No Flask in here, so it is easy to test."""
 
 import calendar
+import json
 import time
 from datetime import date, datetime, timedelta
 
@@ -81,6 +82,24 @@ def license_status(expires_iso, grace_days, today):
     return 'active', 'Active', days_left
 
 
+def status_sentence(code, days_left, grace_days=0):
+    """One plain sentence for a license status - what a non-technical person needs to read."""
+    if code == 'none' or days_left is None:
+        return 'No key has been sent yet'
+    if code in ('active', 'soon'):
+        if days_left == 0:
+            return 'Ends today'
+        if days_left == 1:
+            return 'Ends tomorrow'
+        return f'Ends in {days_left} days'
+    ago = -days_left
+    when = 'yesterday' if ago == 1 else f'{ago} days ago'
+    if code == 'grace':
+        left = max(0, int(grace_days or 0) + days_left)
+        return f'Ended {when} \u2014 still works for {left} more day{"" if left == 1 else "s"}'
+    return f'Ended {when} \u2014 now view-only'
+
+
 def reminder_text(school_name, expires_iso, days_left):
     nice = date.fromisoformat(expires_iso).strftime('%d %b %Y')
     if days_left is not None and days_left < 0:
@@ -103,22 +122,24 @@ def _new_license_id(store, today):
         number += 1
 
 
-def _optional_int(value):
+def _optional_int(value, what=None):
+    """A whole number >= 0, or None for "no limit".  ``what`` names the limit in the error text."""
     value = (value or '').strip() if isinstance(value, str) else value
     if value in (None, ''):
         return None
     try:
         number = int(value)
     except (TypeError, ValueError):
-        raise IssueError('WhatsApp limits must be whole numbers (leave blank for unlimited).')
+        raise IssueError(f'{what} must be a whole number (leave blank for unlimited).' if what
+                         else 'WhatsApp limits must be whole numbers (leave blank for unlimited).')
     if number < 0:
-        raise IssueError('WhatsApp limits cannot be negative.')
+        raise IssueError(f'{what} cannot be negative.' if what else 'WhatsApp limits cannot be negative.')
     return number
 
 
 def issue_key(store, private_key, school_id, *, reason, machine_code, plan, features,
               wa_daily, wa_monthly, period, custom_expires, grace_days, note, today=None,
-              roles=None, notice=None):
+              roles=None, notice=None, max_students=None, max_staff=None):
     """Sign a new key revision for a school and record it.  Returns the row id."""
     today = today or date.today()
     school = store.school(school_id)
@@ -133,6 +154,8 @@ def issue_key(store, private_key, school_id, *, reason, machine_code, plan, feat
     wanted = features_mod.normalize_features(features) or []
     wanted_roles = features_mod.normalize_roles(roles)       # None = every role (legacy)
     wa_daily, wa_monthly = _optional_int(wa_daily), _optional_int(wa_monthly)
+    max_students = _optional_int(max_students, 'The student limit')
+    max_staff = _optional_int(max_staff, 'The staff-login limit')
     try:
         grace = max(0, min(lic.MAX_GRACE_DAYS, int(grace_days if grace_days not in (None, '') else lic.DEFAULT_GRACE_DAYS)))
     except (TypeError, ValueError):
@@ -159,14 +182,103 @@ def issue_key(store, private_key, school_id, *, reason, machine_code, plan, feat
         license_id=license_id, licensee=school['name'], machine_code=machine,
         issued=today, expires=expires, grace_days=grace, rev=rev,
         plan=plan or None, features=wanted, wa_daily=wa_daily, wa_monthly=wa_monthly,
-        roles=wanted_roles, notice=notice)
+        roles=wanted_roles, notice=notice, max_students=max_students, max_staff=max_staff)
     key_text = admin_tool.sign_license(private_key, payload)
 
     return store.add_license(
         school_id=school_id, license_id=license_id, rev=rev, reason=reason, plan=plan or '',
         machine_code=machine, issued=today.isoformat(), expires=expires.isoformat(),
         grace_days=grace, features=wanted, roles=wanted_roles, wa_daily=wa_daily, wa_monthly=wa_monthly,
+        max_students=max_students, max_staff=max_staff,
         key_text=key_text, note=note or '', notice=payload.get('notice') or '')
+
+
+# -- plans: what a school pays for, compared with what its key gives -----------------
+
+#: (field, label) of every number a plan or key can carry, in the order they are shown.
+LIMIT_FIELDS = (('max_students', 'Students'), ('max_staff', 'Staff logins'),
+                ('wa_daily', 'WhatsApp per day'), ('wa_monthly', 'WhatsApp per month'))
+
+
+def limit_text(value):
+    """A limit as plain words: blank/None is 'no limit'."""
+    return 'no limit' if value is None else f'{int(value):,}'
+
+
+def plan_differences(plan, key):
+    """How a school's current key differs from ``plan`` *as the plan is defined now*.
+
+    ``plan`` and ``key`` are mappings with ``features`` (a list) and the numbers in
+    :data:`LIMIT_FIELDS`.  Returns the features the school has beyond the plan (``extras``) or
+    lacks from it (``missing``), the limits that differ, and ``same`` when nothing differs.  The
+    vendor sees this on the school page, so a key edited by hand, or a plan edited later, never
+    goes unnoticed.
+    """
+    labels = features_mod.FEATURE_LABELS
+    order = features_mod.ALL_FEATURES
+    plan_features, key_features = set(plan.get('features') or ()), set(key.get('features') or ())
+    extras = [labels[f] for f in order if f in key_features - plan_features]
+    missing = [labels[f] for f in order if f in plan_features - key_features]
+    limits = [{'label': label, 'plan': limit_text(plan.get(field)), 'key': limit_text(key.get(field))}
+              for field, label in LIMIT_FIELDS if plan.get(field) != key.get(field)]
+    return {'extras': extras, 'missing': missing, 'limits': limits,
+            'same': not (extras or missing or limits)}
+
+
+def plan_price(plan, billing):
+    """The list price of ``plan`` for how the school pays (monthly / yearly), or None if not set."""
+    if not plan:
+        return None
+    return plan.get('price_monthly' if billing == 'monthly' else 'price_yearly')
+
+
+def plan_label(name):
+    """A plan id as a person would write it ('' = 'Custom')."""
+    return (name or 'custom').replace('_', ' ').title()
+
+
+def money_text(value):
+    """A price for people: 25000 -> '25,000' (None -> '')."""
+    if value is None:
+        return ''
+    return f'{value:,.0f}' if float(value).is_integer() else f'{value:,.2f}'
+
+
+def key_as_dict(row):
+    """A license row (sqlite) as the plain mapping :func:`plan_differences` reads."""
+    return {'features': json.loads(row['features'] or '[]'), 'wa_daily': row['wa_daily'],
+            'wa_monthly': row['wa_monthly'], 'max_students': row['max_students'],
+            'max_staff': row['max_staff']}
+
+
+def matrix_rows(rows, today, *, plan='', feature='', has=''):
+    """The 'who has what' table: one entry per active school that already has a key.
+
+    ``rows`` come from ``Store.schools_with_license``.  ``plan`` filters by plan name ('custom' =
+    schools whose key was not made from a plan); ``feature`` with ``has`` = 'yes' / 'no' keeps
+    schools that do / do not have that feature (the upsell list: who is missing Exams?).
+    """
+    out = []
+    for row in rows:
+        if not row['active'] or not row['expires']:
+            continue
+        if plan and (row['plan'] or 'custom') != plan:
+            continue
+        features = set(json.loads(row['features'] or '[]'))
+        if feature in features_mod.ALL_FEATURES and has in ('yes', 'no') and (feature in features) != (has == 'yes'):
+            continue
+        code, label, days_left = license_status(row['expires'], row['grace_days'], today)
+        out.append({'school': row, 'features': features, 'code': code, 'status': label,
+                    'days_left': days_left, 'plan': row['plan'] or '',
+                    'max_students': row['max_students'], 'max_staff': row['max_staff'],
+                    'wa_daily': row['wa_daily'], 'wa_monthly': row['wa_monthly']})
+    return out
+
+
+def feature_totals(entries):
+    """{feature: how many of ``entries`` have it} - the footer of the matrix."""
+    return {key: sum(1 for entry in entries if key in entry['features'])
+            for key in features_mod.ALL_FEATURES}
 
 
 # -- inspection keys -------------------------------------------------------------

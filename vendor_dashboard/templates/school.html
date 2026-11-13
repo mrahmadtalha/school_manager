@@ -1,105 +1,262 @@
 {% extends "base.html" %}{% block title %}{{ school.name }}{% endblock %}
 {% block content %}
-{% set code = status[0] %}
-<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-<div><h1 class="h3 mb-0">{{ school.name }}</h1><div class="text-muted small">{{ school.city or '' }} {{ school.phone or '' }} · billing {{ school.billing }}{% if school.license_id %} · <code>{{ school.license_id }}</code>{% endif %}</div></div>
-<div>{% if latest %}<span class="badge fs-6 bg-{{ {'active':'success','soon':'warning text-dark','grace':'warning text-dark','expired':'danger','none':'secondary'}[code] }}">{{ status[1] }}{% if status[2] is not none %} · {{ status[2] }} d{% endif %}</span>{% endif %}</div></div>
+{% set code = status[0] %}{% set ui = status_ui[code] %}
+{% set feat_on = ((latest.features|fromjson)|length) if latest else 0 %}
+{% set choices = [('new', 'fa-seedling', 'First key', 'The school is new and has no key yet'),
+                  ('renew', 'fa-rotate', 'Renewal', 'Payment received — give more time'),
+                  ('update', 'fa-sliders', 'Change features', 'Switch modules, roles or limits'),
+                  ('move', 'fa-laptop', 'New computer', 'The school changed its PC')] %}
+<a class="vd-back" href="{{ url_for('schools') }}"><i class="fas fa-arrow-left"></i>All schools</a>
+<div class="vd-head">
+  <div><h1>{{ school.name }}</h1>
+    <p>{{ school.city or '' }}{{ ' · ' if school.city and school.phone }}{{ school.phone or '' }}{{ ' · ' if (school.city or school.phone) }}pays {{ 'every month' if school.billing == 'monthly' else 'once a year' }}{% if not school.active %} · <b>not a customer any more</b>{% endif %}</p></div>
+  <div class="vd-tools"><span class="vd-pill lg {{ ui.tone }}"><i class="fas {{ ui.icon }}" aria-hidden="true"></i>{{ ui.label }}</span>
+    <a class="btn btn-primary" href="#send-key"><i class="fas fa-key me-2"></i>Send a key</a>
+    {% if reminder %}<textarea id="rem" class="d-none" readonly>{{ reminder }}</textarea><button type="button" class="btn btn-outline-secondary" onclick="copyFrom('rem',this)"><i class="fas fa-copy me-2"></i>Copy reminder</button>{% endif %}</div>
+</div>
+
+{# one plain sentence about what to do now #}
+{% if code == 'none' %}<div class="vd-note warn"><b>What to do now:</b> this school has no key yet. Send its first key in the <a href="#send-key">“Send a key”</a> box below.</div>
+{% elif code == 'soon' %}<div class="vd-note warn"><b>What to do now:</b> the key {{ when|lower }}. When the payment arrives, choose <b>Renewal</b> below. Not paid yet? Use <b>Copy reminder</b> above.</div>
+{% elif code == 'grace' %}<div class="vd-note warn"><b>What to do now:</b> the key has ended, but the school can still work for a few more days. Renew before then, or the software becomes view-only.</div>
+{% elif code == 'expired' %}<div class="vd-note bad"><b>What to do now:</b> the key has ended and the school can only view its data. Choose <b>Renewal</b> below once they have paid.</div>
+{% else %}<div class="vd-note good"><b>All good.</b> Nothing to do until the key ends on {{ latest.expires|nicedate }}.</div>{% endif %}
+
+{% if matched %}<div class="vd-note good"><b>The {{ current_plan.label }} plan’s settings are filled in below.</b> Check the end date and press <b>Create key</b> to send them to the school.</div>
+{% elif drift and not drift.same %}<div class="vd-note warn"><b>This school’s key is not the same as the {{ current_plan.label }} plan.</b>
+  {% if drift.extras %}It has <b>extra</b>: {{ drift.extras|join(', ') }}. {% endif %}{% if drift.missing %}It is <b>missing</b>: {{ drift.missing|join(', ') }}. {% endif %}{% for l in drift.limits %}{{ l.label }}: key says {{ l.key }}, plan says {{ l.plan }}. {% endfor %}
+  <a class="ms-1" href="{{ url_for('school_detail', school_id=school.id, do='update', match_plan=1) }}#send-key">Use the plan’s settings</a></div>{% endif %}
+
+<div class="vd-tiles">
+  <div class="vd-tile"><span class="vd-ico {{ {'ok':'g','soon':'o','grace':'o','bad':'r','none':'s'}[ui.tone] }}"><i class="fas {{ ui.icon }}" aria-hidden="true"></i></span>
+    <div><div class="vd-val">{{ when }}</div><div class="vd-lab">{% if latest %}key ends {{ latest.expires|nicedate }}{% else %}send the first key below{% endif %}</div></div></div>
+  <div class="vd-tile"><span class="vd-ico v"><i class="fas fa-layer-group" aria-hidden="true"></i></span>
+    <div><div class="vd-val">{{ latest.plan|niceplan if latest and latest.plan else ('Custom' if latest else '—') }}</div><div class="vd-lab">{% if latest %}{{ feat_on }} feature{{ '' if feat_on == 1 else 's' }} on · students {{ latest.max_students|limit }} · staff logins {{ latest.max_staff|limit }}{% else %}no plan yet{% endif %}</div></div></div>
+  <div class="vd-tile"><span class="vd-ico b"><i class="fas fa-laptop" aria-hidden="true"></i></span>
+    <div><div class="vd-val">{% if form.machine_code %}<span class="vd-code">{{ form.machine_code }}</span>{% else %}Not added yet{% endif %}</div><div class="vd-lab">school’s computer code</div></div></div>
+  <div class="vd-tile"><span class="vd-ico g"><i class="fas fa-money-bill-wave" aria-hidden="true"></i></span>
+    <div><div class="vd-val">{% if payments %}{{ payments[0].paid_on|nicedate }}{% else %}None yet{% endif %}</div><div class="vd-lab">{% if payments %}last payment · {{ '%.0f'|format(payments[0].amount or 0) }}{% else %}no payment recorded{% endif %}</div></div></div>
+</div>
 
 <div class="row g-4">
-<div class="col-lg-7">
-<form method="post" action="{{ url_for('school_issue', school_id=school.id) }}" class="card border-0 shadow-sm" id="issueForm">
-<div class="card-body">
-<input type="hidden" name="_csrf" value="{{ csrf_token }}">
-<h2 class="h5 mb-3"><i class="fas fa-key me-2"></i>Issue key</h2>
-<div class="row g-3">
-<div class="col-md-6"><label class="form-label">Reason</label><select class="form-select" name="reason">{% for k, v in reasons.items() %}<option value="{{ k }}" {{ 'selected' if k==form.reason }}>{{ v }}</option>{% endfor %}</select></div>
-<div class="col-md-6"><label class="form-label">Machine code *</label><input class="form-control font-monospace" name="machine_code" value="{{ form.machine_code }}" required placeholder="7F3A-91BC-0D42-E8A5"></div>
-<div class="col-md-4"><label class="form-label">Plan</label><select class="form-select" name="plan" id="planSel"><option value="">Custom</option>{% for p in plans %}<option value="{{ p.name }}" {{ 'selected' if p.name==form.plan }}>{{ p.label }}</option>{% endfor %}</select></div>
-<div class="col-md-4"><label class="form-label">Validity</label><select class="form-select" name="period" id="periodSel">{% for k, v in periods.items() %}<option value="{{ k }}" {{ 'selected' if k==form.period }}>{{ v }}</option>{% endfor %}</select></div>
-<div class="col-md-4"><label class="form-label">Custom expiry</label><input type="date" class="form-control" name="custom_expires"></div>
-<div class="col-md-4"><label class="form-label">WhatsApp / day</label><input class="form-control" name="wa_daily" id="waDaily" type="number" min="0" value="{{ form.wa_daily if form.wa_daily is not none }}" placeholder="blank = unlimited"></div>
-<div class="col-md-4"><label class="form-label">WhatsApp / month</label><input class="form-control" name="wa_monthly" id="waMonthly" type="number" min="0" value="{{ form.wa_monthly if form.wa_monthly is not none }}" placeholder="blank = unlimited"></div>
-<div class="col-md-4"><label class="form-label">Grace days</label><input class="form-control" name="grace_days" type="number" min="0" max="60" value="{{ form.grace_days }}"></div>
-<div class="col-12"><label class="form-label">Features</label>
-{% set ns = namespace(group='') %}
-<div class="row row-cols-1 row-cols-md-2 g-1">
-{% for key, label, desc, group in catalog %}
-<div class="col">{% if group != ns.group %}{% set ns.group = group %}<div class="feat-group text-uppercase text-muted mt-2">{{ group }}</div>{% endif %}
-<div class="form-check form-switch"><input class="form-check-input feat" type="checkbox" name="features" value="{{ key }}" id="f_{{ key }}" {{ 'checked' if key in form.features }}><label class="form-check-label" for="f_{{ key }}" title="{{ desc }}">{{ label }}</label></div></div>
-{% endfor %}</div>
-<div class="mt-2"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('.feat').forEach(function(c){c.checked=true})">All on</button>
-<button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('.feat').forEach(function(c){c.checked=false})">All off</button>
-<span class="small text-muted ms-2">Core pages (students, teachers, classes, fees, settings, backup, license) are always on. The Audit Log is always <b>recorded</b>; the switch only controls whether the school can open it.</span></div></div>
-<div class="col-12"><label class="form-label">User roles the school may use</label>
-<input type="hidden" name="roles_present" value="1">
-<div class="row row-cols-1 row-cols-md-3 g-1">
-{% for key, label, desc in role_catalog %}
-<div class="col"><div class="form-check form-switch"><input class="form-check-input role" type="checkbox" name="roles" value="{{ key }}" id="r_{{ key }}" {{ 'checked' if key in form.roles or key == 'admin' }} {{ 'disabled' if key == 'admin' }}><label class="form-check-label" for="r_{{ key }}" title="{{ desc }}">{{ label }}</label></div></div>
-{% endfor %}</div>
-<div class="small text-muted mt-1">A switched-off role cannot be created and existing users of that role are signed out with a message. Administrator is always on.</div></div>
-<div class="col-12"><label class="form-label">Notice for the school <span class="text-muted small">(optional, shown to their administrator, max 300 characters, e.g. "Renewal due on 25 Oct")</span></label><input class="form-control" name="notice" maxlength="300" placeholder="Leave empty for no notice"></div>
-<div class="col-12"><label class="form-label">Note (private)</label><input class="form-control" name="note"></div>
-<div class="col-12"><button class="btn btn-dark"><i class="fas fa-file-signature me-1"></i>Sign & issue key</button></div>
-</div></div></form>
+<div class="col-xl-8">
 
-<form method="post" action="{{ url_for('school_inspection', school_id=school.id) }}" class="card border-0 shadow-sm mt-4">
-<div class="card-body">
-<input type="hidden" name="_csrf" value="{{ csrf_token }}">
-<h2 class="h5 mb-1"><i class="fas fa-magnifying-glass me-2"></i>Inspection key</h2>
-<p class="small text-muted mb-3">A short, <b>view-only</b> key that sits on top of the school's real license. While it is valid every module and the audit log can be opened, nothing can be changed, and the school sees an "Inspection mode" banner. It ends by itself.</p>
-<div class="row g-2 align-items-end">
-<div class="col-md-3"><label class="form-label">Valid for</label><select class="form-select" name="hours">{% for h in inspection_hours %}<option value="{{ h }}" {{ 'selected' if h == 24 }}>{{ h }} hours</option>{% endfor %}</select></div>
-<div class="col-md-4"><label class="form-label">Machine code</label><input class="form-control font-monospace" name="machine_code" value="{{ form.machine_code }}" placeholder="7F3A-91BC-0D42-E8A5"></div>
-<div class="col-md-3"><label class="form-label">Note (private)</label><input class="form-control" name="note"></div>
-<div class="col-md-2 d-grid"><button class="btn btn-outline-dark">Issue</button></div>
+<form method="post" action="{{ url_for('school_issue', school_id=school.id) }}" class="vd-card" id="send-key">
+  <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+  <h2><span class="vd-ico b"><i class="fas fa-paper-plane"></i></span>Send a key</h2>
+  <p class="vd-card-sub">Answer a few short questions. We sign the key and give you a message that is ready to send.</p>
+
+  <div class="vd-step first"><span class="vd-n">1</span>What is happening?</div>
+  <div class="vd-choices" role="radiogroup" aria-label="What is happening?">
+  {% for value, icon, title, text in choices %}
+    {% set off = (value == 'new' and latest) or (value != 'new' and not latest) %}
+    <label class="vd-choice"><input type="radio" name="reason" value="{{ value }}" {{ 'checked' if value == form.reason }} {{ 'disabled' if off }}>
+      <span class="vd-choice-body"><i class="fas {{ icon }}" aria-hidden="true"></i><div><b>{{ title }}</b><span>{{ text }}</span></div></span></label>
+  {% endfor %}
+  </div>
+
+  <div class="vd-step"><span class="vd-n">2</span>How long should it last?</div>
+  <div class="row g-3">
+    <div class="col-md-6"><label class="form-label" for="periodSel">Key lasts for</label>
+      <select class="form-select" name="period" id="periodSel">
+      {% for k, label in [('keep', 'Same end date as now'), ('1m', '1 month'), ('3m', '3 months'), ('6m', '6 months'), ('1y', '1 year')] %}
+        {% if period_preview[k] %}<option value="{{ k }}" {{ 'selected' if k == form.period }}>{{ label }} — ends {{ period_preview[k]|nicedate }}</option>{% endif %}
+      {% endfor %}
+      </select>
+      {% if latest %}<div class="form-text">Renewals start the day after the current end date, so paying early never wastes days.</div>{% endif %}</div>
+    <div class="col-md-6"><label class="form-label" for="custom_expires">Or choose an exact end date <span class="text-muted fw-normal">(optional)</span></label>
+      <input type="date" class="form-control" id="custom_expires" name="custom_expires">
+      <div class="form-text">If you pick a date here, it is used instead of the choice on the left.</div></div>
+  </div>
+
+  <div class="vd-step"><span class="vd-n">3</span>Which computer is it for?</div>
+  <label class="form-label" for="machine_code">School’s computer code</label>
+  <input class="form-control font-monospace" id="machine_code" name="machine_code" value="{{ form.machine_code }}" required placeholder="7F3A-91BC-0D42-E8A5" autocomplete="off">
+  <div class="form-text" id="machineHint">{% if form.machine_code %}This is the code we already have. Change it only if the school moved to a new computer.{% else %}Ask the school to open <b>License</b> and send you <b>“This computer’s code”</b> (16 letters and numbers).{% endif %}</div>
+
+  <div class="vd-step"><span class="vd-n">4</span>What does the school get?</div>
+  <div class="row g-3 align-items-end">
+    <div class="col-md-6"><label class="form-label" for="planSel">Start from a plan</label>
+      <select class="form-select" name="plan" id="planSel"><option value="">Custom (choose myself)</option>{% for p in plans %}<option value="{{ p.name }}" {{ 'selected' if p.name == form.plan }}>{{ p.label }}</option>{% endfor %}</select></div>
+    <div class="col-md-6"><div class="vd-help" id="featSummary" aria-live="polite"></div></div>
+  </div>
+
+  <details class="vd-more" id="featBox" {{ 'open' if form.reason == 'update' }}>
+    <summary><i class="fas fa-sliders text-muted"></i><span>Choose features, roles and WhatsApp limits <small>· <span class="featCount"></span> features on</small></span></summary>
+    <div class="vd-more-body">
+      <div class="d-flex flex-wrap gap-2 align-items-center mt-3">
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="allOn">Switch all on</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="allOff">Switch all off</button>
+      </div>
+      {% set ns = namespace(group='') %}
+      <div class="row row-cols-1 row-cols-md-2 gx-4">
+      {% for key, label, desc, group in catalog %}
+        <div class="col">{% if group != ns.group %}{% set ns.group = group %}<div class="vd-grp">{{ group }}</div>{% endif %}
+          <div class="vd-switch"><input class="form-check-input feat" type="checkbox" role="switch" name="features" value="{{ key }}" id="f_{{ key }}" {{ 'checked' if key in form.features }}>
+            <label for="f_{{ key }}"><b>{{ label }}</b><small>{{ desc }}</small></label></div></div>
+      {% endfor %}
+      </div>
+      <div class="vd-help mt-3">Core pages (students, teachers, classes, fees, settings, backup, license) are always on. The Audit Log is always <b>recorded</b>; the switch only controls whether the school can open it.</div>
+
+      <div class="vd-grp mt-4">Who can have a login</div>
+      <input type="hidden" name="roles_present" value="1">
+      <div class="row row-cols-1 row-cols-md-2 gx-4">
+      {% for key, label, desc in role_catalog %}
+        <div class="col"><div class="vd-switch"><input class="form-check-input role" type="checkbox" role="switch" name="roles" value="{{ key }}" id="r_{{ key }}" {{ 'checked' if key in form.roles or key == 'admin' }} {{ 'disabled' if key == 'admin' }}>
+          <label for="r_{{ key }}"><b>{{ label }}</b><small>{{ desc }}</small></label></div></div>
+      {% endfor %}
+      </div>
+      <div class="vd-help mt-1">A switched-off role cannot be created and existing users of that role are signed out with a message. Administrator is always on.</div>
+
+      <div class="vd-grp mt-4">How big the school may be</div>
+      <div class="row g-3">
+        <div class="col-sm-6"><label class="form-label" for="maxStudents">Active students</label><input class="form-control" name="max_students" id="maxStudents" type="number" min="0" value="{{ form.max_students if form.max_students is not none }}" placeholder="Empty = no limit"></div>
+        <div class="col-sm-6"><label class="form-label" for="maxStaff">Staff logins</label><input class="form-control" name="max_staff" id="maxStaff" type="number" min="0" value="{{ form.max_staff if form.max_staff is not none }}" placeholder="Empty = no limit"></div>
+      </div>
+      <div class="vd-help mt-1">Staff logins are teacher, accountant, principal/owner and guard accounts (administrators and parents are not counted). A school that is already over a limit keeps everything it has, but cannot add more students or logins until you send a bigger key.</div>
+
+      <div class="vd-grp mt-4">WhatsApp limits</div>
+      <div class="row g-3">
+        <div class="col-sm-6"><label class="form-label" for="waDaily">Messages per day</label><input class="form-control" name="wa_daily" id="waDaily" type="number" min="0" value="{{ form.wa_daily if form.wa_daily is not none }}" placeholder="Empty = no limit"></div>
+        <div class="col-sm-6"><label class="form-label" for="waMonthly">Messages per month</label><input class="form-control" name="wa_monthly" id="waMonthly" type="number" min="0" value="{{ form.wa_monthly if form.wa_monthly is not none }}" placeholder="Empty = no limit"></div>
+      </div>
+      <div class="vd-help mt-1">Leave empty for no limit, or type 0 to switch WhatsApp messages off. Extra messages wait in a queue and go out the next day or month.</div>
+    </div>
+  </details>
+
+  <details class="vd-more">
+    <summary><i class="fas fa-ellipsis text-muted"></i><span>More options <small>· extra days, a message for the school, a private note</small></span></summary>
+    <div class="vd-more-body"><div class="row g-3 mt-1">
+      <div class="col-md-4"><label class="form-label" for="grace_days">Extra days after it ends</label><input class="form-control" id="grace_days" name="grace_days" type="number" min="0" max="60" value="{{ form.grace_days }}">
+        <div class="form-text">The school keeps working normally for this many days, then becomes view-only.</div></div>
+      <div class="col-md-8"><label class="form-label" for="notice">Message shown to the school</label><input class="form-control" id="notice" name="notice" maxlength="300" placeholder="e.g. Renewal due on 25 Oct">
+        <div class="form-text">Their administrator sees it on every page (max 300 characters). Send the next key with this empty to remove it.</div></div>
+      <div class="col-12"><label class="form-label" for="note">Private note <span class="text-muted fw-normal">(only you see this)</span></label><input class="form-control" id="note" name="note"></div>
+    </div></div>
+  </details>
+
+  <div class="vd-submit">
+    <div class="vd-sum" id="sumLine" aria-live="polite"></div>
+    <button class="btn btn-primary btn-xl" id="issueBtn"><i class="fas fa-file-signature me-2"></i>Create key</button>
+  </div>
+</form>
+
+<div class="vd-card">
+  <h2><span class="vd-ico v"><i class="fas fa-magnifying-glass"></i></span>Inspection key <span class="small fw-normal text-muted">· view-only</span></h2>
+  <p class="vd-card-sub">Lets someone look at everything in the school’s software, including the audit log, but change nothing. The school sees an “Inspection mode” banner and it switches off by itself.</p>
+  <form method="post" action="{{ url_for('school_inspection', school_id=school.id) }}" class="row g-3 align-items-end">
+    <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+    <div class="col-sm-4"><label class="form-label" for="hours">Open for</label><select class="form-select" name="hours" id="hours">{% for h in inspection_hours %}<option value="{{ h }}" {{ 'selected' if h == 24 }}>{{ h }} hours{{ ' (1 day)' if h == 24 }}{{ ' (2 days)' if h == 48 }}{{ ' (3 days)' if h == 72 }}</option>{% endfor %}</select></div>
+    {% if form.machine_code %}<input type="hidden" name="machine_code" value="{{ form.machine_code }}">
+    {% else %}<div class="col-sm-5"><label class="form-label" for="insMachine">School’s computer code</label><input class="form-control font-monospace" id="insMachine" name="machine_code" placeholder="7F3A-91BC-0D42-E8A5"></div>{% endif %}
+    <div class="col-sm-4"><label class="form-label" for="insNote">Private note</label><input class="form-control" id="insNote" name="note"></div>
+    <div class="col-sm-auto"><button class="btn btn-outline-secondary"><i class="fas fa-magnifying-glass me-2"></i>Create inspection key</button></div>
+  </form>
+  {% if inspections %}<div class="vd-tablewrap mt-3"><table class="vd-mini"><thead><tr><th>Created</th><th>Works until</th><th></th></tr></thead><tbody>
+  {% for i in inspections %}<tr><td>{{ i.issued_at[:16].replace('T', ' ') }}</td><td>{{ i.expires_at[:16].replace('T', ' ') }}</td><td class="text-end"><a href="{{ url_for('inspection_view', row_id=i.id) }}">Open</a></td></tr>{% endfor %}</tbody></table></div>{% endif %}
 </div>
-{% if inspections %}<table class="table table-sm align-middle mt-3 mb-0"><thead><tr><th>Issued</th><th>Until</th><th></th></tr></thead><tbody>
-{% for i in inspections %}<tr><td>{{ i.issued_at[:16].replace('T', ' ') }}</td><td>{{ i.expires_at[:16].replace('T', ' ') }}</td><td class="text-end"><a href="{{ url_for('inspection_view', row_id=i.id) }}">open</a></td></tr>{% endfor %}</tbody></table>{% endif %}
-</div></form>
 
-<div class="card border-0 shadow-sm mt-4"><div class="card-body"><h2 class="h5">Key history</h2>
-<table class="table table-sm align-middle mb-0"><thead><tr><th>Rev</th><th>Reason</th><th>Plan</th><th>Valid</th><th></th></tr></thead><tbody>
-{% for l in licenses %}<tr><td>{{ l.rev }}</td><td>{{ reasons.get(l.reason, l.reason) }}</td><td>{{ l.plan|niceplan }}</td><td>{{ l.issued|nicedate }} → {{ l.expires|nicedate }}</td>
-<td class="text-end">{% if l.key_text %}<a href="{{ url_for('key_view', row_id=l.id) }}">open</a>{% else %}<span class="text-muted small">imported</span>{% endif %}</td></tr>
-{% else %}<tr><td colspan="5" class="text-muted">No keys issued yet.</td></tr>{% endfor %}</tbody></table></div></div>
+<div class="vd-card">
+  <h2><span class="vd-ico s"><i class="fas fa-clock-rotate-left"></i></span>Keys sent before</h2>
+  <p class="vd-card-sub">Every key you have made for this school. Open one to copy it again.</p>
+  {% if licenses %}<div class="vd-tablewrap"><table class="vd-mini"><thead><tr><th>Made on</th><th>Why</th><th>Plan</th><th>Valid until</th><th></th></tr></thead><tbody>
+  {% for l in licenses %}<tr><td>{{ l.issued|nicedate }}</td><td>{{ reasons.get(l.reason, l.reason) }}</td><td>{{ l.plan|niceplan }}</td><td>{{ l.expires|nicedate }}</td>
+    <td class="text-end">{% if l.key_text %}<a href="{{ url_for('key_view', row_id=l.id) }}">Open</a>{% else %}<span class="text-muted small">imported</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<div class="vd-empty py-3"><i class="fas fa-key"></i>No key has been sent to this school yet.</div>{% endif %}
 </div>
 
-<div class="col-lg-5">
-<div class="card border-0 shadow-sm mb-4"><div class="card-body">
-<h2 class="h5">Details</h2>
-<form method="post" action="{{ url_for('school_edit', school_id=school.id) }}" class="row g-2">
-<input type="hidden" name="_csrf" value="{{ csrf_token }}">
-<div class="col-12"><input class="form-control" name="name" value="{{ school.name }}" required></div>
-<div class="col-6"><input class="form-control" name="contact_name" value="{{ school.contact_name or '' }}" placeholder="Contact"></div>
-<div class="col-6"><input class="form-control" name="phone" value="{{ school.phone or '' }}" placeholder="Phone"></div>
-<div class="col-6"><input class="form-control" name="email" value="{{ school.email or '' }}" placeholder="Email"></div>
-<div class="col-6"><input class="form-control" name="city" value="{{ school.city or '' }}" placeholder="City"></div>
-<div class="col-6"><select class="form-select" name="billing"><option value="yearly">Yearly</option><option value="monthly" {{ 'selected' if school.billing=='monthly' }}>Monthly</option></select></div>
-<div class="col-6 d-flex align-items-center"><div class="form-check"><input class="form-check-input" type="checkbox" name="active" id="act" {{ 'checked' if school.active }}><label class="form-check-label" for="act">Active customer</label></div></div>
-<div class="col-12"><textarea class="form-control" name="notes" rows="2" placeholder="Notes">{{ school.notes or '' }}</textarea></div>
-<div class="col-12"><button class="btn btn-outline-dark btn-sm">Save</button></div></form>
-{% if reminder %}<hr><textarea id="rem" class="d-none">{{ reminder }}</textarea><button class="btn btn-sm btn-outline-secondary" onclick="copyFrom('rem',this)"><i class="fas fa-copy me-1"></i>Copy renewal reminder</button>{% endif %}
-</div></div>
+</div>
+<div class="col-xl-4">
 
-<div class="card border-0 shadow-sm mb-4"><div class="card-body"><h2 class="h5">Payments</h2>
-<form method="post" action="{{ url_for('school_payment', school_id=school.id) }}" class="row g-2 mb-3">
-<input type="hidden" name="_csrf" value="{{ csrf_token }}">
-<div class="col-4"><input type="date" class="form-control" name="paid_on" value="{{ today.isoformat() }}" required></div>
-<div class="col-3"><input type="number" step="0.01" class="form-control" name="amount" placeholder="Amount" required></div>
-<div class="col-5"><input class="form-control" name="period_note" placeholder="e.g. Oct 2026 / year"></div>
-<div class="col-12"><button class="btn btn-outline-dark btn-sm">Record payment</button></div></form>
-<table class="table table-sm mb-0">{% for p in payments %}<tr><td>{{ p.paid_on|nicedate }}</td><td>{{ '%.0f'|format(p.amount or 0) }}</td><td class="text-muted">{{ p.period_note or '' }}</td></tr>{% else %}<tr><td class="text-muted">No payments recorded.</td></tr>{% endfor %}</table>
-</div></div>
+<div class="vd-card">
+  <h2><span class="vd-ico b"><i class="fas fa-address-card"></i></span>School details</h2>
+  <dl class="vd-kv mt-3">
+    <dt>Contact</dt><dd>{{ school.contact_name or '—' }}</dd>
+    <dt>Phone</dt><dd>{{ school.phone or '—' }}</dd>
+    <dt>Email</dt><dd>{{ school.email or '—' }}</dd>
+    <dt>City</dt><dd>{{ school.city or '—' }}</dd>
+    {% if school.license_id %}<dt>License ID</dt><dd><span class="vd-code">{{ school.license_id }}</span></dd>{% endif %}
+    {% if school.notes %}<dt>Notes</dt><dd>{{ school.notes }}</dd>{% endif %}
+  </dl>
+  <details class="vd-more">
+    <summary><i class="fas fa-pen text-muted"></i>Edit details</summary>
+    <div class="vd-more-body"><form method="post" action="{{ url_for('school_edit', school_id=school.id) }}" class="row g-3 mt-0">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <div class="col-12"><label class="form-label" for="e_name">School name</label><input class="form-control" id="e_name" name="name" value="{{ school.name }}" required></div>
+      <div class="col-sm-6"><label class="form-label" for="e_contact">Contact person</label><input class="form-control" id="e_contact" name="contact_name" value="{{ school.contact_name or '' }}"></div>
+      <div class="col-sm-6"><label class="form-label" for="e_phone">Phone / WhatsApp</label><input class="form-control" id="e_phone" name="phone" value="{{ school.phone or '' }}"></div>
+      <div class="col-sm-6"><label class="form-label" for="e_email">Email</label><input class="form-control" id="e_email" name="email" value="{{ school.email or '' }}"></div>
+      <div class="col-sm-6"><label class="form-label" for="e_city">City</label><input class="form-control" id="e_city" name="city" value="{{ school.city or '' }}"></div>
+      <div class="col-12"><label class="form-label" for="e_billing">How do they pay?</label><select class="form-select" id="e_billing" name="billing"><option value="yearly">Once a year</option><option value="monthly" {{ 'selected' if school.billing == 'monthly' }}>Every month</option></select></div>
+      <div class="col-12"><label class="form-label" for="e_notes">Private notes</label><textarea class="form-control" id="e_notes" name="notes" rows="2">{{ school.notes or '' }}</textarea></div>
+      <div class="col-12"><div class="vd-switch"><input class="form-check-input" type="checkbox" role="switch" name="active" id="act" {{ 'checked' if school.active }}><label for="act"><b>Still our customer</b><small>Untick to hide this school from Home and the reminders.</small></label></div></div>
+      <div class="col-12"><button class="btn btn-primary"><i class="fas fa-check me-2"></i>Save details</button></div>
+    </form></div>
+  </details>
+</div>
 
-{% if recoveries %}<div class="card border-0 shadow-sm"><div class="card-body"><h2 class="h5">Password recoveries</h2>
-<table class="table table-sm mb-0">{% for r in recoveries %}<tr><td>{{ r.issued_at[:16] }}</td><td class="text-muted">{{ r.note or '' }}</td></tr>{% endfor %}</table></div></div>{% endif %}
-</div></div>
+<div class="vd-card">
+  <h2><span class="vd-ico g"><i class="fas fa-money-bill-wave"></i></span>Payments</h2>
+  <p class="vd-card-sub">For your records only. Recording a payment does not send a key — use <b>Renewal</b> for that.</p>
+  <form method="post" action="{{ url_for('school_payment', school_id=school.id) }}" class="row g-2 mb-3">
+    <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+    <div class="col-6"><label class="form-label small" for="paid_on">Date paid</label><input type="date" class="form-control" id="paid_on" name="paid_on" value="{{ today.isoformat() }}" required></div>
+    <div class="col-6"><label class="form-label small" for="amount">Amount</label><input type="number" step="0.01" min="0" class="form-control" id="amount" name="amount" placeholder="0" value="{{ price if price is not none }}" required></div>
+    {% if price is not none %}<div class="col-12 vd-help mt-0">Filled in from the {{ price_plan.label }} plan’s price ({{ price|money }} {{ 'per month' if school.billing == 'monthly' else 'per year' }}). Change it if they paid something different.</div>{% endif %}
+    <div class="col-12"><label class="form-label small" for="period_note">What was it for? <span class="text-muted fw-normal">(optional)</span></label><input class="form-control" id="period_note" name="period_note" placeholder="e.g. Oct 2026, or yearly renewal"></div>
+    <div class="col-12"><button class="btn btn-outline-secondary btn-sm"><i class="fas fa-plus me-1"></i>Record payment</button></div>
+  </form>
+  {% if payments %}<table class="vd-mini"><tbody>{% for p in payments %}<tr><td>{{ p.paid_on|nicedate }}</td><td class="fw-bold text-end">{{ '%.0f'|format(p.amount or 0) }}</td><td class="text-muted">{{ p.period_note or '' }}</td></tr>{% endfor %}</tbody></table>
+  {% else %}<div class="text-muted small">No payments recorded yet.</div>{% endif %}
+</div>
+
+{% if recoveries %}<div class="vd-card"><h2><span class="vd-ico o"><i class="fas fa-unlock-keyhole"></i></span>Password resets</h2>
+  <p class="vd-card-sub">Times you helped this school get back in.</p>
+  <table class="vd-mini"><tbody>{% for r in recoveries %}<tr><td>{{ r.issued_at[:16].replace('T', ' ') }}</td><td class="text-muted">{{ r.note or '' }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+
+</div>
+</div>
+
 <script>
-var PLANS={{ plans|tojson }};
-document.getElementById('planSel').addEventListener('change',function(){
- var p=PLANS.find(function(x){return x.name===this.value}.bind(this)); if(!p)return;
- document.querySelectorAll('.feat').forEach(function(cb){cb.checked=p.features.indexOf(cb.value)>=0});
- document.getElementById('waDaily').value=p.wa_daily===null?'':p.wa_daily;
- document.getElementById('waMonthly').value=p.wa_monthly===null?'':p.wa_monthly;});
+(function(){
+ var PLANS={{ plans|tojson }}, PREVIEW={{ period_preview|tojson }}, BILLING_PERIOD={{ ('1m' if school.billing == 'monthly' else '1y')|tojson }};
+ var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+ var WHY={new:'First key',renew:'Renewal',update:'Change of features',move:'Move to a new computer'};
+ var $=function(id){return document.getElementById(id)};
+ var feats=document.querySelectorAll('.feat');
+ function fmt(iso){var p=iso.split('-');return parseInt(p[2],10)+' '+MONTHS[parseInt(p[1],10)-1]+' '+p[0]}
+ function hasOption(v){return !![].some.call($('periodSel').options,function(o){return o.value===v})}
+ function refresh(){
+  var on=[].filter.call(feats,function(c){return c.checked}).length;
+  [].forEach.call(document.querySelectorAll('.featCount'),function(e){e.textContent=on+' of '+feats.length});
+  var wd=$('waDaily').value,wm=$('waMonthly').value;
+  var wa=(wd===''&&wm==='')?'WhatsApp: no limit':'WhatsApp: '+(wd===''?'no limit':wd)+' a day, '+(wm===''?'no limit':wm)+' a month';
+  var ms=$('maxStudents').value,mf=$('maxStaff').value;
+  var size='Students: '+(ms===''?'no limit':ms)+' · Staff logins: '+(mf===''?'no limit':mf);
+  $('featSummary').innerHTML='<b>'+on+' of '+feats.length+'</b> features switched on · '+size+' · '+wa;
+  var r=document.querySelector('input[name=reason]:checked'),why=r?WHY[r.value]:'Key';
+  var custom=$('custom_expires').value,end=custom||PREVIEW[$('periodSel').value];
+  $('sumLine').innerHTML='<b>'+why+'</b>'+(end?' · ends on <b>'+fmt(end)+'</b>':'')+' · '+on+' features';
+ }
+ function setPeriod(v){if(hasOption(v))$('periodSel').value=v}
+ [].forEach.call(document.querySelectorAll('input[name=reason]'),function(r){r.addEventListener('change',function(){
+  if(r.value==='renew')setPeriod(BILLING_PERIOD);
+  if(r.value==='update'||r.value==='move')setPeriod('keep');
+  if(r.value==='update')$('featBox').open=true;
+  $('machineHint').innerHTML=r.value==='move'?'Type the <b>new</b> computer’s code here — ask the school to send “This computer’s code” from the new PC.':$('machineHint').getAttribute('data-orig');
+  refresh()})});
+ $('machineHint').setAttribute('data-orig',$('machineHint').innerHTML);
+ $('planSel').addEventListener('change',function(){
+  var p=PLANS.filter(function(x){return x.name===$('planSel').value})[0];if(!p)return;
+  [].forEach.call(feats,function(cb){cb.checked=p.features.indexOf(cb.value)>=0});
+  $('waDaily').value=p.wa_daily===null?'':p.wa_daily;$('waMonthly').value=p.wa_monthly===null?'':p.wa_monthly;
+  $('maxStudents').value=p.max_students===null?'':p.max_students;$('maxStaff').value=p.max_staff===null?'':p.max_staff;refresh()});
+ $('allOn').addEventListener('click',function(){[].forEach.call(feats,function(c){c.checked=true});refresh()});
+ $('allOff').addEventListener('click',function(){[].forEach.call(feats,function(c){c.checked=false});refresh()});
+ ['periodSel','custom_expires','waDaily','waMonthly','maxStudents','maxStaff'].forEach(function(id){$(id).addEventListener('input',refresh)});
+ [].forEach.call(feats,function(c){c.addEventListener('change',refresh)});
+ refresh();
+ if(location.hash==='#send-key'){$('send-key').scrollIntoView()}
+})();
 </script>
 {% endblock %}

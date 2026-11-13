@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.database import db
 from app.models import StudentModel, ClassModel, SectionModel
 from app.routes import main
-from app.services import admission_fee
+from app.services import admission_fee, usage_limits
 from app.models.settings import get_custom_fields
 from app.services.custom_fields import serialize_custom_field_values
 from app.services.enrollments import start_enrollment
@@ -227,6 +227,14 @@ def import_students():
             'discount_value': discount_value, 'custom': custom_values,
             'admission': admission,
         })
+
+    # ---- the license's student limit: import what fits, list the rest as skipped ----
+    room = usage_limits.student_room()
+    if room is not None and len(pending) > room:
+        blocked = usage_limits.student_block_message(adding=len(pending))
+        for item in pending[room:]:
+            result.skip(item['row'], item['name'], blocked, 'limit')
+        del pending[room:]
 
     # ---- pass 2: assign automatic roll numbers and save ---------------------
     try:

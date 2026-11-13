@@ -157,9 +157,15 @@ def test_first_run_setup_honours_demo_counts_and_fee(monkeypatch, fresh_app_fact
         assert StudentModel.query.count() == 100
         assert TeacherModel.query.count() == 12
         # Fees anchor to the entered base fee and rise slightly with class
-        # level (plus small jitter), so every fee stays in a realistic band.
-        fees = [s.monthly_fee for s in StudentModel.query.all()]
-        assert all(2000 <= fee <= 3200 for fee in fees)
+        # level (plus small jitter), so every class fee stays in a realistic band.
+        # A student with a discount pays less than the class fee (the same
+        # rule the Add Student form applies); everyone else stays in the band.
+        for student in StudentModel.query.all():
+            assert 2000 <= student.class_fee <= 3200
+            if student.discount_type:
+                assert 0 <= student.monthly_fee < student.class_fee
+            else:
+                assert 2000 <= student.monthly_fee <= 3200
 
 
 def test_import_templates_are_available(admin_client):

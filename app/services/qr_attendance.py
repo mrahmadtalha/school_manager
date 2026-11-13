@@ -1,12 +1,16 @@
-"""QR attendance: signed student QR tokens, guard scans and the daily report.
+"""QR attendance: signed student and teacher QR tokens, guard scans and the daily report.
 
 Everything is saved in the existing ``attendance`` table (target_type
-``student``), so the normal attendance summaries and exports keep working.
+``student`` or ``teacher``), so the normal attendance summaries and exports
+keep working.
 
-Token format printed on the ID card:  ``SMQR1.<student_id>.<signature>``
+Token format printed on the student ID card:  ``SMQR1.<student_id>.<signature>``
+Token format printed on the staff ID card:    ``SMQT1.<teacher_id>.<signature>``
 The signature is an HMAC with a per-school secret, so a QR code cannot be
 guessed or made up.  (Roll numbers are only unique inside a class, so they
-cannot identify a student school-wide - the database id can.)
+cannot identify a student school-wide - the database id can.)  A student
+code can never be accepted as a teacher code, or the other way round: the
+prefix differs and the signed message names the kind of person.
 """
 
 import hashlib
@@ -17,12 +21,13 @@ import threading
 from datetime import date, datetime
 
 from app.database import db
-from app.models import AttendanceModel, ClassModel, StudentModel
+from app.models import AttendanceModel, ClassModel, StudentModel, TeacherModel
 from app.models.qr_config import QrConfig
 
 logger = logging.getLogger(__name__)
 
 TOKEN_PREFIX = 'SMQR1'
+TEACHER_TOKEN_PREFIX = 'SMQT1'
 FEATURE_KEY = 'qr_attendance'
 
 # One scan is processed at a time, so two phones scanning the same card at
@@ -32,10 +37,27 @@ _SCAN_LOCK = threading.Lock()
 
 # -- tokens (pure functions, no database) ---------------------------------
 
-def _signature(secret, student_id):
-    message = f'student:{int(student_id)}'.encode('ascii')
+def _signature(secret, person_id, kind='student'):
+    message = f'{kind}:{int(person_id)}'.encode('ascii')
     digest = hmac.new(secret.encode('utf-8'), message, hashlib.sha256).hexdigest()
     return digest[:20]
+
+
+def _parse(secret, raw, prefix, kind):
+    """Return the id inside a valid token of this kind, otherwise ``None``."""
+    if not isinstance(raw, str):
+        return None
+    parts = raw.strip().split('.')
+    if len(parts) != 3 or parts[0] != prefix:
+        return None
+    number = parts[1]
+    if not (number.isascii() and number.isdigit()) or len(number) > 9:
+        return None
+    person_id = int(number)
+    expected = _signature(secret, person_id, kind)
+    if not hmac.compare_digest(parts[2].strip().lower(), expected):
+        return None
+    return person_id
 
 
 def make_token(secret, student_id):
@@ -44,19 +66,16 @@ def make_token(secret, student_id):
 
 def parse_token(secret, raw):
     """Return the student id inside a valid token, otherwise ``None``."""
-    if not isinstance(raw, str):
-        return None
-    parts = raw.strip().split('.')
-    if len(parts) != 3 or parts[0] != TOKEN_PREFIX:
-        return None
-    number = parts[1]
-    if not (number.isascii() and number.isdigit()) or len(number) > 9:
-        return None
-    student_id = int(number)
-    expected = _signature(secret, student_id)
-    if not hmac.compare_digest(parts[2].strip().lower(), expected):
-        return None
-    return student_id
+    return _parse(secret, raw, TOKEN_PREFIX, 'student')
+
+
+def make_teacher_token(secret, teacher_id):
+    return f'{TEACHER_TOKEN_PREFIX}.{int(teacher_id)}.{_signature(secret, teacher_id, "teacher")}'
+
+
+def parse_teacher_token(secret, raw):
+    """Return the teacher id inside a valid staff-card token, otherwise ``None``."""
+    return _parse(secret, raw, TEACHER_TOKEN_PREFIX, 'teacher')
 
 
 # -- settings / feature ----------------------------------------------------
@@ -98,6 +117,13 @@ def student_qr_payload(student):
     return f'STUDENT|{student.roll_number}|{student.student_name}'
 
 
+def teacher_qr_payload(teacher):
+    """The text printed as the QR code on a teacher's (staff) ID card."""
+    if qr_feature_enabled():
+        return make_teacher_token(get_secret(), teacher.id)
+    return f'TEACHER|{teacher.teacher_id_str}|{teacher.teacher_name}'
+
+
 def local_ip_addresses():
     """This computer's likely Wi-Fi / LAN addresses (best first)."""
     found = []
@@ -136,6 +162,12 @@ MESSAGES = {
                  'طالب علم آج چھٹی پر ہے۔ حاضری نہیں بدلی۔'),
     'already_marked': ('Attendance is already marked.',
                        'حاضری پہلے سے لگ چکی ہے۔'),
+    'old_teacher_card': ('Old staff ID card. Please print a new ID card for this teacher.',
+                         'پرانا کارڈ ہے۔ استاد کا نیا شناختی کارڈ پرنٹ کریں۔'),
+    'unknown_teacher': ('Teacher not found, or no longer working here.',
+                        'استاد نہیں ملا یا اب ملازم نہیں ہے۔'),
+    'teacher_on_leave': ('This teacher is on leave today. Attendance was not changed.',
+                         'استاد آج چھٹی پر ہے۔ حاضری نہیں بدلی۔'),
     'marked_present': ('Marked PRESENT.', 'حاضر لگ گئی۔'),
     'marked_late': ('Marked LATE.', 'لیٹ لگ گیا۔'),
 }
@@ -145,13 +177,17 @@ def _hhmm(value):
     return (value or '')[:5]
 
 
-def _result(code, message_key=None, student=None, **extra):
+def _result(code, message_key=None, student=None, person_type='student', **extra):
     english, urdu = MESSAGES[message_key or code]
     result = {
         'ok': code in ('marked', 'already_marked'),
         'code': code,
         'message': english,
         'message_ur': urdu,
+        'person_type': person_type,
+        # ``person`` is the new name; ``student`` is still filled (also for a
+        # teacher) so a guard app installed before teacher scanning keeps working.
+        'person': student,
         'student': student,
         'status': None,
         'time': '',
@@ -179,17 +215,89 @@ def student_info(student):
     }
 
 
+def teacher_info(teacher):
+    photo_url = ''
+    if getattr(teacher, 'photo_filename', None):
+        photo_url = f'/api/qr/teacher-photo/{teacher.id}?v={teacher.photo_filename}'
+    return {
+        'id': teacher.id,
+        'name': teacher.teacher_name,
+        'father_name': '',
+        'roll_number': teacher.teacher_id_str,
+        'class_name': teacher.designation or teacher.qualification or 'Teacher',
+        'section': '',
+        'photo_url': photo_url,
+        'person_type': 'teacher',
+    }
+
+
 def process_scan(raw_token, now=None):
-    """Handle one scanned QR code and return the result dictionary."""
+    """Handle one scanned QR code (student or teacher card) and return the result dictionary."""
     now = (now or datetime.now()).replace(microsecond=0)
     raw = raw_token.strip() if isinstance(raw_token, str) else ''
     if raw.upper().startswith('STUDENT|'):
         return _result('old_card')
-    student_id = parse_token(get_secret(), raw)
+    if raw.upper().startswith('TEACHER|'):
+        return _result('old_card', message_key='old_teacher_card', person_type='teacher')
+    secret = get_secret()
+    if raw.startswith(TEACHER_TOKEN_PREFIX + '.'):
+        teacher_id = parse_teacher_token(secret, raw)
+        if teacher_id is None:
+            return _result('invalid_qr')
+        with _SCAN_LOCK:
+            return _mark_teacher(teacher_id, now)
+    student_id = parse_token(secret, raw)
     if student_id is None:
         return _result('invalid_qr')
     with _SCAN_LOCK:
         return _mark_student(student_id, now)
+
+
+def _mark_teacher(teacher_id, now):
+    """Mark one teacher Present / Late from a staff-card scan (no guardian message is sent)."""
+    from app.services.attendance_service import evaluate_checkin_attendance
+    from app.services.teacher_payroll import is_school_day
+
+    teacher = db.session.get(TeacherModel, teacher_id)
+    if teacher is None or not teacher.is_active:
+        return _result('unknown_teacher', person_type='teacher')
+
+    info = teacher_info(teacher)
+    today = now.date()
+    if not is_school_day(today):
+        return _result('school_closed', student=info, person_type='teacher')
+
+    record = AttendanceModel.query.filter_by(
+        target_type='teacher', target_id=teacher.id, date=today).first()
+    previous_status = None
+    if record is not None:
+        if record.status in ('Present', 'Late'):
+            return _result('already_marked', student=info, person_type='teacher',
+                           status=record.status, time=_hhmm(record.late_time),
+                           late_minutes=record.late_minutes)
+        if record.status != 'Absent':
+            return _result('on_leave', message_key='teacher_on_leave', student=info,
+                           person_type='teacher', status=record.status)
+        previous_status = record.status      # Absent -> the teacher did come
+
+    status, checkin, late_minutes = evaluate_checkin_attendance(
+        'Present', now.time().isoformat(timespec='seconds'))
+
+    if record is None:
+        record = AttendanceModel(
+            target_type='teacher', target_id=teacher.id, date=today, status=status,
+            late_time=checkin, late_minutes=late_minutes, qr_time=checkin)
+        db.session.add(record)
+    else:
+        record.status = status
+        record.late_time = checkin
+        record.late_minutes = late_minutes
+        record.qr_time = checkin
+    db.session.commit()
+
+    return _result('marked', message_key='marked_late' if status == 'Late' else 'marked_present',
+                   student=info, person_type='teacher', status=status, time=_hhmm(checkin),
+                   late_minutes=late_minutes, previous_status=previous_status)
 
 
 def _mark_student(student_id, now):
@@ -326,6 +434,60 @@ def build_daily_report(day, class_id=None):
     }
 
 
+def build_teacher_daily_report(day):
+    """Present / late / not-arrived / leave lists of the active teachers for one day."""
+    from app.services.attendance_service import late_counts_as_present
+
+    teachers = (TeacherModel.query.filter_by(is_active=True)
+                .order_by(TeacherModel.teacher_name).all())
+    records = {}
+    for record in AttendanceModel.query.filter_by(target_type='teacher', date=day).all():
+        records.setdefault(record.target_id, record)
+
+    groups = {'present': [], 'late': [], 'absent': [], 'leave': []}
+    for teacher in teachers:
+        record = records.get(teacher.id)
+        row = {
+            'teacher': teacher,
+            'time': _hhmm(record.late_time) if record else '',
+            'qr_time': _hhmm(record.qr_time) if record else '',
+            'late_minutes': record.late_minutes if record else None,
+            'status': record.status if record else None,
+        }
+        if record is None:
+            row['label'] = 'Not marked yet'
+            groups['absent'].append(row)
+        elif record.status == 'Present':
+            groups['present'].append(row)
+        elif record.status == 'Late':
+            groups['late'].append(row)
+        elif record.status == 'Leave':
+            groups['leave'].append(row)
+        else:
+            row['label'] = 'Absent'
+            groups['absent'].append(row)
+
+    counts_late = late_counts_as_present()
+    total = len(teachers)
+    attended = len(groups['present']) + (len(groups['late']) if counts_late else 0)
+    return {
+        'date': day,
+        'total': total,
+        'present': groups['present'],
+        'late': groups['late'],
+        'absent': groups['absent'],
+        'leave': groups['leave'],
+        'counts': {
+            'total': total,
+            'present': len(groups['present']),
+            'late': len(groups['late']),
+            'absent': len(groups['absent']),
+            'leave': len(groups['leave']),
+            'attended': attended,
+        },
+    }
+
+
 # -- connecting a guard phone by QR code -----------------------------------------
 
 def pairing_addresses(port):
@@ -361,6 +523,7 @@ def qr_tab_context(day, class_id, port):
     from app.services import qr_absent
 
     report = build_daily_report(day, class_id)
+    teacher_report = build_teacher_daily_report(day)
     config = QrConfig.get()
     run = QrAbsentRun.query.filter_by(run_date=day).first()
     absent_preview = qr_absent.preview(day) if (run is not None and run.status == 'pending') else None
@@ -376,6 +539,7 @@ def qr_tab_context(day, class_id, port):
         'guards': guards,
         'pair': pair,
         'report': report,
+        'teacher_report': teacher_report,
         'qr_day': day.strftime('%Y-%m-%d'),
         'qr_class_id': class_id,
         'addresses': addresses,

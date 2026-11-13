@@ -30,12 +30,13 @@ from app.models.inventory  import (Product, Purchase, Sale, SupplierPayment,
 from app.models.other_income import (OtherIncome, OtherIncomeCategory,
                                      DEFAULT_OTHER_INCOME_CATEGORIES)
 from app.models.issued_document import IssuedDocument, DOC_ID_CARD, DOC_CERTIFICATE
+from app.models.calendar import CalendarEvent
 
 __all__ = [
     "TimetableRow", "TimetableCell",
     "Product", "Purchase", "Sale", "SupplierPayment",
     "ProductSet", "ProductSetItem", "SET_KINDS", "StudentIssue", "CanteenEntry", "CanteenPayment",
-    "OtherIncome", "OtherIncomeCategory", "IssuedDocument",
+    "OtherIncome", "OtherIncomeCategory", "IssuedDocument", "CalendarEvent",
     "ClassModel", "SectionModel", "SubjectModel", "SubjectLibrary", "TeachingAssignment",
     "StudentModel", "STUDENT_STATUSES", "STUDENT_STATUS_LABELS",
     "TeacherModel",

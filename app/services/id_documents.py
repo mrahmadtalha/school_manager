@@ -19,7 +19,9 @@ WHITE = (1, 1, 1)
 SLATE = (0.29, 0.33, 0.41)
 LIGHT = (0.96, 0.97, 0.99)
 
-CARD_W = 86 * mm
+# Standard CR80 / ID-1 card size (credit-card size): 85.6 x 54 mm.
+# Student and teacher cards, in every style, share it.
+CARD_W = 85.6 * mm
 CARD_H = 54 * mm
 
 
@@ -90,6 +92,8 @@ def _fit_text(c, text, x, y, max_width, font='Helvetica-Bold', max_size=11, min_
     c.setFont(font, size)
     if align == 'center':
         c.drawCentredString(x, y, text)
+    elif align == 'right':
+        c.drawRightString(x, y, text)
     else:
         c.drawString(x, y, text)
 
@@ -145,6 +149,59 @@ def _draw_photo(c, path, x, y, size):
         c.restoreState()
 
 
+def _initials_of(text, limit=2):
+    parts = [part for part in (text or '').split() if part]
+    letters = ''.join(part[0] for part in parts[:limit]).upper()
+    return letters or '?'
+
+
+def _draw_circular_photo(c, path, cx, cy, r):
+    """Draw a real photo clipped to a circle, centred at (cx, cy). False if unusable."""
+    image = photos.square_image(path, 400)
+    if image is None:
+        return False
+    c.saveState()
+    try:
+        clip = c.beginPath()
+        clip.circle(cx, cy, r)
+        c.clipPath(clip, stroke=0, fill=0)
+        c.drawImage(ImageReader(image), cx - r, cy - r, width=2 * r, height=2 * r)
+        return True
+    except Exception:
+        return False
+    finally:
+        c.restoreState()
+
+
+def _draw_circular_initials(c, name, cx, cy, r, text_size=13):
+    _set_fill(c, LIGHT)
+    c.circle(cx, cy, r, fill=1, stroke=0)
+    _set_fill(c, NAVY)
+    c.setFont('Helvetica-Bold', text_size)
+    c.drawCentredString(cx, cy - text_size * 0.34, _initials_of(name))
+
+
+def _draw_logo_circle(c, path, cx, cy, r):
+    """Draw a logo clipped to a circle, centred at (cx, cy). False if unusable."""
+    if not path:
+        return False
+    try:
+        image = ImageReader(path)
+    except Exception:
+        return False
+    c.saveState()
+    try:
+        clip = c.beginPath()
+        clip.circle(cx, cy, r)
+        c.clipPath(clip, stroke=0, fill=0)
+        c.drawImage(image, cx - r, cy - r, width=2 * r, height=2 * r, preserveAspectRatio=True, mask='auto')
+        return True
+    except Exception:
+        return False
+    finally:
+        c.restoreState()
+
+
 def _draw_id_card(c, x, y, person, school, session):
     c.saveState()
     c.setLineWidth(1.4)
@@ -185,7 +242,7 @@ def _draw_id_card(c, x, y, person, school, session):
         _draw_initials_badge(c, person['name'], photo_x + 1.5 * mm, photo_y + 1.5 * mm, photo_size - 3 * mm)
 
     info_x = photo_x + photo_size + 3 * mm
-    info_w = CARD_W - (info_x - x) - 18 * mm
+    info_w = CARD_W - (info_x - x) - 19.5 * mm
     _set_fill(c, NAVY)
     _fit_text(c, person['name'], info_x, y + CARD_H - header_h - 8 * mm, info_w, max_size=10, min_size=7)
 
@@ -199,7 +256,7 @@ def _draw_id_card(c, x, y, person, school, session):
         _fit_text(c, str(value or '—'), info_x + 16 * mm, row_y, info_w - 16 * mm, font='Helvetica-Bold', max_size=7, min_size=5.5)
         row_y -= 4.2 * mm
 
-    qr_size = 14 * mm
+    qr_size = 15.5 * mm
     _draw_qr(c, person['qr'], x + CARD_W - qr_size - 3 * mm, y + 16.5 * mm, qr_size)
 
     _set_fill(c, NAVY)
@@ -216,6 +273,165 @@ def _draw_id_card(c, x, y, person, school, session):
     c.restoreState()
 
 
+def _draw_id_card_professional(c, x, y, person, school, session):
+    """A two-tone card: a navy photo panel on the left, details on the right.
+
+    This is the "Professional" style — same outer dimensions as the classic
+    card (so it drops into the same page grid) but a heavier, more premium
+    look: a round photo/avatar panel, pill-shaped badges and a slightly
+    larger QR code.
+    """
+    c.saveState()
+    left_w = 27 * mm
+    divider_w = 1 * mm
+
+    c.setLineWidth(1)
+    _set_stroke(c, (0.82, 0.85, 0.9))
+    _set_fill(c, WHITE)
+    c.roundRect(x, y, CARD_W, CARD_H, 4, fill=1, stroke=1)
+
+    # Left navy panel, with a couple of soft decorative circles clipped to it.
+    c.saveState()
+    clip = c.beginPath()
+    clip.roundRect(x, y, left_w, CARD_H, 4)
+    c.clipPath(clip, stroke=0, fill=0)
+    _set_fill(c, NAVY)
+    c.rect(x, y, left_w, CARD_H, fill=1, stroke=0)
+    c.setFillAlpha(0.12)
+    _set_fill(c, WHITE)
+    c.circle(x + left_w * 0.78, y + CARD_H * 0.8, 13 * mm, fill=1, stroke=0)
+    c.circle(x + left_w * 0.12, y + CARD_H * 0.1, 15 * mm, fill=1, stroke=0)
+    c.setFillAlpha(1)
+    c.restoreState()
+
+    _set_fill(c, GOLD)
+    c.rect(x + left_w, y, divider_w, CARD_H, fill=1, stroke=0)
+
+    panel_cx = x + left_w / 2
+
+    # Small circular logo / school-initials badge, top of the panel.
+    badge_r = 5.3 * mm
+    badge_cy = y + CARD_H - 9 * mm
+    if not _draw_logo_circle(c, school['logo_path'], panel_cx, badge_cy, badge_r):
+        _set_fill(c, WHITE)
+        c.circle(panel_cx, badge_cy, badge_r, fill=1, stroke=0)
+        _set_fill(c, NAVY)
+        c.setFont('Helvetica-Bold', 6)
+        c.drawCentredString(panel_cx, badge_cy - 2, _initials_of(school['name'], limit=3))
+    _set_stroke(c, GOLD)
+    c.setLineWidth(1)
+    c.circle(panel_cx, badge_cy, badge_r, fill=0, stroke=1)
+
+    # Large avatar: a real photo, or an initials badge as a fallback.
+    avatar_r = 10.2 * mm
+    avatar_cy = y + CARD_H - 26 * mm
+    if not _draw_circular_photo(c, person.get('photo_path'), panel_cx, avatar_cy, avatar_r):
+        _draw_circular_initials(c, person['name'], panel_cx, avatar_cy, avatar_r, text_size=13)
+    _set_stroke(c, GOLD)
+    c.setLineWidth(1.3)
+    c.circle(panel_cx, avatar_cy, avatar_r, fill=0, stroke=1)
+
+    # Gold "ID ####" pill under the avatar.
+    pill_w, pill_h = left_w - 6 * mm, 5 * mm
+    pill_x = panel_cx - pill_w / 2
+    pill_y = avatar_cy - avatar_r - 6.5 * mm
+    _set_fill(c, GOLD)
+    c.roundRect(pill_x, pill_y, pill_w, pill_h, pill_h / 2, fill=1, stroke=0)
+    _set_fill(c, NAVY)
+    _fit_text(c, person.get('badge', 'ID'), panel_cx, pill_y + pill_h / 2 - 1.8,
+              pill_w - 2 * mm, font='Helvetica-Bold', max_size=6.6, min_size=5, align='center')
+
+    # Academic session, bottom of the panel.
+    _set_fill(c, (0.72, 0.78, 0.88))
+    c.setFont('Helvetica', 5)
+    c.drawCentredString(panel_cx, y + 7 * mm, 'SESSION')
+    _set_fill(c, WHITE)
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawCentredString(panel_cx, y + 3.4 * mm, session or '—')
+
+    # ---- Right-hand content ----
+    content_x = x + left_w + divider_w + 4 * mm
+    content_w = CARD_W - (content_x - x) - 3 * mm
+    qr_size = 17 * mm
+    qr_x = x + CARD_W - qr_size - 4 * mm
+    text_w = qr_x - content_x - 3 * mm
+
+    top_y = y + CARD_H - 6 * mm
+    _set_fill(c, NAVY)
+    _fit_text(c, school['name'], content_x, top_y, content_w, font='Helvetica-Bold', max_size=10.5, min_size=7)
+    _set_fill(c, SLATE)
+    _fit_text(c, school['tagline'] or person.get('role_label', 'Identity Card'), content_x, top_y - 4.5 * mm,
+              content_w, font='Helvetica', max_size=6.5, min_size=5)
+    _set_stroke(c, GOLD)
+    c.setLineWidth(1.1)
+    c.line(content_x, top_y - 6.5 * mm, content_x + 16 * mm, top_y - 6.5 * mm)
+
+    name_y = top_y - 13 * mm
+    _set_fill(c, NAVY)
+    _fit_text(c, person['name'], content_x, name_y, text_w, font='Helvetica-Bold', max_size=11.5, min_size=8)
+
+    role_pill = person.get('role_pill')
+    row_start_y = name_y - 9 * mm
+    if role_pill:
+        pill_h2 = 4.4 * mm
+        pill_w2 = min(text_w, c.stringWidth(role_pill, 'Helvetica-Bold', 6.5) + 6 * mm)
+        _set_fill(c, LIGHT)
+        c.roundRect(content_x, name_y - 0.6 * mm - pill_h2, pill_w2, pill_h2, pill_h2 / 2, fill=1, stroke=0)
+        _set_fill(c, NAVY)
+        c.setFont('Helvetica-Bold', 6.5)
+        c.drawString(content_x + 3 * mm, name_y - 0.6 * mm - pill_h2 + 1.4 * mm, role_pill)
+
+    # Rows: the "Class"/"Qual." row is dropped when it is already shown as the
+    # pill above, so three compact rows (not four) fit comfortably.
+    rows = person.get('rows') or []
+    if role_pill:
+        rows = [row for row in rows if row[0] not in ('Class', 'Qual.')]
+    row_y = row_start_y
+    for label, value in rows:
+        _set_fill(c, (0.56, 0.6, 0.67))
+        c.setFont('Helvetica', 5.4)
+        c.drawString(content_x, row_y, str(label).upper())
+        _set_fill(c, NAVY)
+        _fit_text(c, str(value or '—'), content_x, row_y - 3.3 * mm, text_w,
+                  font='Helvetica-Bold', max_size=7.6, min_size=5.8)
+        row_y -= 6.6 * mm
+
+    # QR code, inside a light bordered box, roughly level with the rows.
+    qr_box_top = name_y
+    qr_box_h = qr_size + 3 * mm
+    qr_box_y = qr_box_top - qr_box_h
+    _set_stroke(c, (0.82, 0.85, 0.9))
+    _set_fill(c, WHITE)
+    c.setLineWidth(0.8)
+    c.roundRect(qr_x - 1.5 * mm, qr_box_y, qr_size + 3 * mm, qr_box_h, 2, fill=1, stroke=1)
+    _draw_qr(c, person['qr'], qr_x, qr_box_y + 1.5 * mm, qr_size)
+
+    # Footer strip: address + school phone, separated by a thin rule.
+    footer_line_y = y + 7.2 * mm
+    _set_stroke(c, (0.88, 0.9, 0.93))
+    c.setLineWidth(0.7)
+    c.line(content_x, footer_line_y, x + CARD_W - 3 * mm, footer_line_y)
+    _set_fill(c, (0.56, 0.6, 0.67))
+    c.setFont('Helvetica', 4.6)
+    c.drawString(content_x, y + 4.6 * mm, 'ADDRESS')
+    c.drawRightString(x + CARD_W - 3 * mm, y + 4.6 * mm, 'SCHOOL PHONE')
+    _set_fill(c, (0.18, 0.21, 0.27))
+    _fit_text(c, school['address'] or '—', content_x, y + 1.6 * mm, text_w * 0.55,
+              font='Helvetica-Bold', max_size=5.6, min_size=4.6)
+    _fit_text(c, school['phone'] or '—', x + CARD_W - 3 * mm, y + 1.6 * mm, text_w * 0.4,
+              font='Helvetica-Bold', max_size=5.6, min_size=4.6, align='right')
+
+    c.restoreState()
+
+
+CARD_STYLES = ('classic', 'professional')
+
+_CARD_DRAWERS = {
+    'classic': _draw_id_card,
+    'professional': _draw_id_card_professional,
+}
+
+
 def student_card_payload(student):
     from app.services.qr_attendance import student_qr_payload
     class_name = student.class_info.name if student.class_info else 'N/A'
@@ -227,6 +443,7 @@ def student_card_payload(student):
         'badge': f'ID {student.roll_number}',
         'photo_path': photos.photo_path('student', getattr(student, 'photo_filename', None)),
         'qr': student_qr_payload(student),
+        'role_pill': class_name,
         'rows': [
             ('Roll No', student.roll_number),
             ('Class', class_label),
@@ -237,13 +454,15 @@ def student_card_payload(student):
 
 
 def teacher_card_payload(teacher):
+    from app.services.qr_attendance import teacher_qr_payload
     joining = teacher.joining_date.strftime('%d %b %Y') if teacher.joining_date else '—'
     return {
         'name': teacher.teacher_name,
         'role_label': 'STAFF IDENTITY CARD',
         'badge': f'STAFF {teacher.teacher_id_str}',
         'photo_path': photos.photo_path('teacher', getattr(teacher, 'photo_filename', None)),
-        'qr': f'TEACHER|{teacher.teacher_id_str}|{teacher.teacher_name}',
+        'qr': teacher_qr_payload(teacher),
+        'role_pill': teacher.qualification or 'Staff',
         'rows': [
             ('Staff ID', teacher.teacher_id_str),
             ('Qual.', teacher.qualification),
@@ -253,7 +472,8 @@ def teacher_card_payload(teacher):
     }
 
 
-def build_id_cards_pdf(people, school, session, filename_hint='id_cards'):
+def build_id_cards_pdf(people, school, session, filename_hint='id_cards', style='classic'):
+    draw_card = _CARD_DRAWERS.get(style, _draw_id_card)
     output = io.BytesIO()
     c = canvas.Canvas(output, pagesize=A4)
     page_w, page_h = A4
@@ -277,7 +497,7 @@ def build_id_cards_pdf(people, school, session, filename_hint='id_cards'):
                 col = 0
                 row_y = start_y
             x = start_x + col * (CARD_W + gap_x)
-            _draw_id_card(c, x, row_y, person, school, session)
+            draw_card(c, x, row_y, person, school, session)
             col += 1
             if col >= cols:
                 col = 0
